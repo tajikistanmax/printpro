@@ -23,6 +23,7 @@ export class ProductionService {
         orderId: dto.orderId,
         assignedUserId: dto.assignedUserId,
         printer: dto.printer,
+        equipmentId: dto.equipmentId,
         priority: dto.priority ?? 0,
         note: dto.note,
       },
@@ -47,6 +48,7 @@ export class ProductionService {
       data: {
         assignedUserId: dto.assignedUserId,
         printer: dto.printer,
+        equipmentId: dto.equipmentId,
         priority: dto.priority,
         note: dto.note,
       },
@@ -106,6 +108,7 @@ export class ProductionService {
         },
       },
       assignedUser: { select: { id: true, fullName: true } },
+      equipment: { select: { id: true, name: true, status: true } },
     };
   }
 

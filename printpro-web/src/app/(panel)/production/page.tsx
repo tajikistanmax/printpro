@@ -35,6 +35,8 @@ export default function ProductionPage() {
   const [orderId, setOrderId] = useState('');
   const [assignee, setAssignee] = useState('');
   const [printer, setPrinter] = useState('');
+  const [equipmentId, setEquipmentId] = useState('');
+  const [equipment, setEquipment] = useState<any[]>([]);
   const [msg, setMsg] = useState('');
 
   function load() {
@@ -44,6 +46,10 @@ export default function ProductionPage() {
     load();
     if (canManage) {
       api.get(`/orders?companyId=${cid}`).then(setOrders).catch(() => {});
+      api
+        .get(`/equipment?companyId=${cid}&status=ACTIVE`)
+        .then(setEquipment)
+        .catch(() => {});
       if (can('users.view')) {
         api.get(`/users?companyId=${cid}`).then(setUsers).catch(() => {});
       }
@@ -58,11 +64,13 @@ export default function ProductionPage() {
         companyId: cid,
         orderId,
         assignedUserId: assignee || undefined,
-        printer: printer || undefined,
+        equipmentId: equipmentId || undefined,
+        printer: equipmentId ? undefined : printer || undefined,
       });
       setOrderId('');
       setAssignee('');
       setPrinter('');
+      setEquipmentId('');
       setMsg('✓ Задание создано');
       load();
     } catch (err: any) {
@@ -125,14 +133,29 @@ export default function ProductionPage() {
                 ))}
               </select>
             </div>
-            <div className="min-w-[150px]">
-              <label className="mb-1 block text-sm text-slate-500">Принтер/станок</label>
-              <input
-                value={printer}
-                onChange={(e) => setPrinter(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                placeholder="напр. Roland"
-              />
+            <div className="min-w-[170px]">
+              <label className="mb-1 block text-sm text-slate-500">Оборудование</label>
+              {equipment.length > 0 ? (
+                <select
+                  value={equipmentId}
+                  onChange={(e) => setEquipmentId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                >
+                  <option value="">— не выбрано —</option>
+                  {equipment.map((eq) => (
+                    <option key={eq.id} value={eq.id}>
+                      {eq.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={printer}
+                  onChange={(e) => setPrinter(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  placeholder="напр. Roland"
+                />
+              )}
             </div>
             <button className="rounded-lg bg-indigo-600 px-5 py-2 font-medium text-white hover:bg-indigo-700">
               В работу
@@ -183,7 +206,9 @@ export default function ProductionPage() {
                       </div>
                       <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-400">
                         {j.assignedUser && <span>👤 {j.assignedUser.fullName}</span>}
-                        {j.printer && <span>🖨 {j.printer}</span>}
+                        {(j.equipment?.name || j.printer) && (
+                          <span>🖨 {j.equipment?.name ?? j.printer}</span>
+                        )}
                       </div>
                       <div className="mt-2 flex items-center gap-2">
                         {NEXT[j.status] && (

@@ -23,6 +23,7 @@ const NAV = [
   { href: '/reports', label: 'Отчёты', icon: '📊', perm: 'reports.view' },
   { href: '/staff', label: 'Сотрудники', icon: '👥', perm: 'users.view' },
   { href: '/payroll', label: 'Зарплата', icon: '💵', perm: 'payroll.view' },
+  { href: '/equipment', label: 'Оборудование', icon: '🖨️', perm: 'production.view' },
   { href: '/settings', label: 'Настройки', icon: '⚙️', perm: 'settings.manage' },
   { href: '/audit', label: 'Журнал', icon: '📜', perm: 'audit.view' },
 ];

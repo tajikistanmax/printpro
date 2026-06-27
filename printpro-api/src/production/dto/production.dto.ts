@@ -13,6 +13,7 @@ export class CreateProductionJobDto {
   @IsString() orderId: string;
   @IsOptional() @IsString() assignedUserId?: string;
   @IsOptional() @IsString() printer?: string;
+  @IsOptional() @IsString() equipmentId?: string;
   @IsOptional() @IsInt() @Min(0) priority?: number;
   @IsOptional() @IsString() note?: string;
 }
@@ -21,6 +22,7 @@ export class CreateProductionJobDto {
 export class UpdateProductionJobDto {
   @IsOptional() @IsString() assignedUserId?: string;
   @IsOptional() @IsString() printer?: string;
+  @IsOptional() @IsString() equipmentId?: string;
   @IsOptional() @IsInt() @Min(0) priority?: number;
   @IsOptional() @IsString() note?: string;
 }

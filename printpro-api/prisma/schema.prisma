@@ -106,6 +106,12 @@ enum OrderUrgency {
   EXPRESS // очень срочный (экспресс)
 }
 
+enum EquipmentStatus {
+  ACTIVE // работает
+  REPAIR // на ремонте
+  OFF // выключено / не используется
+}
+
 // ======================= ТЕНАНТ И ПОЛЬЗОВАТЕЛИ =======================
 
 model Company {
@@ -132,6 +138,7 @@ model Company {
   orders            Order[]
   tasks             Task[]
   settings          Setting[]
+  equipment         Equipment[]
 }
 
 model Branch {
@@ -154,6 +161,7 @@ model Branch {
   cashShifts     CashShift[]
   stockMovements StockMovement[]
   stockReceipts  StockReceipt[]
+  equipment      Equipment[]
 }
 
 model Role {
@@ -706,7 +714,9 @@ model ProductionJob {
   status         ProductionStatus @default(PENDING)
   assignedUserId String?
   assignedUser   User?            @relation("ProductionAssignee", fields: [assignedUserId], references: [id])
-  printer        String? // назначенный принтер/станок
+  printer        String? // назначенный принтер/станок (текстом, для совместимости)
+  equipmentId    String?
+  equipment      Equipment?       @relation(fields: [equipmentId], references: [id])
   priority       Int              @default(0)
   note           String?
   startedAt      DateTime?
@@ -714,6 +724,31 @@ model ProductionJob {
   createdAt      DateTime         @default(now())
 
   @@index([companyId, status])
+}
+
+// ======================= ОБОРУДОВАНИЕ =======================
+
+model Equipment {
+  // --- синхронизация ---
+  updatedAt DateTime        @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String          @id @default(uuid())
+  companyId String
+  company   Company         @relation(fields: [companyId], references: [id])
+  branchId  String?
+  branch    Branch?         @relation(fields: [branchId], references: [id])
+  name      String
+  type      String? // принтер, плоттер, ламинатор, резак, термопресс…
+  model     String? // модель / производитель
+  serial    String? // серийный / инвентарный номер
+  status    EquipmentStatus @default(ACTIVE)
+  note      String?
+  createdAt DateTime        @default(now())
+
+  productionJobs ProductionJob[]
+
+  @@index([companyId])
 }
 
 // ======================= ДИЗАЙН-МАКЕТЫ =======================

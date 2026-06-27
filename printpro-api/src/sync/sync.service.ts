@@ -34,6 +34,7 @@ const SYNC_TABLES: { model: string; table: string }[] = [
   { model: 'clientDebt', table: 'ClientDebt' },
   { model: 'stockMovement', table: 'StockMovement' },
   { model: 'task', table: 'Task' },
+  { model: 'equipment', table: 'Equipment' },
   { model: 'productionJob', table: 'ProductionJob' },
   { model: 'designProof', table: 'DesignProof' },
   { model: 'setting', table: 'Setting' },
