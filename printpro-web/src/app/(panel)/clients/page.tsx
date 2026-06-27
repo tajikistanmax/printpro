@@ -22,10 +22,15 @@ const TYPE_COLORS: Record<string, string> = {
   VIP: 'bg-amber-100 text-amber-700',
 };
 const STATUS_LABELS: Record<string, string> = {
-  ACCEPTED: 'Принят',
-  IN_PROGRESS: 'В работе',
+  ACCEPTED: 'Новый',
+  AWAITING_DESIGN: 'Ожидает макет',
+  IN_DESIGN: 'В дизайне',
+  DESIGN_APPROVAL: 'На согласовании',
+  DESIGN_APPROVED: 'Согласован',
+  IN_PROGRESS: 'В производстве',
   READY: 'Готов',
   DELIVERED: 'Выдан',
+  REWORK: 'Переделка',
   CANCELLED: 'Отменён',
 };
 

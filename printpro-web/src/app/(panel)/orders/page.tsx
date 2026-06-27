@@ -7,12 +7,30 @@ import { DEFAULT_COMPANY_ID, SERVER_ORIGIN } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
 
 const STATUS_LABELS: Record<string, string> = {
-  ACCEPTED: 'Принят',
-  IN_PROGRESS: 'В работе',
+  ACCEPTED: 'Новый',
+  AWAITING_DESIGN: 'Ожидает макет',
+  IN_DESIGN: 'В дизайне',
+  DESIGN_APPROVAL: 'Макет на согласовании',
+  DESIGN_APPROVED: 'Согласован',
+  IN_PROGRESS: 'В производстве',
   READY: 'Готов',
   DELIVERED: 'Выдан',
+  REWORK: 'Возврат / переделка',
   CANCELLED: 'Отменён',
 };
+// Порядок жизненного цикла для ручной смены статуса
+const STATUS_FLOW = [
+  'ACCEPTED',
+  'AWAITING_DESIGN',
+  'IN_DESIGN',
+  'DESIGN_APPROVAL',
+  'DESIGN_APPROVED',
+  'IN_PROGRESS',
+  'READY',
+  'DELIVERED',
+  'REWORK',
+  'CANCELLED',
+];
 const PAY_LABELS: Record<string, string> = {
   UNPAID: 'Не оплачен',
   PARTIAL: 'Частично',
@@ -63,6 +81,18 @@ export default function OrdersPage() {
       });
       setSelected(updated);
       setMsg('✓ Оплата проведена');
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  async function changeStatus(status: string) {
+    if (!selected) return;
+    setMsg('');
+    try {
+      const updated = await api.patch(`/orders/${selected.id}/status`, { status });
+      setSelected(updated);
       load();
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
@@ -172,9 +202,23 @@ export default function OrdersPage() {
                   >
                     🖨 Тех-карта
                   </Link>
-                  <span className="text-sm text-slate-500">
-                    {STATUS_LABELS[selected.status]}
-                  </span>
+                  {can('orders.manage') ? (
+                    <select
+                      value={selected.status}
+                      onChange={(e) => changeStatus(e.target.value)}
+                      className="rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-600"
+                    >
+                      {STATUS_FLOW.map((st) => (
+                        <option key={st} value={st}>
+                          {STATUS_LABELS[st]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-sm text-slate-500">
+                      {STATUS_LABELS[selected.status]}
+                    </span>
+                  )}
                 </div>
               </div>
 

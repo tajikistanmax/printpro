@@ -29,10 +29,15 @@ enum OrderType {
 }
 
 enum OrderStatus {
-  ACCEPTED // принят
-  IN_PROGRESS // в работе
+  ACCEPTED // принят / новый
+  AWAITING_DESIGN // ожидает макет
+  IN_DESIGN // в дизайне
+  DESIGN_APPROVAL // макет на согласовании
+  DESIGN_APPROVED // согласован
+  IN_PROGRESS // в производстве
   READY // готов
   DELIVERED // выдан
+  REWORK // возврат / переделка
   CANCELLED // отменён
 }
 

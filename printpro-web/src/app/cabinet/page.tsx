@@ -6,9 +6,14 @@ import { API_BASE, DEFAULT_COMPANY_ID } from '@/lib/config';
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   ACCEPTED: { label: 'Принят', cls: 'bg-slate-100 text-slate-600' },
-  IN_PROGRESS: { label: 'В работе', cls: 'bg-sky-100 text-sky-700' },
+  AWAITING_DESIGN: { label: 'Ожидает макет', cls: 'bg-amber-100 text-amber-700' },
+  IN_DESIGN: { label: 'В дизайне', cls: 'bg-violet-100 text-violet-700' },
+  DESIGN_APPROVAL: { label: 'Макет на согласовании', cls: 'bg-sky-100 text-sky-700' },
+  DESIGN_APPROVED: { label: 'Согласован', cls: 'bg-sky-100 text-sky-700' },
+  IN_PROGRESS: { label: 'В производстве', cls: 'bg-sky-100 text-sky-700' },
   READY: { label: 'Готов', cls: 'bg-emerald-100 text-emerald-700' },
   DELIVERED: { label: 'Выдан', cls: 'bg-slate-200 text-slate-500' },
+  REWORK: { label: 'Переделка', cls: 'bg-rose-100 text-rose-700' },
   CANCELLED: { label: 'Отменён', cls: 'bg-rose-100 text-rose-700' },
 };
 const PAY: Record<string, string> = {
