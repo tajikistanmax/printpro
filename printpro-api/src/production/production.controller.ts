@@ -7,8 +7,14 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { randomUUID } from 'crypto';
 import { ProductionStatus } from '@prisma/client';
 import { ProductionService } from './production.service';
 import {
@@ -57,6 +63,23 @@ export class ProductionController {
     @Body() dto: UpdateProductionStatusDto,
   ) {
     return this.production.updateStatus(id, dto.status, dto.defectReason);
+  }
+
+  // Загрузить фото готового результата
+  @Post(':id/photo')
+  @RequirePermissions('production.view')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads',
+        filename: (_req, file, cb) =>
+          cb(null, randomUUID() + extname(file.originalname)),
+      }),
+      limits: { fileSize: 50 * 1024 * 1024 },
+    }),
+  )
+  uploadPhoto(@Param('id') id: string, @UploadedFile() file: any) {
+    return this.production.setResultPhoto(id, `/uploads/${file.filename}`);
   }
 
   // Удалить задание

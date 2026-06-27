@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { DEFAULT_COMPANY_ID } from '@/lib/config';
+import { API_BASE, DEFAULT_COMPANY_ID, SERVER_ORIGIN } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
 
 // Этапы производства по порядку
@@ -12,6 +12,7 @@ const STAGES: { key: string; label: string; color: string }[] = [
   { key: 'CUTTING', label: 'Резка', color: 'border-amber-300 bg-amber-50' },
   { key: 'BINDING', label: 'Брошюровка', color: 'border-violet-300 bg-violet-50' },
   { key: 'PACKAGING', label: 'Упаковка', color: 'border-indigo-300 bg-indigo-50' },
+  { key: 'PAUSED', label: 'На паузе', color: 'border-slate-300 bg-slate-100' },
   { key: 'COMPLETED', label: 'Готово', color: 'border-emerald-300 bg-emerald-50' },
   { key: 'REWORK', label: 'Брак / переделка', color: 'border-rose-300 bg-rose-50' },
 ];
@@ -90,6 +91,19 @@ export default function ProductionPage() {
     await api.patch(`/production/${id}/status`, {
       status: 'REWORK',
       defectReason: reason || undefined,
+    });
+    load();
+  }
+
+  async function uploadPhoto(id: string, file: File) {
+    const fd = new FormData();
+    fd.append('file', file);
+    const token =
+      typeof window !== 'undefined' ? localStorage.getItem('pp_token') : null;
+    await fetch(`${API_BASE}/production/${id}/photo`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: fd,
     });
     load();
   }
@@ -226,6 +240,20 @@ export default function ProductionPage() {
                           ⚠ {j.defectReason}
                         </div>
                       )}
+                      {j.resultPhotoUrl && (
+                        <a
+                          href={`${SERVER_ORIGIN}${j.resultPhotoUrl}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 block"
+                        >
+                          <img
+                            src={`${SERVER_ORIGIN}${j.resultPhotoUrl}`}
+                            alt="результат"
+                            className="h-16 w-full rounded-lg object-cover"
+                          />
+                        </a>
+                      )}
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         {NEXT[j.status] && (
                           <button
@@ -236,6 +264,26 @@ export default function ProductionPage() {
                             {STAGES.find((s) => s.key === NEXT[j.status])?.label}
                           </button>
                         )}
+                        {/* Пауза / продолжить */}
+                        {j.status !== 'PAUSED' &&
+                          j.status !== 'COMPLETED' &&
+                          j.status !== 'REWORK' &&
+                          j.status !== 'CANCELLED' && (
+                            <button
+                              onClick={() => setStatus(j.id, 'PAUSED')}
+                              className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                            >
+                              ⏸ Пауза
+                            </button>
+                          )}
+                        {j.status === 'PAUSED' && (
+                          <button
+                            onClick={() => setStatus(j.id, 'PRINTING')}
+                            className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-700"
+                          >
+                            ▶ Продолжить
+                          </button>
+                        )}
                         {j.status === 'REWORK' && (
                           <button
                             onClick={() => setStatus(j.id, 'PENDING')}
@@ -244,6 +292,20 @@ export default function ProductionPage() {
                             Вернуть в работу
                           </button>
                         )}
+                        {/* Фото результата */}
+                        <label className="cursor-pointer rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50">
+                          📷 Фото
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) uploadPhoto(j.id, f);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
                         {j.status !== 'REWORK' &&
                           j.status !== 'CANCELLED' && (
                             <button

@@ -166,6 +166,16 @@ export class ProductionService {
     return { ok: true };
   }
 
+  // Фото готового результата
+  async setResultPhoto(id: string, url: string) {
+    await this.ensure(id);
+    return this.prisma.productionJob.update({
+      where: { id },
+      data: { resultPhotoUrl: url },
+      include: this.includes(),
+    });
+  }
+
   // ---------- helpers ----------
   private includes() {
     return {
