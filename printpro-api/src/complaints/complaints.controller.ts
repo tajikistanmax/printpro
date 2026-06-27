@@ -1,0 +1,63 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ComplaintStatus } from '@prisma/client';
+import { ComplaintsService } from './complaints.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { RequirePermissions } from '../auth/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+
+@Controller('complaints')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class ComplaintsController {
+  constructor(private readonly complaints: ComplaintsService) {}
+
+  @Get()
+  @RequirePermissions('clients.view')
+  findAll(
+    @Query('companyId') companyId: string,
+    @Query('status') status?: ComplaintStatus,
+  ) {
+    return this.complaints.findAll(companyId, status);
+  }
+
+  @Post()
+  @RequirePermissions('clients.view')
+  create(
+    @Body()
+    dto: {
+      companyId: string;
+      title: string;
+      description?: string;
+      orderId?: string;
+      clientId?: string;
+    },
+    @CurrentUser() user: { sub: string },
+  ) {
+    return this.complaints.create({ ...dto, createdById: user.sub });
+  }
+
+  @Patch(':id/status')
+  @RequirePermissions('clients.manage')
+  updateStatus(
+    @Param('id') id: string,
+    @Body() dto: { status: ComplaintStatus; resolution?: string },
+  ) {
+    return this.complaints.updateStatus(id, dto.status, dto.resolution);
+  }
+
+  @Delete(':id')
+  @RequirePermissions('clients.manage')
+  remove(@Param('id') id: string) {
+    return this.complaints.remove(id);
+  }
+}

@@ -132,6 +132,14 @@ enum DiscountType {
   FIXED // фиксированная сумма
 }
 
+enum ComplaintStatus {
+  OPEN // зарегистрирована
+  IN_REVIEW // на рассмотрении
+  RESOLVED // решена
+  REJECTED // отклонена
+  CLOSED // закрыта
+}
+
 // ======================= ТЕНАНТ И ПОЛЬЗОВАТЕЛИ =======================
 
 model Company {
@@ -161,6 +169,7 @@ model Company {
   equipment         Equipment[]
   quotes            Quote[]
   promoCodes        PromoCode[]
+  complaints        Complaint[]
 }
 
 model Branch {
@@ -290,13 +299,36 @@ model Client {
   deletedAt DateTime?
   syncNode  String?
 
-  orders Order[]
-  debts  ClientDebt[]
-  quotes Quote[]
-  files  ClientFile[]
+  orders     Order[]
+  debts      ClientDebt[]
+  quotes     Quote[]
+  files      ClientFile[]
+  complaints Complaint[]
 
   @@index([companyId, phone])
   @@index([companyId, updatedAt])
+}
+
+model Complaint {
+  // --- синхронизация ---
+  updatedAt   DateTime        @default(now()) @updatedAt
+  deletedAt   DateTime?
+  syncNode    String?
+  id          String          @id @default(uuid())
+  companyId   String
+  company     Company         @relation(fields: [companyId], references: [id])
+  orderId     String?
+  order       Order?          @relation(fields: [orderId], references: [id])
+  clientId    String?
+  client      Client?         @relation(fields: [clientId], references: [id])
+  title       String
+  description String?
+  status      ComplaintStatus @default(OPEN)
+  resolution  String? // решение
+  createdById String?
+  createdAt   DateTime        @default(now())
+
+  @@index([companyId, status])
 }
 
 model PromoCode {
@@ -616,6 +648,7 @@ model Order {
   productionJobs ProductionJob[]
   proofs         DesignProof[]
   statusHistory  OrderStatusHistory[]
+  complaints     Complaint[]
 
   @@unique([companyId, orderNumber])
   @@index([companyId, updatedAt])

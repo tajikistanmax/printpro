@@ -23,6 +23,7 @@ const NAV = [
   { href: '/quotes', label: 'КП', icon: '📄', perm: 'orders.view' },
   { href: '/promocodes', label: 'Промокоды', icon: '🏷️', perm: 'orders.view' },
   { href: '/tasks', label: 'Задачи', icon: '📋', perm: 'tasks.view' },
+  { href: '/complaints', label: 'Рекламации', icon: '📣', perm: 'clients.view' },
   { href: '/reports', label: 'Отчёты', icon: '📊', perm: 'reports.view' },
   { href: '/staff', label: 'Сотрудники', icon: '👥', perm: 'users.view' },
   { href: '/payroll', label: 'Зарплата', icon: '💵', perm: 'payroll.view' },
