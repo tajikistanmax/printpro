@@ -6,20 +6,23 @@ import {
 import {
   ItemType,
   OrderStatus,
+  OrderType,
   PaymentStatus,
   Prisma,
   StockMovementType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClientsService } from '../clients/clients.service';
+import { TelegramService } from '../telegram/telegram.service';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { AddPaymentDto } from './dto/order-actions.dto';
+import { AddPaymentDto, QuickSaleDto } from './dto/order-actions.dto';
 
 @Injectable()
 export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly clients: ClientsService,
+    private readonly telegram: TelegramService,
   ) {}
 
   // ---------- Создание заказа ----------
@@ -46,9 +49,11 @@ export class OrdersService {
 
     // 3. Всё в одной транзакции (либо всё, либо ничего)
     return this.prisma.$transaction(async (tx) => {
-      // Номер заказа: порядковый внутри компании
+      // Номер заказа: ORD-ГОД-NNNNNN (порядковый внутри компании)
       const count = await tx.order.count({ where: { companyId: dto.companyId } });
-      const orderNumber = String(count + 1).padStart(5, '0');
+      const year = new Date().getFullYear();
+      const seq = String(count + 1).padStart(6, '0');
+      const orderNumber = `ORD-${year}-${seq}`;
 
       // Создаём заказ с позициями
       const order = await tx.order.create({
@@ -134,10 +139,23 @@ export class OrdersService {
   }
 
   // ---------- Добавить оплату (касса) ----------
-  async addPayment(orderId: string, dto: AddPaymentDto) {
+  // userId — кассир из токена; если смена не указана явно, привязываем
+  // оплату к его текущей открытой смене, чтобы она попала в отчёт кассы.
+  async addPayment(orderId: string, dto: AddPaymentDto, userId?: string) {
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order) throw new NotFoundException('Заказ не найден');
+
+      const cashierId = userId ?? dto.userId;
+
+      // Привязка к открытой смене: явный shiftId или текущая смена кассира
+      let shiftId = dto.shiftId;
+      if (!shiftId && cashierId) {
+        const openShift = await tx.cashShift.findFirst({
+          where: { companyId: order.companyId, userId: cashierId, closedAt: null },
+        });
+        shiftId = openShift?.id;
+      }
 
       await tx.payment.create({
         data: {
@@ -145,8 +163,8 @@ export class OrdersService {
           orderId,
           amount: dto.amount,
           method: dto.method,
-          userId: dto.userId,
-          shiftId: dto.shiftId,
+          userId: cashierId,
+          shiftId,
         },
       });
 
@@ -172,11 +190,133 @@ export class OrdersService {
     });
   }
 
+  // ---------- Быстрая продажа (POS) ----------
+  // Создаёт заказ-продажу, сразу оплачивает и помечает выданным.
+  async quickSale(dto: QuickSaleDto, userId?: string) {
+    const order = await this.create({
+      companyId: dto.companyId,
+      branchId: dto.branchId,
+      orderType: OrderType.SALE,
+      clientPhone: dto.clientPhone,
+      clientName: dto.clientName,
+      createdById: userId,
+      decrementStock: true,
+      items: dto.items,
+    });
+
+    // Скидка (абсолютная) — уменьшаем итог
+    let total = Number(order.total);
+    if (dto.discount && dto.discount > 0) {
+      total = Math.max(0, Number((total - dto.discount).toFixed(2)));
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { total, balanceDue: total },
+      });
+    }
+
+    // Оплата на всю сумму (если есть что платить)
+    if (total > 0) {
+      await this.addPayment(order.id, { amount: total, method: dto.method }, userId);
+    } else {
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { paid: 0, balanceDue: 0, paymentStatus: PaymentStatus.PAID },
+      });
+    }
+
+    // Продажа = сразу выдана
+    await this.prisma.order.update({
+      where: { id: order.id },
+      data: { status: OrderStatus.DELIVERED },
+    });
+
+    return this.findOne(order.id);
+  }
+
+  // ---------- Возврат заказа ----------
+  // Отменяет заказ, возвращает деньги из кассы и возвращает товар на склад.
+  async refund(orderId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { items: true, payments: true },
+      });
+      if (!order) throw new NotFoundException('Заказ не найден');
+      if (order.status === OrderStatus.CANCELLED) {
+        throw new BadRequestException('Заказ уже отменён');
+      }
+
+      const paid = Number(order.paid);
+
+      // 1. Возврат денег из кассы (расход)
+      if (paid > 0) {
+        await tx.cashMovement.create({
+          data: {
+            companyId: order.companyId,
+            type: 'OUT',
+            amount: paid,
+            reason: `Возврат по заказу №${order.orderNumber}`,
+          },
+        });
+      }
+
+      // 2. Возврат товаров на склад
+      if (order.branchId) {
+        for (const it of order.items) {
+          if (it.itemType === ItemType.PRODUCT && it.productId) {
+            await tx.stock.upsert({
+              where: {
+                productId_branchId: {
+                  productId: it.productId,
+                  branchId: order.branchId,
+                },
+              },
+              create: {
+                productId: it.productId,
+                branchId: order.branchId,
+                quantity: it.quantity,
+              },
+              update: { quantity: { increment: it.quantity } },
+            });
+            await tx.stockMovement.create({
+              data: {
+                companyId: order.companyId,
+                productId: it.productId,
+                branchId: order.branchId,
+                type: StockMovementType.IN,
+                quantity: it.quantity,
+                reason: `Возврат по заказу №${order.orderNumber}`,
+                orderId: order.id,
+              },
+            });
+          }
+        }
+      }
+
+      // 3. Помечаем заказ отменённым
+      await tx.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.CANCELLED },
+      });
+
+      return this.loadFull(tx, orderId);
+    });
+  }
+
   // ---------- Сменить статус ----------
   async updateStatus(orderId: string, status: OrderStatus) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Заказ не найден');
     await this.prisma.order.update({ where: { id: orderId }, data: { status } });
+
+    // Уведомление в Telegram о готовности заказа
+    if (status === OrderStatus.READY) {
+      void this.telegram.send(
+        order.companyId,
+        `✅ Заказ №${order.orderNumber} готов к выдаче`,
+      );
+    }
+
     return this.findOne(orderId);
   }
 

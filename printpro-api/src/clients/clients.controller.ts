@@ -3,11 +3,13 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import { ClientsService } from './clients.service';
+import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
@@ -19,10 +21,14 @@ export class ClientsController {
 
   @Post()
   @RequirePermissions('clients.manage')
-  create(
-    @Body() body: { companyId: string; phone: string; fullName?: string; note?: string },
-  ) {
-    return this.clients.create(body.companyId, body.phone, body.fullName, body.note);
+  create(@Body() dto: CreateClientDto) {
+    return this.clients.create(dto);
+  }
+
+  @Patch(':id')
+  @RequirePermissions('clients.manage')
+  update(@Param('id') id: string, @Body() dto: UpdateClientDto) {
+    return this.clients.update(id, dto);
   }
 
   @Get()

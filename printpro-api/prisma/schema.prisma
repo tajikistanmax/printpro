@@ -64,9 +64,40 @@ enum TaskStatus {
   CANCELLED
 }
 
+enum ProductionStatus {
+  PENDING // ожидает
+  PRINTING // печать
+  CUTTING // резка
+  BINDING // брошюровка/переплёт
+  PACKAGING // упаковка
+  COMPLETED // готово
+  CANCELLED // отменено
+}
+
+enum ProofStatus {
+  TODO // нужно создать
+  IN_PROGRESS // в работе
+  SENT // отправлен клиенту
+  REVISION // требует правки
+  APPROVED // согласован
+  REJECTED // отклонён
+}
+
+enum SalaryType {
+  MONTHLY // оклад
+  HOURLY // почасовая
+}
+
 enum ItemType {
   SERVICE
   PRODUCT
+}
+
+enum ClientType {
+  INDIVIDUAL // физическое лицо
+  COMPANY // компания
+  REGULAR // постоянный
+  VIP // VIP
 }
 
 // ======================= ТЕНАНТ И ПОЛЬЗОВАТЕЛИ =======================
@@ -108,6 +139,7 @@ model Branch {
   orders         Order[]
   cashShifts     CashShift[]
   stockMovements StockMovement[]
+  stockReceipts  StockReceipt[]
 }
 
 model Role {
@@ -152,16 +184,24 @@ model User {
   passwordHash String
   fullName     String
   phone        String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  position     String? // должность
+  salaryType   SalaryType @default(MONTHLY)
+  rate         Decimal    @default(0) @db.Decimal(12, 2) // оклад или ставка/час
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
 
-  ordersCreated  Order[]         @relation("OrderCreatedBy")
-  ordersAssigned Order[]         @relation("OrderAssignedTo")
-  tasksCreated   Task[]          @relation("TaskCreatedBy")
-  tasksAssigned  Task[]          @relation("TaskAssignedTo")
+  ordersCreated  Order[]          @relation("OrderCreatedBy")
+  ordersAssigned Order[]          @relation("OrderAssignedTo")
+  tasksCreated   Task[]           @relation("TaskCreatedBy")
+  tasksAssigned  Task[]           @relation("TaskAssignedTo")
   payments       Payment[]
   stockMovements StockMovement[]
   cashShifts     CashShift[]
+  productionJobs ProductionJob[]  @relation("ProductionAssignee")
+  designProofs   DesignProof[]    @relation("DesignProofAssignee")
+  workTime       WorkTimeRecord[]
+  advances       SalaryAdvance[]
+  salaryRecords  SalaryRecord[]
 
   @@unique([companyId, login])
 }
@@ -169,13 +209,18 @@ model User {
 // ======================= КЛИЕНТЫ =======================
 
 model Client {
-  id        String   @id @default(uuid())
+  id        String     @id @default(uuid())
   companyId String
-  company   Company  @relation(fields: [companyId], references: [id])
+  company   Company    @relation(fields: [companyId], references: [id])
   fullName  String?
   phone     String
+  type      ClientType @default(INDIVIDUAL)
+  email     String?
+  address   String?
+  inn       String?
+  discount  Decimal    @default(0) @db.Decimal(5, 2) // скидка, %
   note      String?
-  createdAt DateTime @default(now())
+  createdAt DateTime   @default(now())
 
   orders Order[]
   debts  ClientDebt[]
@@ -326,6 +371,8 @@ model StockReceipt {
   companyId  String
   supplierId String?
   supplier   Supplier? @relation(fields: [supplierId], references: [id])
+  branchId   String?
+  branch     Branch?   @relation(fields: [branchId], references: [id])
   date       DateTime  @default(now())
   note       String?
 
@@ -375,6 +422,8 @@ model Order {
   debts          ClientDebt[]
   tasks          Task[]
   stockMovements StockMovement[]
+  productionJobs ProductionJob[]
+  proofs         DesignProof[]
 
   @@unique([companyId, orderNumber])
 }
@@ -498,6 +547,100 @@ model Task {
   status         TaskStatus @default(NEW)
   priority       Int        @default(0)
   createdAt      DateTime   @default(now())
+}
+
+// ======================= ПРОИЗВОДСТВО =======================
+
+model ProductionJob {
+  id             String           @id @default(uuid())
+  companyId      String
+  orderId        String
+  order          Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status         ProductionStatus @default(PENDING)
+  assignedUserId String?
+  assignedUser   User?            @relation("ProductionAssignee", fields: [assignedUserId], references: [id])
+  printer        String? // назначенный принтер/станок
+  priority       Int              @default(0)
+  note           String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([companyId, status])
+}
+
+// ======================= ДИЗАЙН-МАКЕТЫ =======================
+
+model DesignProof {
+  id             String      @id @default(uuid())
+  companyId      String
+  orderId        String
+  order          Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  title          String?
+  version        Int         @default(1)
+  status         ProofStatus @default(TODO)
+  fileUrl        String?
+  fileName       String?
+  comment        String? // комментарий клиента/правки
+  assignedUserId String?
+  assignedUser   User?       @relation("DesignProofAssignee", fields: [assignedUserId], references: [id])
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([companyId, status])
+}
+
+// ======================= ЗАРПЛАТА =======================
+
+model WorkTimeRecord {
+  id        String   @id @default(uuid())
+  companyId String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime @default(now())
+  hours     Decimal  @db.Decimal(6, 2)
+  note      String?
+
+  @@index([companyId, userId])
+}
+
+model PayrollPeriod {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isClosed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  records SalaryRecord[]
+}
+
+model SalaryAdvance {
+  id        String   @id @default(uuid())
+  companyId String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Decimal  @db.Decimal(12, 2)
+  date      DateTime @default(now())
+  note      String?
+}
+
+model SalaryRecord {
+  id        String        @id @default(uuid())
+  companyId String
+  periodId  String
+  period    PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId], references: [id])
+  base      Decimal       @default(0) @db.Decimal(12, 2)
+  bonus     Decimal       @default(0) @db.Decimal(12, 2)
+  advance   Decimal       @default(0) @db.Decimal(12, 2)
+  deduction Decimal       @default(0) @db.Decimal(12, 2)
+  total     Decimal       @default(0) @db.Decimal(12, 2)
+  isPaid    Boolean       @default(false)
+
+  @@unique([periodId, userId])
 }
 
 // ======================= СИСТЕМНОЕ =======================

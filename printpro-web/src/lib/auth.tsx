@@ -32,6 +32,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Применяем сохранённую тему как можно раньше
+  useEffect(() => {
+    if (localStorage.getItem('pp_theme') === 'dark') {
+      document.documentElement.classList.add('dark');
+    }
+  }, []);
+
   // При загрузке — если есть токен, узнаём кто мы
   useEffect(() => {
     const token = localStorage.getItem('pp_token');

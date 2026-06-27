@@ -64,10 +64,25 @@ export default function OrdersPage() {
     }
   }
 
+  async function refund() {
+    if (!selected) return;
+    if (!confirm('Оформить возврат? Деньги вернутся из кассы, товар — на склад, заказ будет отменён.'))
+      return;
+    setMsg('');
+    try {
+      const updated = await api.post(`/orders/${selected.id}/refund`);
+      setSelected(updated);
+      setMsg('✓ Возврат оформлен');
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Касса и заказы</h1>
+        <h1 className="text-2xl font-bold text-slate-800">Заказы</h1>
         {can('orders.manage') && (
           <Link
             href="/orders/new"
@@ -214,6 +229,18 @@ export default function OrdersPage() {
                   </button>
                 </form>
               )}
+              {/* Возврат */}
+              {can('cash.operate') &&
+                selected.status !== 'CANCELLED' &&
+                Number(selected.paid) > 0 && (
+                  <button
+                    onClick={refund}
+                    className="mt-3 rounded-lg border border-rose-200 px-3 py-1.5 text-sm font-medium text-rose-600 hover:bg-rose-50"
+                  >
+                    Оформить возврат
+                  </button>
+                )}
+
               {msg && <p className="mt-2 text-sm text-slate-600">{msg}</p>}
             </>
           )}

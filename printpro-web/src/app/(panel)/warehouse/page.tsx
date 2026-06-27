@@ -29,6 +29,19 @@ export default function WarehousePage() {
   const [pMin, setPMin] = useState('');
   const [pMsg, setPMsg] = useState('');
 
+  // Перемещение между филиалами
+  const [tProduct, setTProduct] = useState('');
+  const [tFrom, setTFrom] = useState('');
+  const [tTo, setTTo] = useState('');
+  const [tQty, setTQty] = useState('');
+  const [tMsg, setTMsg] = useState('');
+
+  // Инвентаризация
+  const [rProduct, setRProduct] = useState('');
+  const [rBranch, setRBranch] = useState('');
+  const [rQty, setRQty] = useState('');
+  const [rMsg, setRMsg] = useState('');
+
   function load() {
     setLoading(true);
     Promise.all([
@@ -71,6 +84,43 @@ export default function WarehousePage() {
       load();
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  async function transfer(e: React.FormEvent) {
+    e.preventDefault();
+    setTMsg('');
+    try {
+      await api.post('/stock/transfer', {
+        companyId: cid,
+        productId: tProduct || products[0]?.id,
+        fromBranchId: tFrom,
+        toBranchId: tTo,
+        quantity: Number(tQty),
+      });
+      setTQty('');
+      setTMsg('✓ Перемещено');
+      load();
+    } catch (err: any) {
+      setTMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  async function recount(e: React.FormEvent) {
+    e.preventDefault();
+    setRMsg('');
+    try {
+      const res = await api.post('/stock/recount', {
+        companyId: cid,
+        productId: rProduct || products[0]?.id,
+        branchId: rBranch || branches[0]?.id,
+        countedQuantity: Number(rQty),
+      });
+      setRQty('');
+      setRMsg(`✓ Учтено (расхождение: ${res.diff})`);
+      load();
+    } catch (err: any) {
+      setRMsg('Ошибка: ' + err.message);
     }
   }
 
@@ -195,6 +245,116 @@ export default function WarehousePage() {
           </div>
         )}
       </div>
+
+      {/* Перемещение и инвентаризация */}
+      {can('stock.manage') && (
+        <div className="mb-6 grid gap-6 lg:grid-cols-2">
+          {/* Перемещение */}
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <h2 className="mb-3 font-semibold text-slate-700">
+              Перемещение между филиалами
+            </h2>
+            <form onSubmit={transfer} className="space-y-3">
+              <select
+                value={tProduct}
+                onChange={(e) => setTProduct(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              >
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <div className="grid grid-cols-3 gap-2">
+                <select
+                  value={tFrom}
+                  onChange={(e) => setTFrom(e.target.value)}
+                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                  required
+                >
+                  <option value="">Откуда</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={tTo}
+                  onChange={(e) => setTTo(e.target.value)}
+                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                  required
+                >
+                  <option value="">Куда</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={tQty}
+                  onChange={(e) => setTQty(e.target.value)}
+                  type="number"
+                  step="0.001"
+                  placeholder="Кол-во"
+                  required
+                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                />
+              </div>
+              <button className="w-full rounded-lg bg-sky-600 py-2 font-medium text-white hover:bg-sky-700">
+                Переместить
+              </button>
+              {tMsg && <p className="text-sm text-slate-600">{tMsg}</p>}
+            </form>
+          </div>
+
+          {/* Инвентаризация */}
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <h2 className="mb-3 font-semibold text-slate-700">Инвентаризация</h2>
+            <form onSubmit={recount} className="space-y-3">
+              <select
+                value={rProduct}
+                onChange={(e) => setRProduct(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              >
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={rBranch}
+                  onChange={(e) => setRBranch(e.target.value)}
+                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                >
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={rQty}
+                  onChange={(e) => setRQty(e.target.value)}
+                  type="number"
+                  step="0.001"
+                  placeholder="Факт. остаток"
+                  required
+                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                />
+              </div>
+              <button className="w-full rounded-lg bg-amber-600 py-2 font-medium text-white hover:bg-amber-700">
+                Учесть остаток
+              </button>
+              {rMsg && <p className="text-sm text-slate-600">{rMsg}</p>}
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Остатки */}
       <div className="rounded-2xl bg-white p-5 shadow-sm">

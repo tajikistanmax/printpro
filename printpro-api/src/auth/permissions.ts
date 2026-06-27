@@ -18,6 +18,14 @@ export const PERMISSIONS: { code: string; label: string; group: string }[] = [
   { code: 'cash.view', label: 'Просмотр кассы', group: 'Касса' },
   { code: 'cash.operate', label: 'Проведение оплат', group: 'Касса' },
 
+  // Производство
+  { code: 'production.view', label: 'Просмотр производства', group: 'Производство' },
+  { code: 'production.manage', label: 'Управление производством', group: 'Производство' },
+
+  // Дизайн-макеты
+  { code: 'design.view', label: 'Просмотр макетов', group: 'Дизайн' },
+  { code: 'design.manage', label: 'Управление макетами', group: 'Дизайн' },
+
   // Клиенты
   { code: 'clients.view', label: 'Просмотр клиентов', group: 'Клиенты' },
   { code: 'clients.manage', label: 'Управление клиентами', group: 'Клиенты' },
@@ -29,11 +37,16 @@ export const PERMISSIONS: { code: string; label: string; group: string }[] = [
   // Отчёты
   { code: 'reports.view', label: 'Просмотр отчётов', group: 'Отчёты' },
 
+  // Зарплата
+  { code: 'payroll.view', label: 'Просмотр зарплаты', group: 'Зарплата' },
+  { code: 'payroll.manage', label: 'Расчёт и выплата зарплаты', group: 'Зарплата' },
+
   // Администрирование
   { code: 'users.view', label: 'Просмотр сотрудников', group: 'Администрирование' },
   { code: 'users.manage', label: 'Управление сотрудниками', group: 'Администрирование' },
   { code: 'roles.manage', label: 'Управление ролями и правами', group: 'Администрирование' },
   { code: 'settings.manage', label: 'Настройки платформы', group: 'Администрирование' },
+  { code: 'audit.view', label: 'Просмотр журнала действий', group: 'Администрирование' },
 ];
 
 // Системные роли и их права по умолчанию.
@@ -56,6 +69,8 @@ export const SYSTEM_ROLES: { name: string; permissions: string[] | '*' }[] = [
       'cash.view',
       'cash.operate',
       'reports.view',
+      'payroll.view',
+      'payroll.manage',
       'orders.view',
       'clients.view',
     ],
@@ -74,6 +89,12 @@ export const SYSTEM_ROLES: { name: string; permissions: string[] | '*' }[] = [
     permissions: [
       'orders.view',
       'orders.manage',
+      'cash.view',
+      'cash.operate',
+      'production.view',
+      'production.manage',
+      'design.view',
+      'design.manage',
       'services.view',
       'tasks.view',
       'clients.view',

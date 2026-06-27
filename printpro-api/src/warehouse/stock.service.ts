@@ -3,6 +3,7 @@ import { Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReceiveStockDto } from './dto/receive-stock.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
+import { TransferStockDto, RecountStockDto } from './dto/transfer-stock.dto';
 
 @Injectable()
 export class StockService {
@@ -86,6 +87,128 @@ export class StockService {
         data: { quantity: { decrement: dto.quantity } },
         include: { product: true, branch: true },
       });
+    });
+  }
+
+  // Перемещение между филиалами
+  async transfer(dto: TransferStockDto) {
+    if (dto.fromBranchId === dto.toBranchId) {
+      throw new BadRequestException('Филиалы должны отличаться');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const src = await tx.stock.findUnique({
+        where: {
+          productId_branchId: {
+            productId: dto.productId,
+            branchId: dto.fromBranchId,
+          },
+        },
+      });
+      const available = src ? Number(src.quantity) : 0;
+      if (available < dto.quantity) {
+        throw new BadRequestException(
+          `Недостаточно товара в филиале-источнике. Доступно: ${available}`,
+        );
+      }
+
+      // Списываем из источника
+      await tx.stock.update({
+        where: {
+          productId_branchId: {
+            productId: dto.productId,
+            branchId: dto.fromBranchId,
+          },
+        },
+        data: { quantity: { decrement: dto.quantity } },
+      });
+      // Зачисляем в приёмник
+      await tx.stock.upsert({
+        where: {
+          productId_branchId: {
+            productId: dto.productId,
+            branchId: dto.toBranchId,
+          },
+        },
+        create: {
+          productId: dto.productId,
+          branchId: dto.toBranchId,
+          quantity: dto.quantity,
+        },
+        update: { quantity: { increment: dto.quantity } },
+      });
+
+      // Два движения: расход из источника, приход в приёмник
+      await tx.stockMovement.createMany({
+        data: [
+          {
+            companyId: dto.companyId,
+            productId: dto.productId,
+            branchId: dto.fromBranchId,
+            type: StockMovementType.OUT,
+            quantity: dto.quantity,
+            reason: 'Перемещение между филиалами',
+            userId: dto.userId,
+          },
+          {
+            companyId: dto.companyId,
+            productId: dto.productId,
+            branchId: dto.toBranchId,
+            type: StockMovementType.IN,
+            quantity: dto.quantity,
+            reason: 'Перемещение между филиалами',
+            userId: dto.userId,
+          },
+        ],
+      });
+
+      return { ok: true };
+    });
+  }
+
+  // Инвентаризация: выставить фактический остаток, зафиксировать расхождение
+  async recount(dto: RecountStockDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.stock.findUnique({
+        where: {
+          productId_branchId: {
+            productId: dto.productId,
+            branchId: dto.branchId,
+          },
+        },
+      });
+      const was = current ? Number(current.quantity) : 0;
+      const diff = Number((dto.countedQuantity - was).toFixed(3));
+
+      await tx.stock.upsert({
+        where: {
+          productId_branchId: {
+            productId: dto.productId,
+            branchId: dto.branchId,
+          },
+        },
+        create: {
+          productId: dto.productId,
+          branchId: dto.branchId,
+          quantity: dto.countedQuantity,
+        },
+        update: { quantity: dto.countedQuantity },
+      });
+
+      if (diff !== 0) {
+        await tx.stockMovement.create({
+          data: {
+            companyId: dto.companyId,
+            productId: dto.productId,
+            branchId: dto.branchId,
+            type: StockMovementType.ADJUST,
+            quantity: Math.abs(diff),
+            reason: `Инвентаризация: было ${was}, стало ${dto.countedQuantity}`,
+            userId: dto.userId,
+          },
+        });
+      }
+
+      return { ok: true, was, now: dto.countedQuantity, diff };
     });
   }
 

@@ -11,10 +11,15 @@ import {
 import { OrderStatus } from '@prisma/client';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { AddPaymentDto, UpdateStatusDto } from './dto/order-actions.dto';
+import {
+  AddPaymentDto,
+  QuickSaleDto,
+  UpdateStatusDto,
+} from './dto/order-actions.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -26,6 +31,20 @@ export class OrdersController {
   @RequirePermissions('orders.manage')
   create(@Body() dto: CreateOrderDto) {
     return this.orders.create(dto);
+  }
+
+  // Быстрая продажа (POS): создать + оплатить + выдать
+  @Post('quick-sale')
+  @RequirePermissions('cash.operate')
+  quickSale(@Body() dto: QuickSaleDto, @CurrentUser() user: { sub: string }) {
+    return this.orders.quickSale(dto, user.sub);
+  }
+
+  // Возврат заказа
+  @Post(':id/refund')
+  @RequirePermissions('cash.operate')
+  refund(@Param('id') id: string) {
+    return this.orders.refund(id);
   }
 
   // Список заказов
@@ -55,8 +74,12 @@ export class OrdersController {
   // Оплата (касса)
   @Post(':id/payments')
   @RequirePermissions('cash.operate')
-  addPayment(@Param('id') id: string, @Body() dto: AddPaymentDto) {
-    return this.orders.addPayment(id, dto);
+  addPayment(
+    @Param('id') id: string,
+    @Body() dto: AddPaymentDto,
+    @CurrentUser() user: { sub: string },
+  ) {
+    return this.orders.addPayment(id, dto, user.sub);
   }
 
   // Смена статуса

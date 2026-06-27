@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { StockService } from './stock.service';
 import { ReceiveStockDto } from './dto/receive-stock.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
+import { TransferStockDto, RecountStockDto } from './dto/transfer-stock.dto';
 
 @Controller('stock')
 export class StockController {
@@ -17,6 +18,18 @@ export class StockController {
   @Post('adjust')
   adjust(@Body() dto: AdjustStockDto) {
     return this.stock.adjust(dto);
+  }
+
+  // POST /api/stock/transfer — перемещение между филиалами
+  @Post('transfer')
+  transfer(@Body() dto: TransferStockDto) {
+    return this.stock.transfer(dto);
+  }
+
+  // POST /api/stock/recount — инвентаризация (фактический остаток)
+  @Post('recount')
+  recount(@Body() dto: RecountStockDto) {
+    return this.stock.recount(dto);
   }
 
   // GET /api/stock?companyId=... — текущие остатки
