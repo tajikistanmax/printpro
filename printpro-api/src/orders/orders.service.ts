@@ -7,6 +7,7 @@ import {
   ItemType,
   OrderStatus,
   OrderType,
+  PaymentMethod,
   PaymentStatus,
   Prisma,
   StockMovementType,
@@ -245,9 +246,21 @@ export class OrdersService {
       });
     }
 
-    // Оплата на всю сумму (если есть что платить)
+    // Оплата: смешанная (несколько способов) или одним способом
     if (total > 0) {
-      await this.addPayment(order.id, { amount: total, method: dto.method }, userId);
+      const parts =
+        dto.payments && dto.payments.length > 0
+          ? dto.payments
+          : [{ method: dto.method ?? PaymentMethod.CASH, amount: total }];
+      for (const part of parts) {
+        if (part.amount > 0) {
+          await this.addPayment(
+            order.id,
+            { amount: part.amount, method: part.method },
+            userId,
+          );
+        }
+      }
     } else {
       await this.prisma.order.update({
         where: { id: order.id },

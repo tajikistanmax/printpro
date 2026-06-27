@@ -18,6 +18,7 @@ export default function DashboardPage() {
   const [low, setLow] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [today, setToday] = useState<any>(null);
+  const [daily, setDaily] = useState<any[]>([]);
 
   useEffect(() => {
     api.get(`/orders?companyId=${cid}`).then(setOrders).catch(() => {});
@@ -33,8 +34,14 @@ export default function DashboardPage() {
         )
         .then(setToday)
         .catch(() => {});
+      api
+        .get(`/reports/daily?companyId=${cid}&days=14`)
+        .then(setDaily)
+        .catch(() => {});
     }
   }, [cid]);
+
+  const maxDaily = Math.max(1, ...daily.map((d) => d.amount));
 
   const totalDebt = debts.reduce((s, d) => s + (d.debt ?? 0), 0);
   const openTasks = tasks.filter((t) => t.status !== 'DONE' && t.status !== 'CANCELLED');
@@ -100,6 +107,32 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* График выручки за 14 дней */}
+      {can('reports.view') && daily.length > 0 && (
+        <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="mb-4 font-semibold text-slate-700">
+            Выручка за 14 дней
+          </h2>
+          <div className="flex h-36 items-end gap-1">
+            {daily.map((d) => (
+              <div
+                key={d.date}
+                className="group flex flex-1 flex-col items-center"
+              >
+                <div
+                  className="w-full rounded-t bg-indigo-500 transition group-hover:bg-indigo-600"
+                  style={{ height: `${Math.max(2, (d.amount / maxDaily) * 100)}%` }}
+                  title={`${d.date}: ${money(d.amount)}`}
+                />
+                <span className="mt-1 text-[9px] text-slate-400">
+                  {d.date.slice(8, 10)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Срочные заказы */}

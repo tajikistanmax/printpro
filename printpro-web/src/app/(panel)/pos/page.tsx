@@ -36,6 +36,8 @@ export default function PosPage() {
   const [discount, setDiscount] = useState('');
   const [phone, setPhone] = useState('');
   const [method, setMethod] = useState('CASH');
+  const [split, setSplit] = useState(false);
+  const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState('');
   const [receipt, setReceipt] = useState<any | null>(null);
 
@@ -84,16 +86,37 @@ export default function PosPage() {
   const disc = Math.min(Number(discount) || 0, subtotal);
   const total = Math.max(0, subtotal - disc);
 
+  const splitSum = METHODS.reduce(
+    (s, m) => s + (Number(splitAmounts[m.k]) || 0),
+    0,
+  );
+  const splitLeft = Number((total - splitSum).toFixed(2));
+
   async function pay() {
     if (cart.length === 0) return;
     setMsg('');
+
+    let payments: { method: string; amount: number }[] | undefined;
+    if (split) {
+      payments = METHODS.map((m) => ({
+        method: m.k,
+        amount: Number(splitAmounts[m.k]) || 0,
+      })).filter((p) => p.amount > 0);
+      const sum = Number(payments.reduce((s, p) => s + p.amount, 0).toFixed(2));
+      if (sum !== total) {
+        setMsg(`Сумма частей (${sum}) должна равняться итогу (${total})`);
+        return;
+      }
+    }
+
     try {
       const order = await api.post('/orders/quick-sale', {
         companyId: cid,
         branchId: branchId || undefined,
         clientPhone: phone || undefined,
         discount: disc || undefined,
-        method,
+        method: split ? undefined : method,
+        payments,
         items: cart.map((c) => ({
           itemType: c.itemType,
           serviceId: c.itemType === 'SERVICE' ? c.id : undefined,
@@ -105,12 +128,18 @@ export default function PosPage() {
       });
       setReceipt({
         ...order,
-        _method: METHODS.find((m) => m.k === method)?.l,
+        _method: split
+          ? payments!
+              .map((p) => `${METHODS.find((m) => m.k === p.method)?.l} ${p.amount}`)
+              .join(', ')
+          : METHODS.find((m) => m.k === method)?.l,
         _date: new Date().toLocaleString('ru-RU'),
       });
       setCart([]);
       setDiscount('');
       setPhone('');
+      setSplit(false);
+      setSplitAmounts({});
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
     }
@@ -225,21 +254,58 @@ export default function PosPage() {
               <span className="text-indigo-600">{money(total)}</span>
             </div>
 
-            <div className="grid grid-cols-3 gap-1.5 pt-1">
-              {METHODS.map((m) => (
-                <button
-                  key={m.k}
-                  onClick={() => setMethod(m.k)}
-                  className={`rounded-lg py-2 text-xs font-medium transition ${
-                    method === m.k
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-slate-100 text-slate-600'
+            {!split ? (
+              <div className="grid grid-cols-4 gap-1.5 pt-1">
+                {METHODS.map((m) => (
+                  <button
+                    key={m.k}
+                    onClick={() => setMethod(m.k)}
+                    className={`rounded-lg py-2 text-xs font-medium transition ${
+                      method === m.k
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {m.l}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-1.5 pt-1">
+                {METHODS.map((m) => (
+                  <div key={m.k} className="flex items-center gap-2">
+                    <span className="w-20 text-sm text-slate-600">{m.l}</span>
+                    <input
+                      value={splitAmounts[m.k] ?? ''}
+                      onChange={(e) =>
+                        setSplitAmounts((s) => ({ ...s, [m.k]: e.target.value }))
+                      }
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      className="flex-1 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm"
+                    />
+                  </div>
+                ))}
+                <div
+                  className={`flex justify-between text-xs ${
+                    splitLeft === 0 ? 'text-emerald-600' : 'text-amber-600'
                   }`}
                 >
-                  {m.l}
-                </button>
-              ))}
-            </div>
+                  <span>Распределено: {money(splitSum)}</span>
+                  <span>Осталось: {money(splitLeft)}</span>
+                </div>
+              </div>
+            )}
+
+            <label className="flex cursor-pointer items-center gap-2 pt-1 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                checked={split}
+                onChange={(e) => setSplit(e.target.checked)}
+              />
+              Смешанная оплата (несколько способов)
+            </label>
 
             <button
               onClick={pay}

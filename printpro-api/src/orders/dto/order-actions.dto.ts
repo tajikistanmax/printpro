@@ -24,6 +24,12 @@ export class UpdateStatusDto {
   @IsEnum(OrderStatus) status: OrderStatus;
 }
 
+// Часть смешанной оплаты
+export class PaymentPartDto {
+  @IsEnum(PaymentMethod) method: PaymentMethod;
+  @IsNumber() @Min(0.01) amount: number;
+}
+
 // Быстрая продажа (POS): создать заказ + сразу оплатить + выдать
 export class QuickSaleDto {
   @IsString() companyId: string;
@@ -31,7 +37,12 @@ export class QuickSaleDto {
   @IsOptional() @IsString() clientPhone?: string;
   @IsOptional() @IsString() clientName?: string;
   @IsOptional() @IsNumber() @Min(0) discount?: number; // скидка, абсолютная
-  @IsEnum(PaymentMethod) method: PaymentMethod;
+
+  // Один способ оплаты…
+  @IsOptional() @IsEnum(PaymentMethod) method?: PaymentMethod;
+  // …или смешанная оплата несколькими способами
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => PaymentPartDto)
+  payments?: PaymentPartDto[];
 
   @IsArray() @ValidateNested({ each: true }) @Type(() => OrderItemDto)
   items: OrderItemDto[];
