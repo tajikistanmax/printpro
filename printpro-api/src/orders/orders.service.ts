@@ -406,13 +406,39 @@ export class OrdersService {
   }
 
   // ---------- Списки и чтение ----------
-  findAll(companyId: string, status?: OrderStatus) {
-    return this.prisma.order.findMany({
-      where: { companyId, ...(status ? { status } : {}) },
-      include: { client: true, items: true },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
+  async findAll(
+    companyId: string,
+    status?: OrderStatus,
+    page = 1,
+    pageSize = 25,
+    search?: string,
+  ) {
+    const where: Prisma.OrderWhereInput = {
+      companyId,
+      ...(status ? { status } : {}),
+      ...(search
+        ? {
+            OR: [
+              { orderNumber: { contains: search, mode: 'insensitive' } },
+              { client: { fullName: { contains: search, mode: 'insensitive' } } },
+              { client: { phone: { contains: search } } },
+            ],
+          }
+        : {}),
+    };
+    const take = Math.min(Math.max(pageSize, 1), 100);
+    const skip = (Math.max(page, 1) - 1) * take;
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.order.findMany({
+        where,
+        include: { client: true, items: true },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+    return { items, total, page: Math.max(page, 1), pageSize: take };
   }
 
   async findOne(id: string) {

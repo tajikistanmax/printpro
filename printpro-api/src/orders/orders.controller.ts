@@ -54,14 +54,23 @@ export class OrdersController {
     return this.orders.reorder(id);
   }
 
-  // Список заказов
+  // Список заказов (постранично)
   @Get()
   @RequirePermissions('orders.view')
   findAll(
     @Query('companyId') companyId: string,
     @Query('status') status?: OrderStatus,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
   ) {
-    return this.orders.findAll(companyId, status);
+    return this.orders.findAll(
+      companyId,
+      status,
+      page ? Number(page) : 1,
+      pageSize ? Number(pageSize) : 25,
+      search,
+    );
   }
 
   // Долги (кто сколько должен)

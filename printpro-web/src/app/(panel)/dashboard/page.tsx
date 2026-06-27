@@ -21,7 +21,10 @@ export default function DashboardPage() {
   const [daily, setDaily] = useState<any[]>([]);
 
   useEffect(() => {
-    api.get(`/orders?companyId=${cid}`).then(setOrders).catch(() => {});
+    api
+      .get(`/orders?companyId=${cid}&pageSize=100`)
+      .then((r) => setOrders(r.items ?? []))
+      .catch(() => {});
     api.get(`/orders/debts?companyId=${cid}`).then(setDebts).catch(() => {});
     api.get(`/stock/low?companyId=${cid}`).then(setLow).catch(() => {});
     api.get(`/tasks?companyId=${cid}`).then(setTasks).catch(() => {});

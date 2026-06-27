@@ -47,7 +47,10 @@ export default function ProductionPage() {
   useEffect(() => {
     load();
     if (canManage) {
-      api.get(`/orders?companyId=${cid}`).then(setOrders).catch(() => {});
+      api
+        .get(`/orders?companyId=${cid}&pageSize=100`)
+        .then((r) => setOrders(r.items ?? []))
+        .catch(() => {});
       api
         .get(`/equipment?companyId=${cid}&status=ACTIVE`)
         .then(setEquipment)

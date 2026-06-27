@@ -52,7 +52,10 @@ export default function DesignPage() {
   useEffect(() => {
     load();
     if (canManage) {
-      api.get(`/orders?companyId=${cid}`).then(setOrders).catch(() => {});
+      api
+        .get(`/orders?companyId=${cid}&pageSize=100`)
+        .then((r) => setOrders(r.items ?? []))
+        .catch(() => {});
       if (can('users.view')) {
         api.get(`/users?companyId=${cid}`).then(setUsers).catch(() => {});
       }

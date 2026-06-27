@@ -45,22 +45,31 @@ export class ClientsService {
     return this.prisma.client.update({ where: { id }, data: dto });
   }
 
-  findAll(companyId: string, search?: string) {
-    return this.prisma.client.findMany({
-      where: {
-        companyId,
-        ...(search
-          ? {
-              OR: [
-                { phone: { contains: search } },
-                { fullName: { contains: search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+  async findAll(companyId: string, search?: string, page = 1, pageSize = 25) {
+    const where: Prisma.ClientWhereInput = {
+      companyId,
+      deletedAt: null,
+      ...(search
+        ? {
+            OR: [
+              { phone: { contains: search } },
+              { fullName: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const take = Math.min(Math.max(pageSize, 1), 100);
+    const skip = (Math.max(page, 1) - 1) * take;
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.client.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.client.count({ where }),
+    ]);
+    return { items, total, page: Math.max(page, 1), pageSize: take };
   }
 
   async findOne(id: string) {

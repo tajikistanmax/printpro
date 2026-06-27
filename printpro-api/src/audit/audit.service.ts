@@ -30,12 +30,19 @@ export class AuditService {
     }
   }
 
-  async list(companyId: string, limit = 200) {
-    const rows = await this.prisma.auditLog.findMany({
-      where: { companyId },
-      orderBy: { createdAt: 'desc' },
-      take: Math.min(limit, 500),
-    });
+  async list(companyId: string, page = 1, pageSize = 50) {
+    const where = { companyId };
+    const take = Math.min(Math.max(pageSize, 1), 100);
+    const skip = (Math.max(page, 1) - 1) * take;
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
 
     // Подтянем имена пользователей
     const userIds = [...new Set(rows.map((r) => r.userId).filter(Boolean))] as string[];
@@ -47,13 +54,18 @@ export class AuditService {
       : [];
     const nameById = new Map(users.map((u) => [u.id, u.fullName]));
 
-    return rows.map((r) => ({
-      id: r.id,
-      action: r.action,
-      entity: r.entity,
-      entityId: r.entityId,
-      user: r.userId ? nameById.get(r.userId) ?? '—' : 'система',
-      createdAt: r.createdAt,
-    }));
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        action: r.action,
+        entity: r.entity,
+        entityId: r.entityId,
+        user: r.userId ? nameById.get(r.userId) ?? '—' : 'система',
+        createdAt: r.createdAt,
+      })),
+      total,
+      page: Math.max(page, 1),
+      pageSize: take,
+    };
   }
 }

@@ -11,7 +11,15 @@ export class AuditController {
 
   @Get()
   @RequirePermissions('audit.view')
-  list(@Query('companyId') companyId: string) {
-    return this.audit.list(companyId);
+  list(
+    @Query('companyId') companyId: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.audit.list(
+      companyId,
+      page ? Number(page) : 1,
+      pageSize ? Number(pageSize) : 50,
+    );
   }
 }

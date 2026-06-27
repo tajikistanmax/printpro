@@ -53,15 +53,33 @@ export default function OrdersPage() {
   const cid = DEFAULT_COMPANY_ID;
   const { can } = useAuth();
   const [orders, setOrders] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const pageSize = 25;
   const [selected, setSelected] = useState<any | null>(null);
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('CASH');
   const [msg, setMsg] = useState('');
 
   function load() {
-    api.get(`/orders?companyId=${cid}`).then(setOrders).catch(() => {});
+    const q = `companyId=${cid}&page=${page}&pageSize=${pageSize}${
+      search ? `&search=${encodeURIComponent(search)}` : ''
+    }`;
+    api
+      .get(`/orders?${q}`)
+      .then((r) => {
+        setOrders(r.items ?? []);
+        setTotal(r.total ?? 0);
+      })
+      .catch(() => {});
   }
-  useEffect(load, [cid]);
+  useEffect(() => {
+    const t = setTimeout(load, search ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [cid, page, search]);
+
+  const pages = Math.max(1, Math.ceil(total / pageSize));
 
   async function openOrder(id: string) {
     setMsg('');
@@ -144,9 +162,21 @@ export default function OrdersPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Список заказов */}
         <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700">Заказы</h2>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="font-semibold text-slate-700">Заказы</h2>
+            <span className="text-xs text-slate-400">всего: {total}</span>
+          </div>
+          <input
+            value={search}
+            onChange={(e) => {
+              setPage(1);
+              setSearch(e.target.value);
+            }}
+            placeholder="Поиск по №, имени, телефону…"
+            className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
           {orders.length === 0 ? (
-            <p className="text-slate-400">Заказов пока нет.</p>
+            <p className="text-slate-400">Заказов нет.</p>
           ) : (
             <div className="space-y-1">
               {orders.map((o) => (
@@ -173,6 +203,27 @@ export default function OrdersPage() {
                   </span>
                 </button>
               ))}
+            </div>
+          )}
+          {pages > 1 && (
+            <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-sm">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                ← Назад
+              </button>
+              <span className="text-slate-500">
+                Стр. {page} из {pages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(pages, p + 1))}
+                disabled={page >= pages}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                Вперёд →
+              </button>
             </div>
           )}
         </div>

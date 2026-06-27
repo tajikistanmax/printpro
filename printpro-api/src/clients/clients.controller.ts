@@ -40,8 +40,18 @@ export class ClientsController {
 
   @Get()
   @RequirePermissions('clients.view')
-  findAll(@Query('companyId') companyId: string, @Query('search') search?: string) {
-    return this.clients.findAll(companyId, search);
+  findAll(
+    @Query('companyId') companyId: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.clients.findAll(
+      companyId,
+      search,
+      page ? Number(page) : 1,
+      pageSize ? Number(pageSize) : 25,
+    );
   }
 
   @Get(':id')

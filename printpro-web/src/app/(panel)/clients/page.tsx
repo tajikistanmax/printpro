@@ -40,6 +40,9 @@ export default function ClientsPage() {
   const canManage = can('clients.manage');
 
   const [list, setList] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<any | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -53,13 +56,23 @@ export default function ClientsPage() {
   const [msg, setMsg] = useState('');
 
   function load() {
-    const q = search ? `&search=${encodeURIComponent(search)}` : '';
-    api.get(`/clients?companyId=${cid}${q}`).then(setList).catch(() => {});
+    const q = `companyId=${cid}&page=${page}&pageSize=${pageSize}${
+      search ? `&search=${encodeURIComponent(search)}` : ''
+    }`;
+    api
+      .get(`/clients?${q}`)
+      .then((r) => {
+        setList(r.items ?? []);
+        setTotal(r.total ?? 0);
+      })
+      .catch(() => {});
   }
   useEffect(() => {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
-  }, [cid, search]);
+  }, [cid, search, page]);
+
+  const pages = Math.max(1, Math.ceil(total / pageSize));
 
   const [uploading, setUploading] = useState(false);
 
@@ -196,12 +209,20 @@ export default function ClientsPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Список */}
         <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Поиск по имени или телефону…"
-            className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <input
+              value={search}
+              onChange={(e) => {
+                setPage(1);
+                setSearch(e.target.value);
+              }}
+              placeholder="Поиск по имени или телефону…"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+            <span className="whitespace-nowrap text-xs text-slate-400">
+              всего: {total}
+            </span>
+          </div>
           {list.length === 0 ? (
             <p className="text-slate-400">Клиентов не найдено.</p>
           ) : (
@@ -227,6 +248,27 @@ export default function ClientsPage() {
                   </span>
                 </button>
               ))}
+            </div>
+          )}
+          {pages > 1 && (
+            <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-sm">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                ← Назад
+              </button>
+              <span className="text-slate-500">
+                Стр. {page} из {pages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(pages, p + 1))}
+                disabled={page >= pages}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                Вперёд →
+              </button>
             </div>
           )}
         </div>
