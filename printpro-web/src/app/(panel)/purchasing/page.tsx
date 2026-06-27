@@ -281,6 +281,7 @@ export default function PurchasingPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-slate-400">
+                <th className="py-2 font-medium">Документ</th>
                 <th className="py-2 font-medium">Дата</th>
                 <th className="py-2 font-medium">Поставщик</th>
                 <th className="py-2 font-medium">Филиал</th>
@@ -291,6 +292,9 @@ export default function PurchasingPage() {
             <tbody>
               {receipts.map((r) => (
                 <tr key={r.id} className="border-b border-slate-50 last:border-0">
+                  <td className="py-2 font-medium text-slate-700">
+                    {r.number ?? '—'}
+                  </td>
                   <td className="py-2 text-slate-500">
                     {new Date(r.date).toLocaleDateString('ru-RU')}
                   </td>

@@ -514,6 +514,7 @@ model StockReceipt {
   syncNode   String?
   id         String    @id @default(uuid())
   companyId  String
+  number     String? // PRIH-<узел>-год-NNNN
   supplierId String?
   supplier   Supplier? @relation(fields: [supplierId], references: [id])
   branchId   String?
@@ -547,6 +548,7 @@ model Order {
   branchId       String?
   branch         Branch?       @relation(fields: [branchId], references: [id])
   orderNumber    String
+  receiptNumber  String? // POS-<узел>-год-NNNNN (для быстрых продаж)
   clientId       String?
   client         Client?       @relation(fields: [clientId], references: [id])
   orderType      OrderType
@@ -660,6 +662,7 @@ model CashShift {
   syncNode       String?
   id             String    @id @default(uuid())
   companyId      String
+  number         String? // SMENA-<узел>-год-NNNN
   branchId       String?
   branch         Branch?   @relation(fields: [branchId], references: [id])
   userId         String

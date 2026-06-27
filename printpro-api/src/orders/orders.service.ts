@@ -15,6 +15,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ClientsService } from '../clients/clients.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { docNumber } from '../common/doc-number';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { AddPaymentDto, QuickSaleDto } from './dto/order-actions.dto';
 
@@ -268,10 +269,16 @@ export class OrdersService {
       });
     }
 
-    // Продажа = сразу выдана
+    // Продажа = сразу выдана + номер чека POS-...
+    const posCount = await this.prisma.order.count({
+      where: { companyId: dto.companyId, receiptNumber: { not: null } },
+    });
     await this.prisma.order.update({
       where: { id: order.id },
-      data: { status: OrderStatus.DELIVERED },
+      data: {
+        status: OrderStatus.DELIVERED,
+        receiptNumber: docNumber('POS', posCount + 1, 5),
+      },
     });
 
     return this.findOne(order.id);

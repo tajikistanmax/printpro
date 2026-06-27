@@ -329,6 +329,12 @@ export default function PosPage() {
                 <div className="text-xs text-slate-500">Чек продажи</div>
               </div>
               <div className="my-3 border-y border-dashed border-slate-300 py-2 text-xs">
+                {receipt.receiptNumber && (
+                  <div className="flex justify-between">
+                    <span>Чек</span>
+                    <span>{receipt.receiptNumber}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Заказ</span>
                   <span>№{receipt.orderNumber}</span>

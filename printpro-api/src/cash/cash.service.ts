@@ -6,6 +6,7 @@ import {
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloseShiftDto, OpenShiftDto, CashMovementDto } from './dto/cash.dto';
+import { docNumber } from '../common/doc-number';
 
 @Injectable()
 export class CashService {
@@ -20,9 +21,11 @@ export class CashService {
     if (open) {
       throw new BadRequestException('У вас уже есть открытая смена');
     }
+    const count = await this.prisma.cashShift.count({ where: { companyId } });
     return this.prisma.cashShift.create({
       data: {
         companyId,
+        number: docNumber('SMENA', count + 1),
         userId,
         branchId: dto.branchId,
         openingBalance: dto.openingBalance ?? 0,
@@ -171,6 +174,7 @@ export class CashService {
 
     return {
       id: shift.id,
+      number: shift.number,
       isOpen: shift.closedAt === null,
       openedAt: shift.openedAt,
       closedAt: shift.closedAt,

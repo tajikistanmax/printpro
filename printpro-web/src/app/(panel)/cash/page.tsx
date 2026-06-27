@@ -164,7 +164,7 @@ export default function CashPage() {
             🖨 X-отчёт
           </button>
           <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-700">
-            ● Смена открыта · {shift.user}
+            ● Смена {shift.number ? `${shift.number} · ` : ''}открыта · {shift.user}
           </span>
         </div>
       </div>
@@ -179,6 +179,7 @@ export default function CashPage() {
                 <div className="text-xs text-slate-500">X-отчёт (промежуточный)</div>
               </div>
               <div className="my-3 border-y border-dashed border-slate-300 py-2 text-xs">
+                {shift.number && <Line2 l="Смена" r={shift.number} />}
                 <Line2 l="Кассир" r={shift.user} />
                 {shift.branch && <Line2 l="Филиал" r={shift.branch} />}
                 <Line2
