@@ -1,0 +1,17 @@
+import { IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+
+export class CreateProductDto {
+  @IsString() companyId: string;
+  @IsString() name: string;
+
+  @IsOptional() @IsString() categoryId?: string;
+  @IsOptional() @IsString() unitId?: string;
+
+  @IsOptional() @IsNumber() salePrice?: number;
+
+  // Порог оповещения: если остаток <= minStock — система предупредит
+  @IsOptional() @IsNumber() @Min(0) minStock?: number;
+
+  @IsOptional() @IsString() barcode?: string;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+}

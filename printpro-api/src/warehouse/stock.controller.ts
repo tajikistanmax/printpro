@@ -1,0 +1,33 @@
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { StockService } from './stock.service';
+import { ReceiveStockDto } from './dto/receive-stock.dto';
+import { AdjustStockDto } from './dto/adjust-stock.dto';
+
+@Controller('stock')
+export class StockController {
+  constructor(private readonly stock: StockService) {}
+
+  // POST /api/stock/receive — приём товара (приход)
+  @Post('receive')
+  receive(@Body() dto: ReceiveStockDto) {
+    return this.stock.receive(dto);
+  }
+
+  // POST /api/stock/adjust — списание / корректировка
+  @Post('adjust')
+  adjust(@Body() dto: AdjustStockDto) {
+    return this.stock.adjust(dto);
+  }
+
+  // GET /api/stock?companyId=... — текущие остатки
+  @Get()
+  listStock(@Query('companyId') companyId: string) {
+    return this.stock.listStock(companyId);
+  }
+
+  // GET /api/stock/low?companyId=... — оповещение о нехватке
+  @Get('low')
+  lowStock(@Query('companyId') companyId: string) {
+    return this.stock.lowStock(companyId);
+  }
+}

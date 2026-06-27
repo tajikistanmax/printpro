@@ -1,0 +1,248 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { api } from '@/lib/api';
+import { DEFAULT_COMPANY_ID } from '@/lib/config';
+import { useAuth } from '@/lib/auth';
+
+export default function WarehousePage() {
+  const cid = DEFAULT_COMPANY_ID;
+  const { can } = useAuth();
+
+  const [stock, setStock] = useState<any[]>([]);
+  const [low, setLow] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [units, setUnits] = useState<any[]>([]);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Форма прихода
+  const [productId, setProductId] = useState('');
+  const [branchId, setBranchId] = useState('');
+  const [qty, setQty] = useState('');
+  const [msg, setMsg] = useState('');
+
+  // Форма нового товара
+  const [pName, setPName] = useState('');
+  const [pUnit, setPUnit] = useState('');
+  const [pPrice, setPPrice] = useState('');
+  const [pMin, setPMin] = useState('');
+  const [pMsg, setPMsg] = useState('');
+
+  function load() {
+    setLoading(true);
+    Promise.all([
+      api.get(`/stock?companyId=${cid}`),
+      api.get(`/stock/low?companyId=${cid}`),
+      api.get(`/products?companyId=${cid}`),
+      api.get(`/units?companyId=${cid}`),
+      api.get(`/branches?companyId=${cid}`),
+    ])
+      .then(([s, l, p, u, b]) => {
+        setStock(s);
+        setLow(l);
+        setProducts(p);
+        setUnits(u);
+        setBranches(b);
+        if (p[0]) setProductId(p[0].id);
+        if (b[0]) setBranchId(b[0].id);
+        if (u[0]) setPUnit(u[0].id);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+  useEffect(load, [cid]);
+
+  const lowIds = new Set(low.map((l) => l.productId));
+
+  async function receive(e: React.FormEvent) {
+    e.preventDefault();
+    setMsg('');
+    try {
+      await api.post('/stock/receive', {
+        companyId: cid,
+        branchId,
+        productId,
+        quantity: Number(qty),
+        reason: 'Приход через панель',
+      });
+      setQty('');
+      setMsg('✓ Товар принят на склад');
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  async function createProduct(e: React.FormEvent) {
+    e.preventDefault();
+    setPMsg('');
+    try {
+      await api.post('/products', {
+        companyId: cid,
+        name: pName,
+        unitId: pUnit || undefined,
+        salePrice: pPrice ? Number(pPrice) : 0,
+        minStock: pMin ? Number(pMin) : 0,
+      });
+      setPName('');
+      setPPrice('');
+      setPMin('');
+      setPMsg('✓ Товар добавлен');
+      load();
+    } catch (err: any) {
+      setPMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  return (
+    <div>
+      <h1 className="mb-6 text-2xl font-bold text-slate-800">Склад</h1>
+
+      <div className="mb-6 grid gap-6 lg:grid-cols-2">
+        {/* Новый товар */}
+        {can('products.manage') && (
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <h2 className="mb-3 font-semibold text-slate-700">Новый товар</h2>
+            <form onSubmit={createProduct} className="space-y-3">
+              <input
+                value={pName}
+                onChange={(e) => setPName(e.target.value)}
+                placeholder="Название товара"
+                required
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+              <div className="grid grid-cols-3 gap-2">
+                <select
+                  value={pUnit}
+                  onChange={(e) => setPUnit(e.target.value)}
+                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                >
+                  <option value="">ед. изм.</option>
+                  {units.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.shortName}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={pPrice}
+                  onChange={(e) => setPPrice(e.target.value)}
+                  type="number"
+                  placeholder="Цена"
+                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                />
+                <input
+                  value={pMin}
+                  onChange={(e) => setPMin(e.target.value)}
+                  type="number"
+                  placeholder="Порог"
+                  title="Оповестить когда меньше"
+                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                />
+              </div>
+              <button className="w-full rounded-lg bg-emerald-600 py-2 font-medium text-white hover:bg-emerald-700">
+                Добавить товар
+              </button>
+              {pMsg && <p className="text-sm text-slate-600">{pMsg}</p>}
+            </form>
+          </div>
+        )}
+
+        {/* Приём товара */}
+        {can('stock.manage') && (
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <h2 className="mb-3 font-semibold text-slate-700">Приём товара (приход)</h2>
+            <form onSubmit={receive} className="space-y-3">
+              <select
+                value={productId}
+                onChange={(e) => setProductId(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              >
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={branchId}
+                  onChange={(e) => setBranchId(e.target.value)}
+                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                >
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={qty}
+                  onChange={(e) => setQty(e.target.value)}
+                  type="number"
+                  step="0.001"
+                  placeholder="Количество"
+                  required
+                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                />
+              </div>
+              <button className="w-full rounded-lg bg-indigo-600 py-2 font-medium text-white hover:bg-indigo-700">
+                Принять на склад
+              </button>
+              {msg && <p className="text-sm text-slate-600">{msg}</p>}
+            </form>
+          </div>
+        )}
+      </div>
+
+      {/* Остатки */}
+      <div className="rounded-2xl bg-white p-5 shadow-sm">
+        <h2 className="mb-3 font-semibold text-slate-700">Остатки</h2>
+        {loading ? (
+          <p className="text-slate-400">Загрузка…</p>
+        ) : stock.length === 0 ? (
+          <p className="text-slate-400">Товаров на складе нет.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-slate-500">
+                <th className="py-2">Товар</th>
+                <th>Филиал</th>
+                <th className="text-right">Остаток</th>
+                <th className="text-right">Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stock.map((s) => {
+                const isLow = lowIds.has(s.productId);
+                return (
+                  <tr key={s.id} className="border-b border-slate-100 last:border-0">
+                    <td className="py-2 font-medium text-slate-700">
+                      {s.product.name}
+                    </td>
+                    <td className="text-slate-500">{s.branch.name}</td>
+                    <td className="text-right font-semibold">
+                      {s.quantity} {s.product.unit?.shortName ?? ''}
+                    </td>
+                    <td className="text-right">
+                      {isLow ? (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
+                          мало
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
+                          ок
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}

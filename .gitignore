@@ -1,0 +1,8 @@
+# Общие правила монорепозитория PrintPro
+**/node_modules
+**/dist
+**/.next
+**/.env
+**/.env.*
+**/uploads
+*.log
