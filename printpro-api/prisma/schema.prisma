@@ -100,6 +100,12 @@ enum ClientType {
   VIP // VIP
 }
 
+enum OrderUrgency {
+  NORMAL // обычный
+  URGENT // срочный
+  EXPRESS // очень срочный (экспресс)
+}
+
 // ======================= ТЕНАНТ И ПОЛЬЗОВАТЕЛИ =======================
 
 model Company {
@@ -216,6 +222,8 @@ model User {
 
   ordersCreated  Order[]          @relation("OrderCreatedBy")
   ordersAssigned Order[]          @relation("OrderAssignedTo")
+  ordersDesigned Order[]          @relation("OrderDesigner")
+  ordersOperated Order[]          @relation("OrderOperator")
   tasksCreated   Task[]           @relation("TaskCreatedBy")
   tasksAssigned  Task[]           @relation("TaskAssignedTo")
   payments       Payment[]
@@ -286,6 +294,8 @@ model Service {
   name            String
   pricingType     PricingType      @default(FIXED)
   basePrice       Decimal          @default(0) @db.Decimal(12, 2)
+  costPrice       Decimal          @default(0) @db.Decimal(12, 2) // себестоимость (для прибыли)
+  leadTimeMin     Int? // время выполнения, минут
   designSurcharge Decimal          @default(0) @db.Decimal(12, 2)
   minQuantity     Int              @default(1)
   isActive        Boolean          @default(true)
@@ -488,6 +498,13 @@ model Order {
   assignedUser   User?         @relation("OrderAssignedTo", fields: [assignedUserId], references: [id])
   createdById    String?
   createdBy      User?         @relation("OrderCreatedBy", fields: [createdById], references: [id])
+  designerId     String?
+  designer       User?         @relation("OrderDesigner", fields: [designerId], references: [id])
+  operatorId     String?
+  operator       User?         @relation("OrderOperator", fields: [operatorId], references: [id])
+  format         String? // формат: A4, A3, баннер 1x2м...
+  colorMode      String? // цветность: цветной / ч-б
+  urgency        OrderUrgency  @default(NORMAL)
   deadline       DateTime?
   total          Decimal       @default(0) @db.Decimal(12, 2)
   paid           Decimal       @default(0) @db.Decimal(12, 2)
@@ -526,8 +543,10 @@ model OrderItem {
   description String?
   quantity    Decimal   @default(1) @db.Decimal(12, 3)
   unitPrice   Decimal   @default(0) @db.Decimal(12, 2)
+  unitCost    Decimal   @default(0) @db.Decimal(12, 2) // себестоимость за единицу (снимок)
   options     Json? // выбранные опции/размер/тип бумаги
   lineTotal   Decimal   @default(0) @db.Decimal(12, 2)
+  lineCost    Decimal   @default(0) @db.Decimal(12, 2) // себестоимость строки
   // --- синхронизация ---
   updatedAt   DateTime  @default(now()) @updatedAt
   deletedAt   DateTime?

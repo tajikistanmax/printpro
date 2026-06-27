@@ -41,6 +41,17 @@ export class ReportsController {
     return this.reports.salesByItem(companyId, from, to);
   }
 
+  // Прибыль по заказам (выручка − себестоимость)
+  @Get('profit')
+  @RequirePermissions('reports.view')
+  profit(
+    @Query('companyId') companyId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reports.profit(companyId, from, to);
+  }
+
   // Долги клиентов
   @Get('debts')
   @RequirePermissions('reports.view')

@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -31,6 +32,12 @@ export class ServicesController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.servicesService.findOne(id);
+  }
+
+  // PATCH /services/:id — изменить услугу (в т.ч. себестоимость)
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: Partial<CreateServiceDto>) {
+    return this.servicesService.update(id, dto);
   }
 
   // DELETE /services/:id — удалить услугу

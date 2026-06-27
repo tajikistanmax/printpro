@@ -38,11 +38,33 @@ export class OrdersService {
       clientId = client.id;
     }
 
-    // 2. Считаем суммы по позициям
-    const items = dto.items.map((it) => ({
-      ...it,
-      lineTotal: Number((it.quantity * it.unitPrice).toFixed(2)),
-    }));
+    // 2. Себестоимость услуг — подставим из справочника, если не передана
+    const serviceIds = dto.items
+      .filter((it) => it.serviceId)
+      .map((it) => it.serviceId!);
+    const serviceCosts = serviceIds.length
+      ? new Map(
+          (
+            await this.prisma.service.findMany({
+              where: { id: { in: serviceIds } },
+              select: { id: true, costPrice: true },
+            })
+          ).map((s) => [s.id, Number(s.costPrice)]),
+        )
+      : new Map<string, number>();
+
+    // Считаем суммы и себестоимость по позициям
+    const items = dto.items.map((it) => {
+      const unitCost =
+        it.unitCost ??
+        (it.serviceId ? serviceCosts.get(it.serviceId) ?? 0 : 0);
+      return {
+        ...it,
+        unitCost,
+        lineTotal: Number((it.quantity * it.unitPrice).toFixed(2)),
+        lineCost: Number((it.quantity * unitCost).toFixed(2)),
+      };
+    });
     const total = Number(
       items.reduce((sum, it) => sum + it.lineTotal, 0).toFixed(2),
     );
@@ -67,6 +89,11 @@ export class OrdersService {
           orderType: dto.orderType,
           assignedUserId: dto.assignedUserId,
           createdById: dto.createdById,
+          designerId: dto.designerId,
+          operatorId: dto.operatorId,
+          format: dto.format,
+          colorMode: dto.colorMode,
+          urgency: dto.urgency,
           deadline: dto.deadline ? new Date(dto.deadline) : undefined,
           note: dto.note,
           total,
@@ -81,8 +108,10 @@ export class OrdersService {
               description: it.description,
               quantity: it.quantity,
               unitPrice: it.unitPrice,
+              unitCost: it.unitCost,
               options: it.options ?? undefined,
               lineTotal: it.lineTotal,
+              lineCost: it.lineCost,
             })),
           },
           repairDetail: dto.repairDetail
@@ -368,6 +397,8 @@ export class OrdersService {
         recoveryDetail: true,
         files: true,
         assignedUser: { select: { id: true, fullName: true } },
+        designer: { select: { id: true, fullName: true } },
+        operator: { select: { id: true, fullName: true } },
       },
     });
   }

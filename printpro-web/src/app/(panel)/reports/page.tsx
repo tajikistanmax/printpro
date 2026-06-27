@@ -47,6 +47,7 @@ export default function ReportsPage() {
   const [sales, setSales] = useState<any[]>([]);
   const [debts, setDebts] = useState<any>(null);
   const [staff, setStaff] = useState<any[]>([]);
+  const [profit, setProfit] = useState<any>(null);
 
   useEffect(() => {
     const { from, to } = periodRange(period);
@@ -56,6 +57,7 @@ export default function ReportsPage() {
     api.get(`/reports/daily?companyId=${cid}&days=14`).then(setDaily).catch(() => {});
     api.get(`/reports/debts?companyId=${cid}`).then(setDebts).catch(() => {});
     api.get(`/reports/staff?${q}`).then(setStaff).catch(() => {});
+    api.get(`/reports/profit?${q}`).then(setProfit).catch(() => {});
   }, [cid, period]);
 
   const maxDaily = Math.max(1, ...daily.map((d) => d.amount));
@@ -250,6 +252,97 @@ export default function ReportsPage() {
                   <td className="py-2 text-right font-medium text-slate-800">
                     {money(s.revenue)}
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Прибыль по заказам */}
+      <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-700">Прибыль по заказам</h2>
+          {profit && profit.items.length > 0 && (
+            <button
+              onClick={() =>
+                downloadCSV(
+                  'profit.csv',
+                  ['Заказ', 'Клиент', 'Выручка', 'Себестоимость', 'Прибыль', 'Маржа %'],
+                  profit.items.map((p: any) => [
+                    p.orderNumber,
+                    p.client,
+                    p.revenue,
+                    p.cost,
+                    p.profit,
+                    p.margin,
+                  ]),
+                )
+              }
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              ⬇ Экспорт CSV
+            </button>
+          )}
+        </div>
+
+        {/* Итоги прибыли */}
+        {profit && (
+          <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-xl bg-slate-50 p-3">
+              <div className="text-xs text-slate-500">Выручка</div>
+              <div className="text-lg font-bold text-slate-800">
+                {money(profit.revenue)}
+              </div>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-3">
+              <div className="text-xs text-slate-500">Себестоимость</div>
+              <div className="text-lg font-bold text-amber-600">
+                {money(profit.cost)}
+              </div>
+            </div>
+            <div className="rounded-xl bg-emerald-50 p-3">
+              <div className="text-xs text-slate-500">Прибыль</div>
+              <div className="text-lg font-bold text-emerald-600">
+                {money(profit.profit)}
+              </div>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-3">
+              <div className="text-xs text-slate-500">Маржа</div>
+              <div className="text-lg font-bold text-indigo-600">
+                {profit.margin}%
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!profit || profit.items.length === 0 ? (
+          <p className="text-sm text-slate-400">
+            Нет данных. Прибыль считается, если у услуг указана себестоимость.
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-slate-400">
+                <th className="py-2 font-medium">Заказ</th>
+                <th className="py-2 font-medium">Клиент</th>
+                <th className="py-2 text-right font-medium">Выручка</th>
+                <th className="py-2 text-right font-medium">Себест-ть</th>
+                <th className="py-2 text-right font-medium">Прибыль</th>
+                <th className="py-2 text-right font-medium">Маржа</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profit.items.slice(0, 50).map((p: any) => (
+                <tr key={p.orderId} className="border-b border-slate-50 last:border-0">
+                  <td className="py-2 text-slate-700">№{p.orderNumber}</td>
+                  <td className="py-2 text-slate-400">{p.client}</td>
+                  <td className="py-2 text-right text-slate-600">{money(p.revenue)}</td>
+                  <td className="py-2 text-right text-amber-600">{money(p.cost)}</td>
+                  <td className="py-2 text-right font-medium text-emerald-600">
+                    {money(p.profit)}
+                  </td>
+                  <td className="py-2 text-right text-slate-500">{p.margin}%</td>
                 </tr>
               ))}
             </tbody>

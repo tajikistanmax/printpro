@@ -135,6 +135,67 @@ export class ReportsService {
     return Array.from(agg.values()).sort((a, b) => b.revenue - a.revenue);
   }
 
+  // Прибыль по заказам за период: выручка − себестоимость (п. 2.10 ТЗ)
+  // Считаем только по непогашенным/оплаченным заказам, исключая отменённые.
+  async profit(companyId: string, from?: string, to?: string) {
+    const range = this.range(from, to);
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        companyId,
+        createdAt: range,
+        status: { not: 'CANCELLED' },
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        createdAt: true,
+        total: true,
+        client: { select: { fullName: true, phone: true } },
+        items: { select: { lineTotal: true, lineCost: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let totalRevenue = 0;
+    let totalCost = 0;
+    const list = orders.map((o) => {
+      const revenue = o.items.reduce((s, it) => s + Number(it.lineTotal), 0);
+      const cost = o.items.reduce((s, it) => s + Number(it.lineCost), 0);
+      const profit = Number((revenue - cost).toFixed(2));
+      totalRevenue += revenue;
+      totalCost += cost;
+      return {
+        orderId: o.id,
+        orderNumber: o.orderNumber,
+        date: o.createdAt,
+        client: o.client?.fullName ?? o.client?.phone ?? 'без клиента',
+        revenue: Number(revenue.toFixed(2)),
+        cost: Number(cost.toFixed(2)),
+        profit,
+        margin: revenue > 0 ? Number(((profit / revenue) * 100).toFixed(1)) : 0,
+      };
+    });
+
+    totalRevenue = Number(totalRevenue.toFixed(2));
+    totalCost = Number(totalCost.toFixed(2));
+    const totalProfit = Number((totalRevenue - totalCost).toFixed(2));
+
+    return {
+      from: range.gte,
+      to: range.lte,
+      ordersCount: list.length,
+      revenue: totalRevenue,
+      cost: totalCost,
+      profit: totalProfit,
+      margin:
+        totalRevenue > 0
+          ? Number(((totalProfit / totalRevenue) * 100).toFixed(1))
+          : 0,
+      items: list,
+    };
+  }
+
   // Долги клиентов (заказы с непогашенным остатком)
   async debts(companyId: string) {
     const orders = await this.prisma.order.findMany({

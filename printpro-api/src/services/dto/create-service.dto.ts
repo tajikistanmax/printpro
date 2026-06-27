@@ -44,6 +44,12 @@ export class CreateServiceDto {
 
   @IsOptional() @IsNumber() basePrice?: number;
 
+  // Себестоимость — для отчёта «прибыль по заказам»
+  @IsOptional() @IsNumber() @Min(0) costPrice?: number;
+
+  // Время выполнения, минут
+  @IsOptional() @IsInt() @Min(0) leadTimeMin?: number;
+
   // Доплата за дизайн, если у клиента нет готового макета
   @IsOptional() @IsNumber() designSurcharge?: number;
 

@@ -23,8 +23,14 @@ export default function ServicesPage() {
   const [name, setName] = useState('');
   const [pricingType, setPricingType] = useState('FIXED');
   const [basePrice, setBasePrice] = useState('');
+  const [costPrice, setCostPrice] = useState('');
+  const [leadTime, setLeadTime] = useState('');
   const [designSurcharge, setDesignSurcharge] = useState('');
   const [msg, setMsg] = useState('');
+
+  // Инлайн-правка себестоимости
+  const [editCostId, setEditCostId] = useState<string | null>(null);
+  const [editCostVal, setEditCostVal] = useState('');
 
   function load() {
     setLoading(true);
@@ -45,12 +51,28 @@ export default function ServicesPage() {
         name,
         pricingType,
         basePrice: basePrice ? Number(basePrice) : 0,
+        costPrice: costPrice ? Number(costPrice) : 0,
+        leadTimeMin: leadTime ? Number(leadTime) : undefined,
         designSurcharge: designSurcharge ? Number(designSurcharge) : 0,
       });
       setName('');
       setBasePrice('');
+      setCostPrice('');
+      setLeadTime('');
       setDesignSurcharge('');
       setMsg('✓ Услуга добавлена');
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  async function saveCost(id: string) {
+    try {
+      await api.patch(`/services/${id}`, {
+        costPrice: editCostVal ? Number(editCostVal) : 0,
+      });
+      setEditCostId(null);
       load();
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
@@ -99,6 +121,27 @@ export default function ServicesPage() {
                 className="w-full rounded-lg border border-slate-300 px-3 py-2"
               />
             </div>
+            <div className="w-28">
+              <label className="mb-1 block text-sm text-slate-500">Себест-ть</label>
+              <input
+                value={costPrice}
+                onChange={(e) => setCostPrice(e.target.value)}
+                type="number"
+                placeholder="0"
+                title="Себестоимость — для расчёта прибыли"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </div>
+            <div className="w-24">
+              <label className="mb-1 block text-sm text-slate-500">Время, мин</label>
+              <input
+                value={leadTime}
+                onChange={(e) => setLeadTime(e.target.value)}
+                type="number"
+                placeholder="—"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </div>
             <div className="w-32">
               <label className="mb-1 block text-sm text-slate-500">Дизайн +</label>
               <input
@@ -132,14 +175,68 @@ export default function ServicesPage() {
                     {PRICING_LABELS[s.pricingType] ?? s.pricingType}
                     {Number(s.designSurcharge) > 0 &&
                       ` · доплата за дизайн ${s.designSurcharge} c.`}
+                    {s.leadTimeMin ? ` · ${s.leadTimeMin} мин` : ''}
                   </div>
                 </div>
                 {Number(s.basePrice) > 0 && (
-                  <div className="text-lg font-bold text-indigo-600">
-                    {s.basePrice} c.
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-indigo-600">
+                      {s.basePrice} c.
+                    </div>
+                    {Number(s.costPrice) > 0 && (
+                      <div className="text-xs text-emerald-600">
+                        прибыль {(Number(s.basePrice) - Number(s.costPrice)).toFixed(0)} c.
+                        {Number(s.basePrice) > 0 &&
+                          ` (${(
+                            ((Number(s.basePrice) - Number(s.costPrice)) /
+                              Number(s.basePrice)) *
+                            100
+                          ).toFixed(0)}%)`}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
+
+              {/* Себестоимость — инлайн-правка */}
+              {can('services.manage') && (
+                <div className="mt-2 flex items-center gap-2 text-sm">
+                  <span className="text-slate-500">Себестоимость:</span>
+                  {editCostId === s.id ? (
+                    <>
+                      <input
+                        value={editCostVal}
+                        onChange={(e) => setEditCostVal(e.target.value)}
+                        type="number"
+                        autoFocus
+                        className="w-24 rounded border border-slate-300 px-2 py-1"
+                      />
+                      <button
+                        onClick={() => saveCost(s.id)}
+                        className="rounded bg-emerald-600 px-2.5 py-1 text-xs text-white hover:bg-emerald-700"
+                      >
+                        Сохранить
+                      </button>
+                      <button
+                        onClick={() => setEditCostId(null)}
+                        className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
+                      >
+                        Отмена
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setEditCostId(s.id);
+                        setEditCostVal(String(Number(s.costPrice) || ''));
+                      }}
+                      className="rounded bg-slate-100 px-2.5 py-1 font-medium text-slate-700 hover:bg-slate-200"
+                    >
+                      {Number(s.costPrice) > 0 ? `${s.costPrice} c.` : 'указать'} ✎
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Цены по тиражу */}
               {s.priceTiers?.length > 0 && (

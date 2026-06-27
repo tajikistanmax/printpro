@@ -25,6 +25,11 @@ const PAY_COLORS: Record<string, string> = {
   PAID: 'bg-emerald-100 text-emerald-700',
   DEBT: 'bg-rose-100 text-rose-700',
 };
+const URGENCY_LABELS: Record<string, string> = {
+  NORMAL: 'Обычная',
+  URGENT: 'Срочно',
+  EXPRESS: 'Экспресс',
+};
 
 export default function OrdersPage() {
   const cid = DEFAULT_COMPANY_ID;
@@ -147,6 +152,58 @@ export default function OrdersPage() {
               <div className="mb-3 text-sm text-slate-600">
                 Клиент: {selected.client?.fullName ?? selected.client?.phone ?? '—'}
               </div>
+
+              {/* Характеристики заказа */}
+              {(selected.format ||
+                selected.colorMode ||
+                (selected.urgency && selected.urgency !== 'NORMAL') ||
+                selected.designer ||
+                selected.operator ||
+                selected.deadline) && (
+                <div className="mb-3 flex flex-wrap gap-2 text-xs">
+                  {selected.urgency && selected.urgency !== 'NORMAL' && (
+                    <span
+                      className={`rounded-full px-2 py-0.5 ${
+                        selected.urgency === 'EXPRESS'
+                          ? 'bg-rose-100 text-rose-700'
+                          : 'bg-amber-100 text-amber-700'
+                      }`}
+                    >
+                      {URGENCY_LABELS[selected.urgency]}
+                    </span>
+                  )}
+                  {selected.format && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
+                      Формат: {selected.format}
+                    </span>
+                  )}
+                  {selected.colorMode && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
+                      {selected.colorMode}
+                    </span>
+                  )}
+                  {selected.designer && (
+                    <span className="rounded-full bg-violet-100 px-2 py-0.5 text-violet-700">
+                      Дизайнер: {selected.designer.fullName}
+                    </span>
+                  )}
+                  {selected.operator && (
+                    <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">
+                      Оператор: {selected.operator.fullName}
+                    </span>
+                  )}
+                  {selected.deadline && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
+                      Срок: {new Date(selected.deadline).toLocaleString('ru-RU', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Позиции */}
               <div className="mb-3 space-y-1">

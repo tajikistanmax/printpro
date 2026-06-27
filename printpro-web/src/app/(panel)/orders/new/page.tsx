@@ -28,6 +28,7 @@ export default function NewOrderPage() {
   const [services, setServices] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
 
   const [orderType, setOrderType] = useState('SALE');
   const [branchId, setBranchId] = useState('');
@@ -36,6 +37,14 @@ export default function NewOrderPage() {
   const [note, setNote] = useState('');
   const [decrementStock, setDecrementStock] = useState(true);
   const [lines, setLines] = useState<Line[]>([]);
+
+  // Характеристики заказа (п. 2.4 ТЗ)
+  const [format, setFormat] = useState('');
+  const [colorMode, setColorMode] = useState('');
+  const [urgency, setUrgency] = useState('NORMAL');
+  const [designerId, setDesignerId] = useState('');
+  const [operatorId, setOperatorId] = useState('');
+  const [deadline, setDeadline] = useState('');
 
   // Доп. поля
   const [deviceModel, setDeviceModel] = useState('');
@@ -49,6 +58,7 @@ export default function NewOrderPage() {
   useEffect(() => {
     api.get(`/services?companyId=${cid}`).then(setServices).catch(() => {});
     api.get(`/products?companyId=${cid}`).then(setProducts).catch(() => {});
+    api.get(`/users?companyId=${cid}`).then(setUsers).catch(() => {});
     api
       .get(`/branches?companyId=${cid}`)
       .then((b) => {
@@ -112,6 +122,12 @@ export default function NewOrderPage() {
         clientName: clientName || undefined,
         note: note || undefined,
         decrementStock,
+        format: format || undefined,
+        colorMode: colorMode || undefined,
+        urgency,
+        designerId: designerId || undefined,
+        operatorId: operatorId || undefined,
+        deadline: deadline ? new Date(deadline).toISOString() : undefined,
         items: lines.map((l) => ({
           itemType: l.itemType,
           serviceId: l.itemType === 'SERVICE' ? l.refId || undefined : undefined,
@@ -195,6 +211,101 @@ export default function NewOrderPage() {
                 placeholder="Имя (необязательно)"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2"
               />
+            </div>
+          </div>
+
+          {/* Характеристики заказа */}
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <h2 className="mb-3 font-semibold text-slate-700">Характеристики</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {orderType === 'PRINT' && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-sm text-slate-500">Формат</label>
+                    <input
+                      value={format}
+                      onChange={(e) => setFormat(e.target.value)}
+                      placeholder="A4, A3, баннер 1×2м…"
+                      list="format-list"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                    />
+                    <datalist id="format-list">
+                      <option value="A4" />
+                      <option value="A3" />
+                      <option value="A2" />
+                      <option value="A1" />
+                      <option value="A0" />
+                      <option value="10×15" />
+                      <option value="Баннер" />
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-slate-500">Цветность</label>
+                    <select
+                      value={colorMode}
+                      onChange={(e) => setColorMode(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                    >
+                      <option value="">— не указано —</option>
+                      <option value="Цветной">Цветной</option>
+                      <option value="Ч/Б">Чёрно-белый</option>
+                    </select>
+                  </div>
+                </>
+              )}
+              <div>
+                <label className="mb-1 block text-sm text-slate-500">Срочность</label>
+                <select
+                  value={urgency}
+                  onChange={(e) => setUrgency(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                >
+                  <option value="NORMAL">Обычная</option>
+                  <option value="URGENT">Срочно</option>
+                  <option value="EXPRESS">Экспресс</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-500">Срок готовности</label>
+                <input
+                  type="datetime-local"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-500">Дизайнер</label>
+                <select
+                  value={designerId}
+                  onChange={(e) => setDesignerId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                >
+                  <option value="">— не назначен —</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.fullName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-500">
+                  Оператор / печатник
+                </label>
+                <select
+                  value={operatorId}
+                  onChange={(e) => setOperatorId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                >
+                  <option value="">— не назначен —</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.fullName}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 

@@ -100,4 +100,53 @@ export const SYSTEM_ROLES: { name: string; permissions: string[] | '*' }[] = [
       'clients.view',
     ],
   },
+  // --- Готовые пресеты должностей (поверх гибких прав) ---
+  {
+    name: 'Кассир',
+    permissions: [
+      'cash.view',
+      'cash.operate',
+      'orders.view',
+      'orders.manage',
+      'clients.view',
+      'services.view',
+    ],
+  },
+  {
+    name: 'Менеджер заказов',
+    permissions: [
+      'orders.view',
+      'orders.manage',
+      'clients.view',
+      'clients.manage',
+      'services.view',
+      'design.view',
+      'production.view',
+      'tasks.view',
+      'tasks.manage',
+      'reports.view',
+    ],
+  },
+  {
+    name: 'Дизайнер',
+    permissions: [
+      'design.view',
+      'design.manage',
+      'orders.view',
+      'services.view',
+      'tasks.view',
+      'clients.view',
+    ],
+  },
+  {
+    name: 'Печатник',
+    permissions: [
+      'production.view',
+      'production.manage',
+      'orders.view',
+      'design.view',
+      'stock.view',
+      'tasks.view',
+    ],
+  },
 ];
