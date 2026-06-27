@@ -30,4 +30,5 @@ export class UpdateProductionJobDto {
 // Сменить статус задания
 export class UpdateProductionStatusDto {
   @IsEnum(ProductionStatus) status: ProductionStatus;
+  @IsOptional() @IsString() defectReason?: string;
 }

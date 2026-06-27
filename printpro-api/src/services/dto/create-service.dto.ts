@@ -31,6 +31,12 @@ class OptionDto {
   @IsNumber() priceModifier: number;
 }
 
+// Норма расхода материала на единицу услуги
+class MaterialDto {
+  @IsString() productId: string;
+  @IsNumber() @Min(0) qtyPerUnit: number;
+}
+
 export class CreateServiceDto {
   // Пока нет авторизации — компанию передаём явно. Позже возьмём из токена.
   @IsString() companyId: string;
@@ -65,4 +71,7 @@ export class CreateServiceDto {
 
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => OptionDto)
   options?: OptionDto[];
+
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => MaterialDto)
+  materials?: MaterialDto[];
 }

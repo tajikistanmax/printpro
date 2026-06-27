@@ -196,6 +196,53 @@ export class ReportsService {
     };
   }
 
+  // Загрузка оборудования: задания по станкам и статусам (п. 2.2/2.10)
+  async equipmentLoad(companyId: string) {
+    const equipment = await this.prisma.equipment.findMany({
+      where: { companyId, deletedAt: null },
+      select: { id: true, name: true, type: true, status: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const jobs = await this.prisma.productionJob.groupBy({
+      by: ['equipmentId', 'status'],
+      where: { companyId, deletedAt: null, equipmentId: { not: null } },
+      _count: true,
+    });
+
+    const byEq = new Map<string, Record<string, number>>();
+    for (const j of jobs) {
+      const key = j.equipmentId as string;
+      const row = byEq.get(key) ?? {};
+      row[j.status] = j._count;
+      byEq.set(key, row);
+    }
+
+    const active = (r: Record<string, number>) =>
+      (r.PENDING ?? 0) +
+      (r.PRINTING ?? 0) +
+      (r.CUTTING ?? 0) +
+      (r.BINDING ?? 0) +
+      (r.PACKAGING ?? 0) +
+      (r.REWORK ?? 0);
+
+    return equipment.map((e) => {
+      const r = byEq.get(e.id) ?? {};
+      return {
+        id: e.id,
+        name: e.name,
+        type: e.type ?? '—',
+        status: e.status,
+        inQueue: r.PENDING ?? 0,
+        inWork: active(r) - (r.PENDING ?? 0),
+        active: active(r),
+        completed: r.COMPLETED ?? 0,
+        rework: r.REWORK ?? 0,
+        total: Object.values(r).reduce((s, n) => s + n, 0),
+      };
+    });
+  }
+
   // Долги клиентов (заказы с непогашенным остатком)
   async debts(companyId: string) {
     const orders = await this.prisma.order.findMany({

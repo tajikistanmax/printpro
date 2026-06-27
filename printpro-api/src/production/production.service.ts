@@ -57,13 +57,18 @@ export class ProductionService {
   }
 
   // Сменить статус + синхронизировать статус заказа
-  async updateStatus(id: string, status: ProductionStatus) {
+  async updateStatus(
+    id: string,
+    status: ProductionStatus,
+    defectReason?: string,
+  ) {
     const job = await this.ensure(id);
 
     const data: {
       status: ProductionStatus;
       startedAt?: Date;
       completedAt?: Date | null;
+      defectReason?: string | null;
     } = { status };
 
     // Первый переход из «ожидает» в работу — фиксируем старт
@@ -73,16 +78,82 @@ export class ProductionService {
     // Готово — фиксируем завершение, иначе сбрасываем
     data.completedAt = status === ProductionStatus.COMPLETED ? new Date() : null;
 
+    // Брак/переделка — сохраняем причину; иначе очищаем
+    data.defectReason =
+      status === ProductionStatus.REWORK ? defectReason ?? null : null;
+
     const updated = await this.prisma.productionJob.update({
       where: { id },
       data,
       include: this.includes(),
     });
 
+    // При завершении — авто-списание материалов со склада (один раз)
+    if (status === ProductionStatus.COMPLETED && !job.materialsWrittenOff) {
+      await this.writeOffMaterials(job.id, job.orderId);
+    }
+
     // Подтягиваем статус заказа за производством
     await this.syncOrderStatus(job.orderId);
 
     return updated;
+  }
+
+  // Авто-списание материалов по спецификации услуг заказа
+  private async writeOffMaterials(jobId: string, orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: { include: { service: { include: { materials: true } } } },
+      },
+    });
+    if (!order?.branchId) return; // некуда списывать без филиала
+
+    // Сводим расход по товарам: Σ (норма × кол-во услуги)
+    const need = new Map<string, number>();
+    for (const it of order.items) {
+      const mats = it.service?.materials ?? [];
+      for (const m of mats) {
+        const qty = Number(m.qtyPerUnit) * Number(it.quantity);
+        if (qty > 0) need.set(m.productId, (need.get(m.productId) ?? 0) + qty);
+      }
+    }
+    if (need.size === 0) {
+      await this.prisma.productionJob.update({
+        where: { id: jobId },
+        data: { materialsWrittenOff: true },
+      });
+      return;
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const [productId, qty] of need) {
+        await tx.stock.upsert({
+          where: { productId_branchId: { productId, branchId: order.branchId! } },
+          create: {
+            productId,
+            branchId: order.branchId!,
+            quantity: -qty, // допускаем минус: фиксируем фактический расход
+          },
+          update: { quantity: { decrement: qty } },
+        });
+        await tx.stockMovement.create({
+          data: {
+            companyId: order.companyId,
+            productId,
+            branchId: order.branchId,
+            type: 'WRITE_OFF',
+            quantity: qty,
+            reason: `Производство по заказу №${order.orderNumber}`,
+            orderId: order.id,
+          },
+        });
+      }
+      await tx.productionJob.update({
+        where: { id: jobId },
+        data: { materialsWrittenOff: true },
+      });
+    });
   }
 
   async remove(id: string) {

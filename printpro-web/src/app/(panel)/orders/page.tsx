@@ -144,9 +144,17 @@ export default function OrdersPage() {
                 <h2 className="font-semibold text-slate-700">
                   Заказ №{selected.orderNumber}
                 </h2>
-                <span className="text-sm text-slate-500">
-                  {STATUS_LABELS[selected.status]}
-                </span>
+                <div className="flex items-center gap-3">
+                  <Link
+                    href={`/order-card?id=${selected.id}`}
+                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                  >
+                    🖨 Тех-карта
+                  </Link>
+                  <span className="text-sm text-slate-500">
+                    {STATUS_LABELS[selected.status]}
+                  </span>
+                </div>
               </div>
 
               <div className="mb-3 text-sm text-slate-600">

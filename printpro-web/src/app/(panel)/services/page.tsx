@@ -17,7 +17,13 @@ export default function ServicesPage() {
   const cid = DEFAULT_COMPANY_ID;
   const { can } = useAuth();
   const [services, setServices] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Добавление материала к услуге: { [serviceId]: {productId, qty} }
+  const [matForm, setMatForm] = useState<
+    Record<string, { productId: string; qty: string }>
+  >({});
 
   // Форма новой услуги
   const [name, setName] = useState('');
@@ -40,7 +46,30 @@ export default function ServicesPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }
-  useEffect(load, [cid]);
+  useEffect(() => {
+    load();
+    api.get(`/products?companyId=${cid}`).then(setProducts).catch(() => {});
+  }, [cid]);
+
+  async function addMaterial(serviceId: string) {
+    const f = matForm[serviceId];
+    if (!f?.productId || !f.qty) return;
+    try {
+      await api.post(`/services/${serviceId}/materials`, {
+        productId: f.productId,
+        qtyPerUnit: Number(f.qty),
+      });
+      setMatForm((m) => ({ ...m, [serviceId]: { productId: '', qty: '' } }));
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  async function removeMaterial(materialId: string) {
+    await api.del(`/services/materials/${materialId}`);
+    load();
+  }
 
   async function createService(e: React.FormEvent) {
     e.preventDefault();
@@ -235,6 +264,83 @@ export default function ServicesPage() {
                       {Number(s.costPrice) > 0 ? `${s.costPrice} c.` : 'указать'} ✎
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* Материалы (спецификация для авто-списания) */}
+              {can('services.manage') && (
+                <div className="mt-3 rounded-lg bg-slate-50 p-3">
+                  <div className="mb-1.5 text-xs font-medium text-slate-500">
+                    Материалы (расход на 1 ед. — спишутся при производстве)
+                  </div>
+                  {s.materials?.length > 0 ? (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {s.materials.map((m: any) => (
+                        <span
+                          key={m.id}
+                          className="flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 text-sm text-slate-700 shadow-sm"
+                        >
+                          {m.product?.name} — {Number(m.qtyPerUnit)}{' '}
+                          {m.product?.unit?.shortName ?? ''}
+                          <button
+                            onClick={() => removeMaterial(m.id)}
+                            className="text-rose-400 hover:text-rose-600"
+                            title="Убрать"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mb-2 text-xs text-slate-400">
+                      Материалы не заданы — авто-списания не будет.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={matForm[s.id]?.productId ?? ''}
+                      onChange={(e) =>
+                        setMatForm((m) => ({
+                          ...m,
+                          [s.id]: {
+                            productId: e.target.value,
+                            qty: m[s.id]?.qty ?? '',
+                          },
+                        }))
+                      }
+                      className="rounded border border-slate-300 px-2 py-1 text-sm"
+                    >
+                      <option value="">— материал —</option>
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={matForm[s.id]?.qty ?? ''}
+                      onChange={(e) =>
+                        setMatForm((m) => ({
+                          ...m,
+                          [s.id]: {
+                            productId: m[s.id]?.productId ?? '',
+                            qty: e.target.value,
+                          },
+                        }))
+                      }
+                      type="number"
+                      step="0.001"
+                      placeholder="расход"
+                      className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                    />
+                    <button
+                      onClick={() => addMaterial(s.id)}
+                      className="rounded bg-slate-700 px-2.5 py-1 text-xs text-white hover:bg-slate-800"
+                    >
+                      + Добавить
+                    </button>
+                  </div>
                 </div>
               )}
 

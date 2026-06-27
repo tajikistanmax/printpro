@@ -391,7 +391,14 @@ export class OrdersService {
       where: { id },
       include: {
         client: true,
-        items: { include: { service: true, product: true } },
+        items: {
+          include: {
+            service: {
+              include: { materials: { include: { product: { include: { unit: true } } } } },
+            },
+            product: { include: { unit: true } },
+          },
+        },
         payments: true,
         repairDetail: true,
         recoveryDetail: true,

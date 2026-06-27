@@ -40,6 +40,21 @@ export class ServicesController {
     return this.servicesService.update(id, dto);
   }
 
+  // POST /services/:id/materials — добавить/обновить норму расхода материала
+  @Post(':id/materials')
+  addMaterial(
+    @Param('id') id: string,
+    @Body() body: { productId: string; qtyPerUnit: number },
+  ) {
+    return this.servicesService.addMaterial(id, body.productId, body.qtyPerUnit);
+  }
+
+  // DELETE /services/materials/:materialId — убрать материал из спецификации
+  @Delete('materials/:materialId')
+  removeMaterial(@Param('materialId') materialId: string) {
+    return this.servicesService.removeMaterial(materialId);
+  }
+
   // DELETE /services/:id — удалить услугу
   @Delete(':id')
   remove(@Param('id') id: string) {

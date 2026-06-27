@@ -23,8 +23,15 @@ export class ServicesService {
         priceTiers: dto.priceTiers ? { create: dto.priceTiers } : undefined,
         sizes: dto.sizes ? { create: dto.sizes } : undefined,
         options: dto.options ? { create: dto.options } : undefined,
+        materials: dto.materials ? { create: dto.materials } : undefined,
       },
-      include: { priceTiers: true, sizes: true, options: true, category: true },
+      include: {
+        priceTiers: true,
+        sizes: true,
+        options: true,
+        category: true,
+        materials: { include: { product: { include: { unit: true } } } },
+      },
     });
   }
 
@@ -62,16 +69,39 @@ export class ServicesService {
           sizes: true,
           options: true,
           category: true,
+          materials: { include: { product: { include: { unit: true } } } },
         },
       });
     });
+  }
+
+  // ---------- Материалы услуги (спецификация для авто-списания) ----------
+  async addMaterial(serviceId: string, productId: string, qtyPerUnit: number) {
+    await this.findOne(serviceId);
+    await this.prisma.serviceMaterial.upsert({
+      where: { serviceId_productId: { serviceId, productId } },
+      create: { serviceId, productId, qtyPerUnit, deletedAt: null },
+      update: { qtyPerUnit, deletedAt: null },
+    });
+    return this.findOne(serviceId);
+  }
+
+  async removeMaterial(materialId: string) {
+    await this.prisma.serviceMaterial.delete({ where: { id: materialId } });
+    return { ok: true };
   }
 
   // Список услуг компании
   findAll(companyId: string) {
     return this.prisma.service.findMany({
       where: { companyId },
-      include: { priceTiers: true, sizes: true, options: true, category: true },
+      include: {
+        priceTiers: true,
+        sizes: true,
+        options: true,
+        category: true,
+        materials: { include: { product: { include: { unit: true } } } },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -80,7 +110,13 @@ export class ServicesService {
   async findOne(id: string) {
     const service = await this.prisma.service.findUnique({
       where: { id },
-      include: { priceTiers: true, sizes: true, options: true, category: true },
+      include: {
+        priceTiers: true,
+        sizes: true,
+        options: true,
+        category: true,
+        materials: { include: { product: { include: { unit: true } } } },
+      },
     });
     if (!service) throw new NotFoundException('Услуга не найдена');
     return service;

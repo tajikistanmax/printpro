@@ -48,6 +48,7 @@ export default function ReportsPage() {
   const [debts, setDebts] = useState<any>(null);
   const [staff, setStaff] = useState<any[]>([]);
   const [profit, setProfit] = useState<any>(null);
+  const [eqLoad, setEqLoad] = useState<any[]>([]);
 
   useEffect(() => {
     const { from, to } = periodRange(period);
@@ -58,6 +59,10 @@ export default function ReportsPage() {
     api.get(`/reports/debts?companyId=${cid}`).then(setDebts).catch(() => {});
     api.get(`/reports/staff?${q}`).then(setStaff).catch(() => {});
     api.get(`/reports/profit?${q}`).then(setProfit).catch(() => {});
+    api
+      .get(`/reports/equipment-load?companyId=${cid}`)
+      .then(setEqLoad)
+      .catch(() => {});
   }, [cid, period]);
 
   const maxDaily = Math.max(1, ...daily.map((d) => d.amount));
@@ -349,6 +354,46 @@ export default function ReportsPage() {
           </table>
         )}
       </div>
+
+      {/* Загрузка оборудования */}
+      {eqLoad.length > 0 && (
+        <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="mb-3 font-semibold text-slate-700">Загрузка оборудования</h2>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-slate-400">
+                <th className="py-2 font-medium">Оборудование</th>
+                <th className="py-2 font-medium">Тип</th>
+                <th className="py-2 text-right font-medium">В очереди</th>
+                <th className="py-2 text-right font-medium">В работе</th>
+                <th className="py-2 text-right font-medium">Готово</th>
+                <th className="py-2 text-right font-medium">Брак</th>
+              </tr>
+            </thead>
+            <tbody>
+              {eqLoad.map((e) => (
+                <tr key={e.id} className="border-b border-slate-50 last:border-0">
+                  <td className="py-2 text-slate-700">
+                    {e.name}
+                    {e.status !== 'ACTIVE' && (
+                      <span className="ml-2 rounded bg-amber-100 px-1.5 text-xs text-amber-700">
+                        {e.status === 'REPAIR' ? 'ремонт' : 'выкл'}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2 text-slate-400">{e.type}</td>
+                  <td className="py-2 text-right text-slate-500">{e.inQueue}</td>
+                  <td className="py-2 text-right font-medium text-sky-600">
+                    {e.inWork}
+                  </td>
+                  <td className="py-2 text-right text-emerald-600">{e.completed}</td>
+                  <td className="py-2 text-right text-rose-600">{e.rework || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Эффективность сотрудников */}
       <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm">

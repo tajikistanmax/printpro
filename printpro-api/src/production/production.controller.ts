@@ -56,7 +56,7 @@ export class ProductionController {
     @Param('id') id: string,
     @Body() dto: UpdateProductionStatusDto,
   ) {
-    return this.production.updateStatus(id, dto.status);
+    return this.production.updateStatus(id, dto.status, dto.defectReason);
   }
 
   // Удалить задание

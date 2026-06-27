@@ -71,6 +71,7 @@ enum ProductionStatus {
   BINDING // брошюровка/переплёт
   PACKAGING // упаковка
   COMPLETED // готово
+  REWORK // брак / переделка
   CANCELLED // отменено
 }
 
@@ -312,7 +313,25 @@ model Service {
   priceTiers ServicePriceTier[]
   sizes      ServiceSize[]
   options    ServiceOption[]
+  materials  ServiceMaterial[]
   orderItems OrderItem[]
+}
+
+// Норма расхода материала на единицу услуги (спецификация / BOM).
+// Используется для авто-списания со склада при выполнении производства.
+model ServiceMaterial {
+  // --- синхронизация ---
+  updatedAt  DateTime  @default(now()) @updatedAt
+  deletedAt  DateTime?
+  syncNode   String?
+  id         String    @id @default(uuid())
+  serviceId  String
+  service    Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product   @relation(fields: [productId], references: [id])
+  qtyPerUnit Decimal   @default(0) @db.Decimal(12, 3) // расход на 1 единицу услуги
+
+  @@unique([serviceId, productId])
 }
 
 model ServicePriceTier {
@@ -400,10 +419,11 @@ model Product {
   isActive   Boolean          @default(true)
   createdAt  DateTime         @default(now())
 
-  stock        Stock[]
-  movements    StockMovement[]
-  orderItems   OrderItem[]
-  receiptItems StockReceiptItem[]
+  stock            Stock[]
+  movements        StockMovement[]
+  orderItems       OrderItem[]
+  receiptItems     StockReceiptItem[]
+  serviceMaterials ServiceMaterial[]
 }
 
 model Stock {
@@ -719,6 +739,8 @@ model ProductionJob {
   equipment      Equipment?       @relation(fields: [equipmentId], references: [id])
   priority       Int              @default(0)
   note           String?
+  defectReason   String? // причина брака/переделки
+  materialsWrittenOff Boolean     @default(false) // материалы уже списаны
   startedAt      DateTime?
   completedAt    DateTime?
   createdAt      DateTime         @default(now())

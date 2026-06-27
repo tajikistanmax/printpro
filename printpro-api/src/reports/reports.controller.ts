@@ -52,6 +52,13 @@ export class ReportsController {
     return this.reports.profit(companyId, from, to);
   }
 
+  // Загрузка оборудования
+  @Get('equipment-load')
+  @RequirePermissions('reports.view')
+  equipmentLoad(@Query('companyId') companyId: string) {
+    return this.reports.equipmentLoad(companyId);
+  }
+
   // Долги клиентов
   @Get('debts')
   @RequirePermissions('reports.view')

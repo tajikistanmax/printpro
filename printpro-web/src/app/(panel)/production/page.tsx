@@ -13,6 +13,7 @@ const STAGES: { key: string; label: string; color: string }[] = [
   { key: 'BINDING', label: 'Брошюровка', color: 'border-violet-300 bg-violet-50' },
   { key: 'PACKAGING', label: 'Упаковка', color: 'border-indigo-300 bg-indigo-50' },
   { key: 'COMPLETED', label: 'Готово', color: 'border-emerald-300 bg-emerald-50' },
+  { key: 'REWORK', label: 'Брак / переделка', color: 'border-rose-300 bg-rose-50' },
 ];
 
 // Следующий этап для кнопки «дальше»
@@ -80,6 +81,16 @@ export default function ProductionPage() {
 
   async function setStatus(id: string, status: string) {
     await api.patch(`/production/${id}/status`, { status });
+    load();
+  }
+
+  async function sendRework(id: string) {
+    const reason = prompt('Причина брака / переделки:');
+    if (reason === null) return;
+    await api.patch(`/production/${id}/status`, {
+      status: 'REWORK',
+      defectReason: reason || undefined,
+    });
     load();
   }
 
@@ -210,7 +221,12 @@ export default function ProductionPage() {
                           <span>🖨 {j.equipment?.name ?? j.printer}</span>
                         )}
                       </div>
-                      <div className="mt-2 flex items-center gap-2">
+                      {j.status === 'REWORK' && j.defectReason && (
+                        <div className="mt-1 rounded bg-rose-100 px-2 py-1 text-xs text-rose-700">
+                          ⚠ {j.defectReason}
+                        </div>
+                      )}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
                         {NEXT[j.status] && (
                           <button
                             onClick={() => setStatus(j.id, NEXT[j.status])}
@@ -220,6 +236,23 @@ export default function ProductionPage() {
                             {STAGES.find((s) => s.key === NEXT[j.status])?.label}
                           </button>
                         )}
+                        {j.status === 'REWORK' && (
+                          <button
+                            onClick={() => setStatus(j.id, 'PENDING')}
+                            className="rounded-lg bg-amber-500 px-3 py-1 text-xs font-medium text-white hover:bg-amber-600"
+                          >
+                            Вернуть в работу
+                          </button>
+                        )}
+                        {j.status !== 'REWORK' &&
+                          j.status !== 'CANCELLED' && (
+                            <button
+                              onClick={() => sendRework(j.id)}
+                              className="rounded-lg border border-rose-200 px-2.5 py-1 text-xs text-rose-600 hover:bg-rose-50"
+                            >
+                              Брак
+                            </button>
+                          )}
                         {canManage && (
                           <button
                             onClick={() => remove(j.id)}
