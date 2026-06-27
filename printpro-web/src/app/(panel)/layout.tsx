@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
@@ -33,6 +33,12 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
   const { user, loading, logout, can } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Закрывать меню при переходе на другую страницу (мобильный)
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
@@ -50,8 +56,20 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-slate-100">
-      {/* Боковое меню */}
-      <aside className="flex w-60 flex-col bg-slate-900 text-slate-200">
+      {/* Затемнение под меню на мобильном */}
+      {mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+        />
+      )}
+
+      {/* Боковое меню (на мобильном — выезжающее) */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-60 flex-col bg-slate-900 text-slate-200 transition-transform lg:static lg:z-auto lg:translate-x-0 ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
         {/* Логотип */}
         <div className="flex items-center gap-2.5 px-5 py-5">
           <svg width="32" height="32" viewBox="0 0 58 58" fill="none">
@@ -118,14 +136,23 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Контент */}
-      <main className="flex-1 overflow-auto">
-        {/* Верхняя панель: синхронизация + тема + уведомления */}
-        <div className="flex items-center justify-end gap-2 px-8 pt-5">
-          <SyncIndicator />
-          <ThemeToggle />
-          <NotificationBell />
+      <main className="min-w-0 flex-1 overflow-auto">
+        {/* Верхняя панель: бургер (моб.) + синхронизация + тема + уведомления */}
+        <div className="flex items-center justify-between gap-2 px-4 pt-4 sm:px-8 sm:pt-5">
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm lg:hidden"
+            aria-label="Меню"
+          >
+            ☰
+          </button>
+          <div className="flex items-center gap-2">
+            <SyncIndicator />
+            <ThemeToggle />
+            <NotificationBell />
+          </div>
         </div>
-        <div className="mx-auto max-w-6xl px-8 pb-8 pt-2">{children}</div>
+        <div className="mx-auto max-w-6xl px-4 pb-8 pt-2 sm:px-8">{children}</div>
       </main>
     </div>
   );

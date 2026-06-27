@@ -63,11 +63,27 @@ export default function DashboardPage() {
     {
       label: 'Выручка сегодня',
       value: today ? money(today.collected) : '—',
-      color: 'bg-emerald-500',
+      icon: '💰',
+      tint: 'bg-emerald-50 text-emerald-600',
     },
-    { label: 'Заказов в работе', value: inWork.length, color: 'bg-sky-500' },
-    { label: 'Готово к выдаче', value: ready.length, color: 'bg-indigo-500' },
-    { label: 'Долги (сумма)', value: money(totalDebt), color: 'bg-rose-500' },
+    {
+      label: 'Заказов в работе',
+      value: inWork.length,
+      icon: '🏭',
+      tint: 'bg-sky-50 text-sky-600',
+    },
+    {
+      label: 'Готово к выдаче',
+      value: ready.length,
+      icon: '✅',
+      tint: 'bg-indigo-50 text-indigo-600',
+    },
+    {
+      label: 'Долги (сумма)',
+      value: money(totalDebt),
+      icon: '⚠️',
+      tint: 'bg-rose-50 text-rose-600',
+    },
   ];
 
   const actions = [
@@ -103,10 +119,21 @@ export default function DashboardPage() {
       {/* Карточки-показатели */}
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         {cards.map((c) => (
-          <div key={c.label} className="rounded-2xl bg-white p-5 shadow-sm">
-            <div className={`mb-3 h-2 w-10 rounded-full ${c.color}`} />
-            <div className="text-2xl font-bold text-slate-800">{c.value}</div>
-            <div className="text-sm text-slate-500">{c.label}</div>
+          <div
+            key={c.label}
+            className="flex items-center gap-4 rounded-2xl bg-white p-5 shadow-sm transition hover:shadow-md"
+          >
+            <span
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-xl ${c.tint}`}
+            >
+              {c.icon}
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-2xl font-bold text-slate-800">
+                {c.value}
+              </div>
+              <div className="text-sm text-slate-500">{c.label}</div>
+            </div>
           </div>
         ))}
       </div>
@@ -228,5 +255,10 @@ function Row({ children }: { children: React.ReactNode }) {
 }
 
 function Empty({ text }: { text: string }) {
-  return <div className="py-4 text-center text-sm text-slate-400">{text}</div>;
+  return (
+    <div className="flex flex-col items-center gap-1 py-6 text-center text-sm text-slate-400">
+      <span className="text-2xl opacity-40">✓</span>
+      {text}
+    </div>
+  );
 }
