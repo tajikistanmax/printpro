@@ -224,10 +224,21 @@ export class ProductionService {
     else if (anyWorking) next = OrderStatus.IN_PROGRESS;
 
     if (next) {
-      await this.prisma.order.update({
+      const order = await this.prisma.order.findUnique({
         where: { id: orderId },
-        data: { status: next },
+        select: { status: true },
       });
+      if (order && order.status !== next) {
+        await this.prisma.$transaction([
+          this.prisma.order.update({
+            where: { id: orderId },
+            data: { status: next },
+          }),
+          this.prisma.orderStatusHistory.create({
+            data: { orderId, status: next, reason: 'авто (производство)' },
+          }),
+        ]);
+      }
     }
   }
 }

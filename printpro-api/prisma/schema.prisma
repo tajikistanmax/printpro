@@ -615,9 +615,26 @@ model Order {
   stockMovements StockMovement[]
   productionJobs ProductionJob[]
   proofs         DesignProof[]
+  statusHistory  OrderStatusHistory[]
 
   @@unique([companyId, orderNumber])
   @@index([companyId, updatedAt])
+}
+
+model OrderStatusHistory {
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String      @id @default(uuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  userId    String?
+  reason    String?
+  createdAt DateTime    @default(now())
+
+  @@index([orderId])
 }
 
 model OrderItem {

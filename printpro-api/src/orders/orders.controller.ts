@@ -101,7 +101,11 @@ export class OrdersController {
   // Смена статуса
   @Patch(':id/status')
   @RequirePermissions('orders.manage')
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateStatusDto) {
-    return this.orders.updateStatus(id, dto.status);
+  updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateStatusDto,
+    @CurrentUser() user: { sub: string },
+  ) {
+    return this.orders.updateStatus(id, dto.status, user.sub, dto.reason);
   }
 }

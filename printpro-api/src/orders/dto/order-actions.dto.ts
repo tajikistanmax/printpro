@@ -22,6 +22,7 @@ export class AddPaymentDto {
 // Сменить статус заказа
 export class UpdateStatusDto {
   @IsEnum(OrderStatus) status: OrderStatus;
+  @IsOptional() @IsString() reason?: string;
 }
 
 // Часть смешанной оплаты

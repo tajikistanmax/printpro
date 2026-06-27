@@ -27,6 +27,7 @@ const SYNC_TABLES: { model: string; table: string }[] = [
   { model: 'stockReceiptItem', table: 'StockReceiptItem' },
   { model: 'order', table: 'Order' },
   { model: 'orderItem', table: 'OrderItem' },
+  { model: 'orderStatusHistory', table: 'OrderStatusHistory' },
   { model: 'orderRepairDetail', table: 'OrderRepairDetail' },
   { model: 'orderRecoveryDetail', table: 'OrderRecoveryDetail' },
   { model: 'orderFile', table: 'OrderFile' },

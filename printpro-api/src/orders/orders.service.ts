@@ -139,6 +139,9 @@ export class OrdersService {
               lineCost: it.lineCost,
             })),
           },
+          statusHistory: {
+            create: { status: OrderStatus.ACCEPTED, userId: dto.createdById },
+          },
           repairDetail: dto.repairDetail
             ? { create: dto.repairDetail }
             : undefined,
@@ -458,10 +461,22 @@ export class OrdersService {
   }
 
   // ---------- Сменить статус ----------
-  async updateStatus(orderId: string, status: OrderStatus) {
+  async updateStatus(
+    orderId: string,
+    status: OrderStatus,
+    userId?: string,
+    reason?: string,
+  ) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Заказ не найден');
-    await this.prisma.order.update({ where: { id: orderId }, data: { status } });
+    if (order.status === status) return this.findOne(orderId);
+
+    await this.prisma.$transaction([
+      this.prisma.order.update({ where: { id: orderId }, data: { status } }),
+      this.prisma.orderStatusHistory.create({
+        data: { orderId, status, userId, reason },
+      }),
+    ]);
 
     // Уведомление в Telegram о готовности заказа
     if (status === OrderStatus.READY) {
@@ -513,6 +528,25 @@ export class OrdersService {
   async findOne(id: string) {
     const order = await this.loadFull(this.prisma, id);
     if (!order) throw new NotFoundException('Заказ не найден');
+
+    // Резолвим имена пользователей в истории статусов
+    const hist = order.statusHistory ?? [];
+    const userIds = [
+      ...new Set(hist.map((h: any) => h.userId).filter(Boolean)),
+    ] as string[];
+    if (userIds.length) {
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, fullName: true },
+      });
+      const nameById = new Map(users.map((u) => [u.id, u.fullName]));
+      order.statusHistory = hist.map((h: any) => ({
+        ...h,
+        userName: h.userId ? nameById.get(h.userId) ?? '—' : 'система',
+      }));
+    } else {
+      order.statusHistory = hist.map((h: any) => ({ ...h, userName: 'система' }));
+    }
     return order;
   }
 
@@ -552,6 +586,7 @@ export class OrdersService {
         repairDetail: true,
         recoveryDetail: true,
         files: true,
+        statusHistory: { orderBy: { createdAt: 'desc' } },
         assignedUser: { select: { id: true, fullName: true } },
         designer: { select: { id: true, fullName: true } },
         operator: { select: { id: true, fullName: true } },
