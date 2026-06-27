@@ -143,12 +143,19 @@ export default function ReportsPage() {
           ) : (
             <div className="flex h-40 items-end gap-1">
               {daily.map((d) => (
-                <div key={d.date} className="group flex flex-1 flex-col items-center">
-                  <div
-                    className="w-full rounded-t bg-indigo-500 transition group-hover:bg-indigo-600"
-                    style={{ height: `${(d.amount / maxDaily) * 100}%` }}
-                    title={`${d.date}: ${money(d.amount)}`}
-                  />
+                <div
+                  key={d.date}
+                  className="group flex h-full flex-1 flex-col items-center justify-end"
+                >
+                  <div className="flex w-full flex-1 items-end">
+                    <div
+                      className="w-full rounded-t bg-indigo-500 transition group-hover:bg-indigo-600"
+                      style={{
+                        height: `${Math.max(2, (d.amount / maxDaily) * 100)}%`,
+                      }}
+                      title={`${d.date}: ${money(d.amount)}`}
+                    />
+                  </div>
                   <span className="mt-1 text-[9px] text-slate-400">
                     {d.date.slice(8, 10)}
                   </span>
