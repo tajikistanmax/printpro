@@ -34,6 +34,10 @@ export default function PosPage() {
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState('');
+  const [promoCode, setPromoCode] = useState('');
+  const [promoDiscount, setPromoDiscount] = useState(0);
+  const [promoMsg, setPromoMsg] = useState('');
+  const [useBonus, setUseBonus] = useState('');
   const [phone, setPhone] = useState('');
   const [method, setMethod] = useState('CASH');
   const [split, setSplit] = useState(false);
@@ -84,7 +88,39 @@ export default function PosPage() {
 
   const subtotal = cart.reduce((s, c) => s + c.unitPrice * c.quantity, 0);
   const disc = Math.min(Number(discount) || 0, subtotal);
-  const total = Math.max(0, subtotal - disc);
+  const afterDisc = Math.max(0, subtotal - disc);
+  const promo = Math.min(promoDiscount, afterDisc);
+  const afterPromo = Math.max(0, afterDisc - promo);
+  const bonusApplied = Math.min(
+    Number(useBonus) || 0,
+    Number((afterPromo * 0.3).toFixed(2)),
+  );
+  const total = Math.max(0, Number((afterPromo - bonusApplied).toFixed(2)));
+
+  async function checkPromo() {
+    setPromoMsg('');
+    if (!promoCode.trim()) {
+      setPromoDiscount(0);
+      return;
+    }
+    try {
+      const r = await api.post('/promocodes/validate', {
+        companyId: cid,
+        code: promoCode.trim(),
+        subtotal: afterDisc,
+      });
+      if (r.valid) {
+        setPromoDiscount(r.discount);
+        setPromoMsg(`✓ скидка ${r.discount} c.`);
+      } else {
+        setPromoDiscount(0);
+        setPromoMsg(r.message ?? 'неверный код');
+      }
+    } catch {
+      setPromoDiscount(0);
+      setPromoMsg('ошибка проверки');
+    }
+  }
 
   const splitSum = METHODS.reduce(
     (s, m) => s + (Number(splitAmounts[m.k]) || 0),
@@ -115,6 +151,8 @@ export default function PosPage() {
         branchId: branchId || undefined,
         clientPhone: phone || undefined,
         discount: disc || undefined,
+        promoCode: promoCode.trim() || undefined,
+        useBonus: Number(useBonus) > 0 ? Number(useBonus) : undefined,
         method: split ? undefined : method,
         payments,
         items: cart.map((c) => ({
@@ -137,6 +175,10 @@ export default function PosPage() {
       });
       setCart([]);
       setDiscount('');
+      setPromoCode('');
+      setPromoDiscount(0);
+      setPromoMsg('');
+      setUseBonus('');
       setPhone('');
       setSplit(false);
       setSplitAmounts({});
@@ -246,6 +288,52 @@ export default function PosPage() {
                 type="number"
                 min="0"
                 placeholder="0"
+                className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-right"
+              />
+            </div>
+            {/* Промокод */}
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-slate-500">Промокод</span>
+              <div className="flex items-center gap-1">
+                <input
+                  value={promoCode}
+                  onChange={(e) => {
+                    setPromoCode(e.target.value);
+                    setPromoDiscount(0);
+                    setPromoMsg('');
+                  }}
+                  onBlur={checkPromo}
+                  placeholder="код"
+                  className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-right uppercase"
+                />
+                <button
+                  type="button"
+                  onClick={checkPromo}
+                  className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600 hover:bg-slate-200"
+                >
+                  ✓
+                </button>
+              </div>
+            </div>
+            {promoMsg && (
+              <div
+                className={`text-right text-xs ${
+                  promoDiscount > 0 ? 'text-emerald-600' : 'text-rose-500'
+                }`}
+              >
+                {promoMsg}
+              </div>
+            )}
+            {/* Списать бонусы */}
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">🎁 Списать бонусы</span>
+              <input
+                value={useBonus}
+                onChange={(e) => setUseBonus(e.target.value)}
+                type="number"
+                min="0"
+                placeholder="0"
+                title="Не более 30% от суммы; нужен телефон клиента"
                 className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-right"
               />
             </div>

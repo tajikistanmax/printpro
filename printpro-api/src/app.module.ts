@@ -28,6 +28,7 @@ import { EquipmentModule } from './equipment/equipment.module';
 import { QuotesModule } from './quotes/quotes.module';
 import { BackupModule } from './backup/backup.module';
 import { SearchModule } from './search/search.module';
+import { PromocodesModule } from './promocodes/promocodes.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { SearchModule } from './search/search.module';
     QuotesModule, // коммерческие предложения (КП → заказ)
     BackupModule, // резервная копия данных компании (экспорт)
     SearchModule, // глобальный поиск
+    PromocodesModule, // промокоды
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -18,6 +18,7 @@ import { TelegramService } from '../telegram/telegram.service';
 import { docNumber } from '../common/doc-number';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { AddPaymentDto, QuickSaleDto } from './dto/order-actions.dto';
+import { PromocodesService } from '../promocodes/promocodes.service';
 
 @Injectable()
 export class OrdersService {
@@ -25,6 +26,7 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly clients: ClientsService,
     private readonly telegram: TelegramService,
+    private readonly promocodes: PromocodesService,
   ) {}
 
   // ---------- Создание заказа ----------
@@ -271,8 +273,43 @@ export class OrdersService {
 
     // Скидка (абсолютная) — уменьшаем итог
     let total = Number(order.total);
-    if (dto.discount && dto.discount > 0) {
-      total = Math.max(0, Number((total - dto.discount).toFixed(2)));
+    let discount = dto.discount && dto.discount > 0 ? dto.discount : 0;
+
+    // Промокод (п. 8.7) — добавляем к скидке
+    if (dto.promoCode) {
+      const promoDisc = await this.promocodes.consume(
+        dto.companyId,
+        dto.promoCode,
+        total,
+      );
+      discount += promoDisc;
+    }
+
+    // Списание бонусов (п. 8.6) — не более 30% от суммы и не больше остатка бонусов
+    let bonusUsed = 0;
+    if (dto.useBonus && dto.useBonus > 0 && order.clientId) {
+      const client = await this.prisma.client.findUnique({
+        where: { id: order.clientId },
+        select: { bonusPoints: true },
+      });
+      const maxByPercent = Number((total * 0.3).toFixed(2));
+      bonusUsed = Math.min(
+        dto.useBonus,
+        Number(client?.bonusPoints ?? 0),
+        maxByPercent,
+      );
+      bonusUsed = Number(bonusUsed.toFixed(2));
+      if (bonusUsed > 0) {
+        discount += bonusUsed;
+        await this.prisma.client.update({
+          where: { id: order.clientId },
+          data: { bonusPoints: { decrement: bonusUsed } },
+        });
+      }
+    }
+
+    if (discount > 0) {
+      total = Math.max(0, Number((total - discount).toFixed(2)));
       await this.prisma.order.update({
         where: { id: order.id },
         data: { total, balanceDue: total },
