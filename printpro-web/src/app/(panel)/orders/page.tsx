@@ -307,6 +307,7 @@ export default function OrdersPage() {
                     >
                       <option value="CASH">Наличные</option>
                       <option value="CARD">Карта</option>
+                      <option value="QR">QR</option>
                       <option value="TRANSFER">Перевод</option>
                     </select>
                   </div>

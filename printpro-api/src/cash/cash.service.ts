@@ -139,6 +139,7 @@ export class CashService {
     const byMethod: Record<PaymentMethod, number> = {
       CASH: 0,
       CARD: 0,
+      QR: 0,
       TRANSFER: 0,
       DEBT: 0,
     };
@@ -163,7 +164,9 @@ export class CashService {
     );
 
     const totalRevenue = Number(
-      (byMethod.CASH + byMethod.CARD + byMethod.TRANSFER).toFixed(2),
+      (byMethod.CASH + byMethod.CARD + byMethod.QR + byMethod.TRANSFER).toFixed(
+        2,
+      ),
     );
 
     return {
@@ -179,6 +182,7 @@ export class CashService {
           shift.closingBalance !== null ? Number(shift.closingBalance) : null,
         cash: byMethod.CASH,
         card: byMethod.CARD,
+        qr: byMethod.QR,
         transfer: byMethod.TRANSFER,
         debt: byMethod.DEBT,
         movementsIn: Number(movementsIn.toFixed(2)),

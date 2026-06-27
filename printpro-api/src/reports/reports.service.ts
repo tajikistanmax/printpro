@@ -31,6 +31,7 @@ export class ReportsService {
     const byMethod: Record<string, number> = {
       CASH: 0,
       CARD: 0,
+      QR: 0,
       TRANSFER: 0,
       DEBT: 0,
     };
@@ -42,7 +43,7 @@ export class ReportsService {
     const ordersCount = orders._count;
     // Реальные деньги (без записей «в долг»)
     const collected = Number(
-      (byMethod.CASH + byMethod.CARD + byMethod.TRANSFER).toFixed(2),
+      (byMethod.CASH + byMethod.CARD + byMethod.QR + byMethod.TRANSFER).toFixed(2),
     );
 
     return {
@@ -58,6 +59,7 @@ export class ReportsService {
       byMethod: {
         cash: byMethod.CASH,
         card: byMethod.CARD,
+        qr: byMethod.QR,
         transfer: byMethod.TRANSFER,
         debt: byMethod.DEBT,
       },

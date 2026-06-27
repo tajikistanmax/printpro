@@ -46,6 +46,7 @@ enum PaymentStatus {
 enum PaymentMethod {
   CASH // наличные
   CARD // карта
+  QR // оплата по QR-коду
   TRANSFER // перевод
   DEBT // в долг
 }

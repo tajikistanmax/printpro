@@ -20,6 +20,7 @@ interface CartItem {
 const METHODS = [
   { k: 'CASH', l: 'Наличные' },
   { k: 'CARD', l: 'Карта' },
+  { k: 'QR', l: 'QR' },
   { k: 'TRANSFER', l: 'Перевод' },
 ];
 

@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 const METHOD_LABELS: Record<string, string> = {
   CASH: 'Наличные',
   CARD: 'Карта',
+  QR: 'QR',
   TRANSFER: 'Перевод',
   DEBT: 'В долг',
 };
@@ -145,6 +146,7 @@ export default function CashPage() {
   const cards = [
     { label: 'Наличные', value: s.cash, color: 'text-emerald-600' },
     { label: 'Карта', value: s.card, color: 'text-indigo-600' },
+    { label: 'QR', value: s.qr, color: 'text-violet-600' },
     { label: 'Перевод', value: s.transfer, color: 'text-sky-600' },
     { label: 'В долг', value: s.debt, color: 'text-rose-600' },
   ];

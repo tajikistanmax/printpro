@@ -126,6 +126,7 @@ export default function ReportsPage() {
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
           <MethodCard label="Наличные" value={summary.byMethod.cash} />
           <MethodCard label="Карта" value={summary.byMethod.card} />
+          <MethodCard label="QR" value={summary.byMethod.qr ?? 0} />
           <MethodCard label="Перевод" value={summary.byMethod.transfer} />
           <MethodCard label="В долг" value={summary.byMethod.debt} danger />
         </div>
