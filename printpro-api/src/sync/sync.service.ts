@@ -11,6 +11,7 @@ const SYNC_TABLES: { model: string; table: string }[] = [
   { model: 'rolePermission', table: 'RolePermission' },
   { model: 'user', table: 'User' },
   { model: 'client', table: 'Client' },
+  { model: 'clientFile', table: 'ClientFile' },
   { model: 'serviceCategory', table: 'ServiceCategory' },
   { model: 'service', table: 'Service' },
   { model: 'servicePriceTier', table: 'ServicePriceTier' },

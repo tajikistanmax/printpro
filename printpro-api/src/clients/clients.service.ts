@@ -80,6 +80,10 @@ export class ClientsService {
             createdAt: true,
           },
         },
+        files: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
     if (!client) throw new NotFoundException('Клиент не найден');
@@ -103,6 +107,27 @@ export class ClientsService {
         totalDebt: Number(totalDebt.toFixed(2)),
       },
     };
+  }
+
+  // ---------- Файлы клиента ----------
+  async addFile(
+    clientId: string,
+    fileUrl: string,
+    fileName?: string,
+    type?: string,
+  ) {
+    await this.ensure(clientId);
+    return this.prisma.clientFile.create({
+      data: { clientId, fileUrl, fileName, type },
+    });
+  }
+
+  async removeFile(fileId: string) {
+    await this.prisma.clientFile.update({
+      where: { id: fileId },
+      data: { deletedAt: new Date() },
+    });
+    return { ok: true };
   }
 
   private async ensure(id: string) {

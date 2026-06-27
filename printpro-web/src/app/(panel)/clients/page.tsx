@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { DEFAULT_COMPANY_ID } from '@/lib/config';
+import { API_BASE, DEFAULT_COMPANY_ID, SERVER_ORIGIN } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
 
 function money(n: number) {
@@ -60,6 +60,38 @@ export default function ClientsPage() {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [cid, search]);
+
+  const [uploading, setUploading] = useState(false);
+
+  async function uploadFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !selected) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const token =
+        typeof window !== 'undefined' ? localStorage.getItem('pp_token') : null;
+      const res = await fetch(`${API_BASE}/clients/${selected.id}/files`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: fd,
+      });
+      if (!res.ok) throw new Error('Не удалось загрузить файл');
+      await openClient(selected.id);
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  async function removeFile(fileId: string) {
+    if (!selected) return;
+    await api.del(`/clients/files/${fileId}`);
+    openClient(selected.id);
+  }
 
   async function openClient(id: string) {
     const full = await api.get(`/clients/${id}`);
@@ -264,6 +296,51 @@ export default function ClientsPage() {
                           </span>
                         )}
                       </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Файлы клиента */}
+              <div className="mt-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-700">Файлы</h3>
+                {canManage && (
+                  <label className="cursor-pointer rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
+                    {uploading ? 'Загрузка…' : '📎 Загрузить'}
+                    <input
+                      type="file"
+                      onChange={uploadFile}
+                      disabled={uploading}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+              {!selected.files || selected.files.length === 0 ? (
+                <p className="mt-1 text-sm text-slate-400">Файлов нет.</p>
+              ) : (
+                <div className="mt-1 space-y-1">
+                  {selected.files.map((f: any) => (
+                    <div
+                      key={f.id}
+                      className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-sm"
+                    >
+                      <a
+                        href={`${SERVER_ORIGIN}${f.fileUrl}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate text-indigo-600 hover:underline"
+                      >
+                        📎 {f.fileName ?? 'файл'}
+                      </a>
+                      {canManage && (
+                        <button
+                          onClick={() => removeFile(f.id)}
+                          className="ml-2 text-rose-400 hover:text-rose-600"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

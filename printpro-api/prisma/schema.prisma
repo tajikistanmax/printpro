@@ -284,9 +284,24 @@ model Client {
   orders Order[]
   debts  ClientDebt[]
   quotes Quote[]
+  files  ClientFile[]
 
   @@index([companyId, phone])
   @@index([companyId, updatedAt])
+}
+
+model ClientFile {
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
+  clientId  String
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fileUrl   String
+  fileName  String?
+  type      String?
+  createdAt DateTime  @default(now())
 }
 
 // ======================= УСЛУГИ =======================
