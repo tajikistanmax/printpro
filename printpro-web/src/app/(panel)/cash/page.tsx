@@ -31,6 +31,7 @@ export default function CashPage() {
   const [moveCategory, setMoveCategory] = useState('');
   const [moveReason, setMoveReason] = useState('');
   const [counted, setCounted] = useState('');
+  const [showX, setShowX] = useState(false);
 
   function load() {
     setLoading(true);
@@ -155,10 +156,77 @@ export default function CashPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-800">Касса</h1>
-        <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-700">
-          ● Смена открыта · {shift.user}
-        </span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowX(true)}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            🖨 X-отчёт
+          </button>
+          <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-700">
+            ● Смена открыта · {shift.user}
+          </span>
+        </div>
       </div>
+
+      {/* X-отчёт — промежуточный, без закрытия смены */}
+      {showX && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-80 rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="print-area">
+              <div className="text-center">
+                <div className="text-lg font-bold">PrintPro</div>
+                <div className="text-xs text-slate-500">X-отчёт (промежуточный)</div>
+              </div>
+              <div className="my-3 border-y border-dashed border-slate-300 py-2 text-xs">
+                <Line2 l="Кассир" r={shift.user} />
+                {shift.branch && <Line2 l="Филиал" r={shift.branch} />}
+                <Line2
+                  l="Открыта"
+                  r={new Date(shift.openedAt).toLocaleString('ru-RU')}
+                />
+                <Line2 l="Напечатан" r={new Date().toLocaleString('ru-RU')} />
+              </div>
+              <div className="space-y-1 text-sm">
+                <Line2 l="Наличные" r={money(s.cash)} />
+                <Line2 l="Карта" r={money(s.card)} />
+                <Line2 l="QR" r={money(s.qr)} />
+                <Line2 l="Перевод" r={money(s.transfer)} />
+                <Line2 l="В долг" r={money(s.debt)} />
+                <Line2 l="Внесения" r={money(s.movementsIn)} />
+                <Line2 l="Изъятия" r={money(s.movementsOut)} />
+              </div>
+              <div className="mt-3 border-t border-dashed border-slate-300 pt-2 text-sm">
+                <div className="flex justify-between font-bold">
+                  <span>Выручка деньгами</span>
+                  <span>{money(s.totalRevenue)}</span>
+                </div>
+                <div className="flex justify-between font-bold">
+                  <span>Наличных в кассе</span>
+                  <span>{money(s.expectedCash)}</span>
+                </div>
+              </div>
+              <div className="mt-3 text-center text-xs text-slate-400">
+                Смена не закрыта
+              </div>
+            </div>
+            <div className="no-print mt-5 flex gap-2">
+              <button
+                onClick={() => window.print()}
+                className="flex-1 rounded-lg bg-indigo-600 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              >
+                🖨 Печать
+              </button>
+              <button
+                onClick={() => setShowX(false)}
+                className="flex-1 rounded-lg border border-slate-200 py-2 text-sm text-slate-600 hover:bg-slate-50"
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Итоги */}
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -359,6 +427,15 @@ export default function CashPage() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function Line2({ l, r }: { l: string; r: string }) {
+  return (
+    <div className="flex justify-between">
+      <span>{l}</span>
+      <span>{r}</span>
     </div>
   );
 }
