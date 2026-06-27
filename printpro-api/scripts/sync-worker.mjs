@@ -18,7 +18,8 @@ const CLOUD = process.env.CLOUD_API;
 const SECRET = process.env.SYNC_SECRET;
 const NODE_ID = (process.env.NODE_ID ?? 'K1').toUpperCase();
 const INTERVAL = (Number(process.env.SYNC_INTERVAL) || 20) * 1000;
-const STATE_FILE = join(process.cwd(), '.sync-state.json');
+const STATE_DIR = process.env.SYNC_STATE_DIR ?? process.cwd();
+const STATE_FILE = join(STATE_DIR, '.sync-state.json');
 
 if (!CLOUD || !SECRET) {
   console.error('Нужны переменные CLOUD_API и SYNC_SECRET');

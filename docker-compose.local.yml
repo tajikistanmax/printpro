@@ -1,0 +1,67 @@
+# PrintPro — локальный узел (сервер на компьютере точки).
+# Поднимает: PostgreSQL + API + панель + синхронизатор с облаком.
+# Запуск:  установить-локальный-узел.cmd   (или: docker compose -f docker-compose.local.yml --env-file .env.local up -d --build)
+name: printpro-local
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: printpro
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d printpro"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./printpro-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-postgres}@db:5432/printpro?schema=public
+      PORT: 3000
+      JWT_SECRET: ${JWT_SECRET:-printpro_local_change_me}
+      JWT_EXPIRES_IN: 7d
+      SYNC_SECRET: ${SYNC_SECRET}
+      NODE_ID: ${NODE_ID:-K1}
+    ports:
+      - "3000:3000"
+    volumes:
+      - uploads:/app/uploads
+
+  web:
+    build: ./printpro-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3001:3001"
+
+  sync:
+    build: ./printpro-api
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      LOCAL_API: http://api:3000/api
+      CLOUD_API: ${CLOUD_API}
+      SYNC_SECRET: ${SYNC_SECRET}
+      NODE_ID: ${NODE_ID:-K1}
+      SYNC_INTERVAL: ${SYNC_INTERVAL:-20}
+      SYNC_STATE_DIR: /state
+    command: ["node", "scripts/sync-worker.mjs"]
+    volumes:
+      - syncstate:/state
+
+volumes:
+  pgdata:
+  uploads:
+  syncstate:

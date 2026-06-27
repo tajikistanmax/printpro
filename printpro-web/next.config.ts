@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Самодостаточная сборка для Docker-образа локального узла
+  output: "standalone",
 };
 
 export default nextConfig;
