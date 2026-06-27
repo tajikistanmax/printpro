@@ -119,6 +119,12 @@ export default function PublicOrderPage() {
           <p className="mt-1 text-indigo-200">
             Закажите печать онлайн — загрузите макет, мы всё сделаем
           </p>
+          <a
+            href="/cabinet"
+            className="mt-3 inline-block rounded-lg bg-white/15 px-4 py-1.5 text-sm text-white hover:bg-white/25"
+          >
+            👤 Мои заказы (личный кабинет)
+          </a>
         </div>
 
         <form

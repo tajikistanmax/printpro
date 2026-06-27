@@ -127,4 +127,91 @@ export class PublicController {
   createOrder(@Body() dto: PublicOrderDto) {
     return this.createOrderHandler(dto);
   }
+
+  // ---------- Личный кабинет клиента (по телефону, без пароля) ----------
+
+  // Заказы клиента по номеру телефона
+  @Get('my-orders')
+  async myOrders(
+    @Query('companyId') companyId: string,
+    @Query('phone') phone: string,
+  ) {
+    if (!companyId || !phone) return { client: null, orders: [] };
+    const client = await this.prisma.client.findFirst({
+      where: { companyId, phone, deletedAt: null },
+      select: { id: true, fullName: true, phone: true },
+    });
+    if (!client) return { client: null, orders: [] };
+
+    const orders = await this.prisma.order.findMany({
+      where: { companyId, clientId: client.id, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        paymentStatus: true,
+        total: true,
+        balanceDue: true,
+        createdAt: true,
+        items: { select: { description: true, quantity: true } },
+      },
+    });
+    return { client, orders };
+  }
+
+  // Повторить заказ из кабинета (создаёт копию по позициям; проверяем телефон)
+  @Post('reorder')
+  async publicReorder(
+    @Body() body: { companyId: string; phone: string; orderId: string },
+  ) {
+    const src = await this.prisma.order.findUnique({
+      where: { id: body.orderId },
+      include: { items: true, client: true },
+    });
+    if (
+      !src ||
+      src.companyId !== body.companyId ||
+      src.client?.phone !== body.phone
+    ) {
+      return { ok: false, message: 'Заказ не найден' };
+    }
+
+    const items = src.items.map((it) => ({
+      itemType: it.itemType,
+      serviceId: it.serviceId ?? undefined,
+      productId: it.productId ?? undefined,
+      description: it.description,
+      quantity: it.quantity,
+      unitPrice: it.unitPrice,
+      lineTotal: Number((Number(it.quantity) * Number(it.unitPrice)).toFixed(2)),
+    }));
+    const total = Number(items.reduce((s, it) => s + it.lineTotal, 0).toFixed(2));
+
+    const node = (process.env.NODE_ID ?? 'C').toUpperCase();
+    const count = await this.prisma.order.count({
+      where: { companyId: body.companyId },
+    });
+    const year = new Date().getFullYear();
+    const orderNumber = `ORD-${node}-${year}-${String(count + 1).padStart(6, '0')}`;
+
+    const order = await this.prisma.order.create({
+      data: {
+        companyId: src.companyId,
+        clientId: src.clientId,
+        orderNumber,
+        orderType: src.orderType,
+        status: OrderStatus.ACCEPTED,
+        paymentStatus: PaymentStatus.UNPAID,
+        note: `Повтор онлайн-заказа №${src.orderNumber}`,
+        total,
+        paid: 0,
+        balanceDue: total,
+        items: { create: items },
+      },
+      select: { id: true, orderNumber: true },
+    });
+    return { ok: true, orderNumber: order.orderNumber, id: order.id };
+  }
 }
