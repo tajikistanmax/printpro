@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { join } from 'path';
 import { mkdirSync } from 'fs';
 import { AppModule } from './app.module';
@@ -30,6 +31,16 @@ async function bootstrap() {
 
   // Общий префикс для API: /api/...
   app.setGlobalPrefix('api');
+
+  // OpenAPI/Swagger — документация и песочница API: /api/docs
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('PrintPro API')
+    .setDescription('REST API платформы PrintPro')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api/docs', app, document);
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);

@@ -87,6 +87,7 @@ export class CashService {
         shiftId,
         type: dto.type,
         amount: dto.amount,
+        category: dto.category,
         reason: dto.reason,
       },
     });
@@ -197,6 +198,7 @@ export class CashService {
         id: m.id,
         type: m.type,
         amount: Number(m.amount),
+        category: m.category,
         reason: m.reason,
         createdAt: m.createdAt,
       })),

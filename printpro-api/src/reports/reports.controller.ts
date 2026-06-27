@@ -52,6 +52,17 @@ export class ReportsController {
     return this.reports.profit(companyId, from, to);
   }
 
+  // Расходы кассы по категориям
+  @Get('expenses')
+  @RequirePermissions('reports.view')
+  expenses(
+    @Query('companyId') companyId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reports.expenses(companyId, from, to);
+  }
+
   // Загрузка оборудования
   @Get('equipment-load')
   @RequirePermissions('reports.view')

@@ -49,6 +49,7 @@ export default function ReportsPage() {
   const [staff, setStaff] = useState<any[]>([]);
   const [profit, setProfit] = useState<any>(null);
   const [eqLoad, setEqLoad] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<any>(null);
 
   useEffect(() => {
     const { from, to } = periodRange(period);
@@ -63,6 +64,7 @@ export default function ReportsPage() {
       .get(`/reports/equipment-load?companyId=${cid}`)
       .then(setEqLoad)
       .catch(() => {});
+    api.get(`/reports/expenses?${q}`).then(setExpenses).catch(() => {});
   }, [cid, period]);
 
   const maxDaily = Math.max(1, ...daily.map((d) => d.amount));
@@ -354,6 +356,27 @@ export default function ReportsPage() {
           </table>
         )}
       </div>
+
+      {/* Расходы по категориям */}
+      {expenses && expenses.total > 0 && (
+        <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold text-slate-700">Расходы по категориям</h2>
+            <span className="font-semibold text-rose-600">{money(expenses.total)}</span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {expenses.byCategory.map((c: any) => (
+              <div
+                key={c.category}
+                className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"
+              >
+                <span className="text-slate-600">{c.category}</span>
+                <span className="font-medium text-slate-800">{money(c.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Загрузка оборудования */}
       {eqLoad.length > 0 && (

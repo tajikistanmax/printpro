@@ -27,6 +27,7 @@ export default function CashPage() {
   const [opening, setOpening] = useState('');
   const [moveType, setMoveType] = useState<'IN' | 'OUT'>('OUT');
   const [moveAmount, setMoveAmount] = useState('');
+  const [moveCategory, setMoveCategory] = useState('');
   const [moveReason, setMoveReason] = useState('');
   const [counted, setCounted] = useState('');
 
@@ -63,6 +64,7 @@ export default function CashPage() {
       const updated = await api.post('/cash/movements', {
         type: moveType,
         amount: Number(moveAmount),
+        category: moveType === 'OUT' ? moveCategory || undefined : undefined,
         reason: moveReason || undefined,
       });
       setShift(updated);
@@ -222,6 +224,29 @@ export default function CashPage() {
                   required
                 />
               </div>
+              {moveType === 'OUT' && (
+                <div className="min-w-[150px]">
+                  <label className="mb-1 block text-sm text-slate-500">
+                    Категория
+                  </label>
+                  <input
+                    value={moveCategory}
+                    onChange={(e) => setMoveCategory(e.target.value)}
+                    list="expense-cats"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                    placeholder="Расход"
+                  />
+                  <datalist id="expense-cats">
+                    <option value="Аренда" />
+                    <option value="Зарплата" />
+                    <option value="Материалы" />
+                    <option value="Коммунальные" />
+                    <option value="Реклама" />
+                    <option value="Инкассация" />
+                    <option value="Прочее" />
+                  </datalist>
+                </div>
+              )}
               <div className="min-w-[160px] flex-1">
                 <label className="mb-1 block text-sm text-slate-500">Причина</label>
                 <input
@@ -311,6 +336,11 @@ export default function CashPage() {
                   className="flex items-center justify-between text-sm"
                 >
                   <span className="text-slate-600">
+                    {m.category && (
+                      <span className="mr-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">
+                        {m.category}
+                      </span>
+                    )}
                     {m.reason || (m.type === 'IN' ? 'Внесение' : 'Изъятие')}
                   </span>
                   <span

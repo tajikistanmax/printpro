@@ -196,6 +196,40 @@ export class ReportsService {
     };
   }
 
+  // Расходы кассы по категориям за период (тип OUT)
+  async expenses(companyId: string, from?: string, to?: string) {
+    const range = this.range(from, to);
+    const movements = await this.prisma.cashMovement.findMany({
+      where: { companyId, type: 'OUT', createdAt: range },
+      select: { amount: true, category: true, reason: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const byCat = new Map<string, number>();
+    let total = 0;
+    for (const m of movements) {
+      const cat = m.category?.trim() || 'Без категории';
+      const amt = Number(m.amount);
+      byCat.set(cat, Number(((byCat.get(cat) ?? 0) + amt).toFixed(2)));
+      total += amt;
+    }
+
+    return {
+      from: range.gte,
+      to: range.lte,
+      total: Number(total.toFixed(2)),
+      byCategory: Array.from(byCat.entries())
+        .map(([category, amount]) => ({ category, amount }))
+        .sort((a, b) => b.amount - a.amount),
+      items: movements.map((m) => ({
+        date: m.createdAt,
+        category: m.category?.trim() || 'Без категории',
+        reason: m.reason ?? '',
+        amount: Number(m.amount),
+      })),
+    };
+  }
+
   // Загрузка оборудования: задания по станкам и статусам (п. 2.2/2.10)
   async equipmentLoad(companyId: string) {
     const equipment = await this.prisma.equipment.findMany({

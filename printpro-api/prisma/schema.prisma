@@ -683,6 +683,7 @@ model CashMovement {
   shift     CashShift? @relation(fields: [shiftId], references: [id])
   type      String // IN / OUT
   amount    Decimal    @db.Decimal(12, 2)
+  category  String? // категория расхода/прихода (аренда, зарплата, материалы…)
   reason    String?
   createdAt DateTime   @default(now())
 }

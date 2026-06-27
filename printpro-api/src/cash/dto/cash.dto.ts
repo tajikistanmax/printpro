@@ -20,6 +20,7 @@ export class CashMovementDto {
   type: 'IN' | 'OUT';
 
   @IsNumber() @Min(0.01) amount: number;
+  @IsOptional() @IsString() category?: string; // аренда, зарплата, материалы…
   @IsOptional() @IsString() reason?: string;
   // Если не передан — применяем к текущей открытой смене пользователя
   @IsOptional() @IsString() shiftId?: string;
