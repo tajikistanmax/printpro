@@ -334,6 +334,40 @@ export class OrdersService {
     });
   }
 
+  // ---------- Повторить заказ ----------
+  // Создаёт новый заказ-копию по позициям и характеристикам существующего.
+  async reorder(orderId: string) {
+    const src = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: true },
+    });
+    if (!src) throw new NotFoundException('Заказ не найден');
+
+    return this.create({
+      companyId: src.companyId,
+      branchId: src.branchId ?? undefined,
+      orderType: src.orderType,
+      clientId: src.clientId ?? undefined,
+      assignedUserId: src.assignedUserId ?? undefined,
+      designerId: src.designerId ?? undefined,
+      operatorId: src.operatorId ?? undefined,
+      format: src.format ?? undefined,
+      colorMode: src.colorMode ?? undefined,
+      urgency: src.urgency,
+      note: src.note ?? undefined,
+      items: src.items.map((it) => ({
+        itemType: it.itemType,
+        serviceId: it.serviceId ?? undefined,
+        productId: it.productId ?? undefined,
+        description: it.description ?? undefined,
+        quantity: Number(it.quantity),
+        unitPrice: Number(it.unitPrice),
+        unitCost: Number(it.unitCost),
+        options: it.options ?? undefined,
+      })),
+    });
+  }
+
   // ---------- Сменить статус ----------
   async updateStatus(orderId: string, status: OrderStatus) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });

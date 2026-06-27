@@ -69,6 +69,19 @@ export default function OrdersPage() {
     }
   }
 
+  async function reorder() {
+    if (!selected) return;
+    setMsg('');
+    try {
+      const created = await api.post(`/orders/${selected.id}/reorder`);
+      setMsg(`✓ Создан повторный заказ №${created.orderNumber}`);
+      load();
+      openOrder(created.id);
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
   async function refund() {
     if (!selected) return;
     if (!confirm('Оформить возврат? Деньги вернутся из кассы, товар — на склад, заказ будет отменён.'))
@@ -145,6 +158,14 @@ export default function OrdersPage() {
                   Заказ №{selected.orderNumber}
                 </h2>
                 <div className="flex items-center gap-3">
+                  {can('orders.manage') && (
+                    <button
+                      onClick={reorder}
+                      className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                    >
+                      ↻ Повторить
+                    </button>
+                  )}
                   <Link
                     href={`/order-card?id=${selected.id}`}
                     className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"

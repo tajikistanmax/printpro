@@ -29,6 +29,8 @@ const SYNC_TABLES: { model: string; table: string }[] = [
   { model: 'orderRepairDetail', table: 'OrderRepairDetail' },
   { model: 'orderRecoveryDetail', table: 'OrderRecoveryDetail' },
   { model: 'orderFile', table: 'OrderFile' },
+  { model: 'quote', table: 'Quote' },
+  { model: 'quoteItem', table: 'QuoteItem' },
   { model: 'cashShift', table: 'CashShift' },
   { model: 'payment', table: 'Payment' },
   { model: 'cashMovement', table: 'CashMovement' },

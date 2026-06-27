@@ -19,6 +19,7 @@ const NAV = [
   { href: '/purchasing', label: 'Закупки', icon: '🚚', perm: 'stock.view' },
   { href: '/services', label: 'Услуги', icon: '🛠️', perm: 'services.view' },
   { href: '/clients', label: 'Клиенты', icon: '🧑', perm: 'clients.view' },
+  { href: '/quotes', label: 'КП', icon: '📄', perm: 'orders.view' },
   { href: '/tasks', label: 'Задачи', icon: '📋', perm: 'tasks.view' },
   { href: '/reports', label: 'Отчёты', icon: '📊', perm: 'reports.view' },
   { href: '/staff', label: 'Сотрудники', icon: '👥', perm: 'users.view' },

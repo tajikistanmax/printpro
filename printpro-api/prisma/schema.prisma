@@ -113,6 +113,13 @@ enum EquipmentStatus {
   OFF // выключено / не используется
 }
 
+enum QuoteStatus {
+  DRAFT // черновик
+  SENT // отправлено клиенту
+  ACCEPTED // принято (→ заказ)
+  REJECTED // отклонено
+}
+
 // ======================= ТЕНАНТ И ПОЛЬЗОВАТЕЛИ =======================
 
 model Company {
@@ -140,6 +147,7 @@ model Company {
   tasks             Task[]
   settings          Setting[]
   equipment         Equipment[]
+  quotes            Quote[]
 }
 
 model Branch {
@@ -269,6 +277,7 @@ model Client {
 
   orders Order[]
   debts  ClientDebt[]
+  quotes Quote[]
 
   @@index([companyId, phone])
   @@index([companyId, updatedAt])
@@ -771,6 +780,50 @@ model Equipment {
   productionJobs ProductionJob[]
 
   @@index([companyId])
+}
+
+// ======================= КОММЕРЧЕСКИЕ ПРЕДЛОЖЕНИЯ (КП) =======================
+
+model Quote {
+  // --- синхронизация ---
+  updatedAt        DateTime    @default(now()) @updatedAt
+  deletedAt        DateTime?
+  syncNode         String?
+  id               String      @id @default(uuid())
+  companyId        String
+  company          Company     @relation(fields: [companyId], references: [id])
+  clientId         String?
+  client           Client?     @relation(fields: [clientId], references: [id])
+  number           String
+  status           QuoteStatus @default(DRAFT)
+  title            String?
+  note             String?
+  total            Decimal     @default(0) @db.Decimal(12, 2)
+  validUntil       DateTime?
+  convertedOrderId String? // id заказа, если КП принято и превращено в заказ
+  createdAt        DateTime    @default(now())
+
+  items QuoteItem[]
+
+  @@unique([companyId, number])
+  @@index([companyId, updatedAt])
+}
+
+model QuoteItem {
+  // --- синхронизация ---
+  updatedAt   DateTime  @default(now()) @updatedAt
+  deletedAt   DateTime?
+  syncNode    String?
+  id          String    @id @default(uuid())
+  quoteId     String
+  quote       Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  itemType    ItemType
+  serviceId   String?
+  productId   String?
+  description String?
+  quantity    Decimal   @default(1) @db.Decimal(12, 3)
+  unitPrice   Decimal   @default(0) @db.Decimal(12, 2)
+  lineTotal   Decimal   @default(0) @db.Decimal(12, 2)
 }
 
 // ======================= ДИЗАЙН-МАКЕТЫ =======================

@@ -47,6 +47,13 @@ export class OrdersController {
     return this.orders.refund(id);
   }
 
+  // Повторить заказ (создать копию)
+  @Post(':id/reorder')
+  @RequirePermissions('orders.manage')
+  reorder(@Param('id') id: string) {
+    return this.orders.reorder(id);
+  }
+
   // Список заказов
   @Get()
   @RequirePermissions('orders.view')

@@ -25,6 +25,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { BranchesModule } from './branches/branches.module';
 import { PublicModule } from './public/public.module';
 import { EquipmentModule } from './equipment/equipment.module';
+import { QuotesModule } from './quotes/quotes.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { EquipmentModule } from './equipment/equipment.module';
     BranchesModule, // филиалы
     PublicModule, // публичный сайт (онлайн-заказы)
     EquipmentModule, // оборудование (принтеры/станки)
+    QuotesModule, // коммерческие предложения (КП → заказ)
   ],
   controllers: [AppController],
   providers: [AppService],

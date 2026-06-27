@@ -7,5 +7,6 @@ import { ClientsModule } from '../clients/clients.module';
   imports: [ClientsModule], // для поиска/создания клиента
   controllers: [OrdersController],
   providers: [OrdersService],
+  exports: [OrdersService], // используется в модуле КП (превращение в заказ)
 })
 export class OrdersModule {}
