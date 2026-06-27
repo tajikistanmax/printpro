@@ -39,6 +39,26 @@ export default function SettingsPage() {
     }
   }
 
+  async function downloadBackup() {
+    setMsg('Готовлю резервную копию…');
+    try {
+      const dump = await api.get(`/backup/export?companyId=${cid}`);
+      const blob = new Blob([JSON.stringify(dump, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `printpro-backup-${stamp}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMsg('✓ Резервная копия скачана');
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
   async function testTelegram() {
     setMsg('Сохраняю и проверяю Telegram…');
     try {
@@ -162,6 +182,22 @@ export default function SettingsPage() {
             className="mt-3 rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
           >
             Сохранить и проверить
+          </button>
+        </div>
+
+        {/* Резервное копирование */}
+        <div className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="mb-1 font-semibold text-slate-700">Резервная копия</h2>
+          <p className="mb-4 text-xs text-slate-400">
+            Скачивает все данные компании (заказы, клиенты, склад, финансы и т.д.)
+            одним JSON-файлом. Храните копию в надёжном месте. База в облаке
+            дополнительно резервируется на стороне Render.
+          </p>
+          <button
+            onClick={downloadBackup}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            ⬇ Скачать резервную копию (JSON)
           </button>
         </div>
 
