@@ -127,6 +127,11 @@ enum QuoteStatus {
   REJECTED // отклонено
 }
 
+enum DiscountType {
+  PERCENT // процент
+  FIXED // фиксированная сумма
+}
+
 // ======================= ТЕНАНТ И ПОЛЬЗОВАТЕЛИ =======================
 
 model Company {
@@ -155,6 +160,7 @@ model Company {
   settings          Setting[]
   equipment         Equipment[]
   quotes            Quote[]
+  promoCodes        PromoCode[]
 }
 
 model Branch {
@@ -273,10 +279,12 @@ model Client {
   type      ClientType @default(INDIVIDUAL)
   email     String?
   address   String?
-  inn       String?
-  discount  Decimal    @default(0) @db.Decimal(5, 2) // скидка, %
-  note      String?
-  createdAt DateTime   @default(now())
+  inn         String?
+  discount    Decimal    @default(0) @db.Decimal(5, 2) // скидка, %
+  creditLimit Decimal    @default(0) @db.Decimal(12, 2) // кредитный лимит (0 = без лимита)
+  bonusPoints Decimal    @default(0) @db.Decimal(12, 2) // накопленные бонусы
+  note        String?
+  createdAt   DateTime   @default(now())
   // --- синхронизация ---
   updatedAt DateTime   @default(now()) @updatedAt
   deletedAt DateTime?
@@ -289,6 +297,26 @@ model Client {
 
   @@index([companyId, phone])
   @@index([companyId, updatedAt])
+}
+
+model PromoCode {
+  // --- синхронизация ---
+  updatedAt    DateTime     @default(now()) @updatedAt
+  deletedAt    DateTime?
+  syncNode     String?
+  id           String       @id @default(uuid())
+  companyId    String
+  company      Company      @relation(fields: [companyId], references: [id])
+  code         String
+  discountType DiscountType @default(PERCENT)
+  value        Decimal      @db.Decimal(12, 2) // % или абсолютная сумма
+  maxUses      Int? // null = без ограничения
+  usedCount    Int          @default(0)
+  validUntil   DateTime?
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+
+  @@unique([companyId, code])
 }
 
 model ClientFile {

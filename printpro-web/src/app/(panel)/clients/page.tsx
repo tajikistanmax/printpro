@@ -53,6 +53,7 @@ export default function ClientsPage() {
   const [type, setType] = useState('INDIVIDUAL');
   const [email, setEmail] = useState('');
   const [discount, setDiscount] = useState('');
+  const [creditLimit, setCreditLimit] = useState('');
   const [msg, setMsg] = useState('');
 
   function load() {
@@ -123,11 +124,13 @@ export default function ClientsPage() {
         type,
         email: email || undefined,
         discount: discount ? Number(discount) : undefined,
+        creditLimit: creditLimit ? Number(creditLimit) : undefined,
       });
       setFullName('');
       setPhone('');
       setEmail('');
       setDiscount('');
+      setCreditLimit('');
       setType('INDIVIDUAL');
       setShowForm(false);
       setMsg('');
@@ -196,6 +199,14 @@ export default function ClientsPage() {
               min="0"
               max="100"
               placeholder="Скидка, %"
+              className="rounded-lg border border-slate-300 px-3 py-2"
+            />
+            <input
+              value={creditLimit}
+              onChange={(e) => setCreditLimit(e.target.value)}
+              type="number"
+              min="0"
+              placeholder="Кредитный лимит, c. (0 = без)"
               className="rounded-lg border border-slate-300 px-3 py-2"
             />
             <button className="rounded-lg bg-emerald-600 px-5 py-2 font-medium text-white hover:bg-emerald-700">
@@ -279,15 +290,22 @@ export default function ClientsPage() {
             <p className="text-slate-400">Выберите клиента слева.</p>
           ) : (
             <>
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold text-slate-800">
                   {selected.fullName ?? 'Без имени'}
                 </h2>
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs ${TYPE_COLORS[selected.type]}`}
-                >
-                  {TYPE_LABELS[selected.type]}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  {selected.stats?.inactive && (
+                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-700">
+                      неактивный
+                    </span>
+                  )}
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs ${TYPE_COLORS[selected.type]}`}
+                  >
+                    {TYPE_LABELS[selected.type]}
+                  </span>
+                </div>
               </div>
 
               <div className="mb-4 space-y-1 text-sm text-slate-600">
@@ -298,12 +316,34 @@ export default function ClientsPage() {
                 {selected.discount > 0 && (
                   <div className="text-emerald-600">Скидка: {selected.discount}%</div>
                 )}
+                {Number(selected.bonusPoints) > 0 && (
+                  <div className="text-violet-600">
+                    🎁 Бонусы: {Number(selected.bonusPoints).toFixed(0)}
+                  </div>
+                )}
+                {Number(selected.creditLimit) > 0 && (
+                  <div className="text-slate-600">
+                    Кредитный лимит: {selected.creditLimit} c.
+                    {selected.stats?.creditAvailable != null && (
+                      <span
+                        className={
+                          selected.stats.creditAvailable < 0
+                            ? 'ml-1 text-rose-600'
+                            : 'ml-1 text-slate-400'
+                        }
+                      >
+                        (доступно {selected.stats.creditAvailable} c.)
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Статистика */}
-              <div className="mb-4 grid grid-cols-3 gap-2">
+              <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <Stat label="Заказов" value={String(selected.stats.ordersCount)} />
                 <Stat label="Потрачено" value={money(selected.stats.totalSpent)} />
+                <Stat label="Ср. чек" value={money(selected.stats.avgCheck ?? 0)} />
                 <Stat
                   label="Долг"
                   value={money(selected.stats.totalDebt)}

@@ -18,6 +18,7 @@ export class CreateClientDto {
   @IsOptional() @IsString() address?: string;
   @IsOptional() @IsString() inn?: string;
   @IsOptional() @IsNumber() @Min(0) @Max(100) discount?: number;
+  @IsOptional() @IsNumber() @Min(0) creditLimit?: number;
   @IsOptional() @IsString() note?: string;
 }
 
@@ -29,5 +30,6 @@ export class UpdateClientDto {
   @IsOptional() @IsString() address?: string;
   @IsOptional() @IsString() inn?: string;
   @IsOptional() @IsNumber() @Min(0) @Max(100) discount?: number;
+  @IsOptional() @IsNumber() @Min(0) creditLimit?: number;
   @IsOptional() @IsString() note?: string;
 }

@@ -71,6 +71,27 @@ export class OrdersService {
       items.reduce((sum, it) => sum + it.lineTotal, 0).toFixed(2),
     );
 
+    // 2.5. Кредитный лимит клиента (п. 8.4 ТЗ): если долг + новый заказ превышают лимит — блок
+    if (clientId) {
+      const client = await this.prisma.client.findUnique({
+        where: { id: clientId },
+        select: { creditLimit: true, fullName: true },
+      });
+      const limit = Number(client?.creditLimit ?? 0);
+      if (limit > 0) {
+        const agg = await this.prisma.order.aggregate({
+          where: { clientId, status: { not: OrderStatus.CANCELLED } },
+          _sum: { balanceDue: true },
+        });
+        const currentDebt = Number(agg._sum.balanceDue ?? 0);
+        if (currentDebt + total > limit) {
+          throw new BadRequestException(
+            `Превышен кредитный лимит клиента (${limit} c.). Текущий долг ${currentDebt} c. + заказ ${total} c.`,
+          );
+        }
+      }
+    }
+
     // 3. Всё в одной транзакции (либо всё, либо ничего)
     return this.prisma.$transaction(async (tx) => {
       // Номер заказа: ORD-<УЗЕЛ>-ГОД-NNNNNN.
@@ -218,6 +239,17 @@ export class OrdersService {
           paymentStatus,
         },
       });
+
+      // Бонусы клиенту: 1% от внесённой суммы (п. 8.6), кроме оплаты «в долг»
+      if (order.clientId && dto.method !== PaymentMethod.DEBT) {
+        const bonus = Number((dto.amount * 0.01).toFixed(2));
+        if (bonus > 0) {
+          await tx.client.update({
+            where: { id: order.clientId },
+            data: { bonusPoints: { increment: bonus } },
+          });
+        }
+      }
 
       return this.loadFull(tx, orderId);
     });

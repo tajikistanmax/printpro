@@ -35,6 +35,7 @@ export class ClientsService {
         address: dto.address,
         inn: dto.inn,
         discount: dto.discount ?? 0,
+        creditLimit: dto.creditLimit ?? 0,
         note: dto.note,
       },
     });
@@ -106,14 +107,33 @@ export class ClientsService {
       (s, o) => s + Number(o.balanceDue),
       0,
     );
+    const ordersCount = client.orders.length;
+    const lastOrderAt = client.orders[0]?.createdAt ?? null;
+    // Неактивный — без заказов более 30 дней (п. 8.3 ТЗ)
+    const inactive = lastOrderAt
+      ? Date.now() - new Date(lastOrderAt).getTime() > 30 * 24 * 3600 * 1000
+      : true;
+    // Средний чек и LTV (п. 8.5)
+    const avgCheck = ordersCount
+      ? Number((totalSpent / ordersCount).toFixed(2))
+      : 0;
 
     return {
       ...client,
       discount: Number(client.discount),
+      creditLimit: Number(client.creditLimit),
+      bonusPoints: Number(client.bonusPoints),
       stats: {
-        ordersCount: client.orders.length,
+        ordersCount,
         totalSpent: Number(totalSpent.toFixed(2)),
         totalDebt: Number(totalDebt.toFixed(2)),
+        avgCheck,
+        lastOrderAt,
+        inactive,
+        creditAvailable:
+          Number(client.creditLimit) > 0
+            ? Number((Number(client.creditLimit) - totalDebt).toFixed(2))
+            : null,
       },
     };
   }
