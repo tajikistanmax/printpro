@@ -27,6 +27,7 @@ import { PublicModule } from './public/public.module';
 import { EquipmentModule } from './equipment/equipment.module';
 import { QuotesModule } from './quotes/quotes.module';
 import { BackupModule } from './backup/backup.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { BackupModule } from './backup/backup.module';
     EquipmentModule, // оборудование (принтеры/станки)
     QuotesModule, // коммерческие предложения (КП → заказ)
     BackupModule, // резервная копия данных компании (экспорт)
+    SearchModule, // глобальный поиск
   ],
   controllers: [AppController],
   providers: [AppService],

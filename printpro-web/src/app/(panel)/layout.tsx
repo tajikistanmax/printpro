@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import NotificationBell from '@/lib/NotificationBell';
 import ThemeToggle from '@/lib/ThemeToggle';
 import SyncIndicator from '@/lib/SyncIndicator';
+import GlobalSearch from '@/lib/GlobalSearch';
 
 const NAV = [
   { href: '/dashboard', label: 'Главная', icon: '🏠', perm: null },
@@ -147,6 +148,7 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
             ☰
           </button>
           <div className="flex items-center gap-2">
+            <GlobalSearch />
             <SyncIndicator />
             <ThemeToggle />
             <NotificationBell />
