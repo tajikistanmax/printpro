@@ -26,6 +26,12 @@ services:
         generateValue: true # Render сам сгенерирует надёжный ключ
       - key: JWT_EXPIRES_IN
         value: 7d
+      # Синхронизация: общий секрет (скопируйте его в локальные узлы)
+      - key: SYNC_SECRET
+        generateValue: true
+      # Идентификатор облачного узла
+      - key: NODE_ID
+        value: C
       - key: NODE_VERSION
         value: "22"
 

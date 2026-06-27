@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import NotificationBell from '@/lib/NotificationBell';
 import ThemeToggle from '@/lib/ThemeToggle';
+import SyncIndicator from '@/lib/SyncIndicator';
 
 const NAV = [
   { href: '/dashboard', label: 'Главная', icon: '🏠', perm: null },
@@ -116,8 +117,9 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
 
       {/* Контент */}
       <main className="flex-1 overflow-auto">
-        {/* Верхняя панель: тема + уведомления */}
-        <div className="flex justify-end gap-2 px-8 pt-5">
+        {/* Верхняя панель: синхронизация + тема + уведомления */}
+        <div className="flex items-center justify-end gap-2 px-8 pt-5">
+          <SyncIndicator />
           <ThemeToggle />
           <NotificationBell />
         </div>

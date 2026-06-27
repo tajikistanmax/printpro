@@ -35,6 +35,7 @@ export class DesignService {
     return this.prisma.designProof.findMany({
       where: {
         companyId,
+        deletedAt: null,
         ...(status ? { status } : {}),
         ...(orderId ? { orderId } : {}),
       },
@@ -77,7 +78,11 @@ export class DesignService {
 
   async remove(id: string) {
     await this.ensure(id);
-    await this.prisma.designProof.delete({ where: { id } });
+    // Мягкое удаление — чтобы синхронизировалось между узлами
+    await this.prisma.designProof.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
     return { ok: true };
   }
 

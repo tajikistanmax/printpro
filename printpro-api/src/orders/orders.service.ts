@@ -49,11 +49,13 @@ export class OrdersService {
 
     // 3. Всё в одной транзакции (либо всё, либо ничего)
     return this.prisma.$transaction(async (tx) => {
-      // Номер заказа: ORD-ГОД-NNNNNN (порядковый внутри компании)
+      // Номер заказа: ORD-<УЗЕЛ>-ГОД-NNNNNN.
+      // Префикс узла (NODE_ID) гарантирует уникальность между точками сети.
+      const node = (process.env.NODE_ID ?? 'C').toUpperCase();
       const count = await tx.order.count({ where: { companyId: dto.companyId } });
       const year = new Date().getFullYear();
       const seq = String(count + 1).padStart(6, '0');
-      const orderNumber = `ORD-${year}-${seq}`;
+      const orderNumber = `ORD-${node}-${year}-${seq}`;
 
       // Создаём заказ с позициями
       const order = await tx.order.create({

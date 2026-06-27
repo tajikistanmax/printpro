@@ -11,6 +11,9 @@ async function bootstrap() {
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // Увеличиваем лимит тела запроса — пачки синхронизации бывают большими
+  app.useBodyParser('json', { limit: '50mb' });
+
   // Глобальная проверка входящих данных по DTO
   app.useGlobalPipes(
     new ValidationPipe({

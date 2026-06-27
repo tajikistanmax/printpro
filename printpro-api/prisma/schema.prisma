@@ -103,11 +103,15 @@ enum ClientType {
 // ======================= ТЕНАНТ И ПОЛЬЗОВАТЕЛИ =======================
 
 model Company {
-  id        String   @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   name      String
-  currency  String   @default("TJS")
-  language  String   @default("ru")
-  createdAt DateTime @default(now())
+  currency  String    @default("TJS")
+  language  String    @default("ru")
+  createdAt DateTime  @default(now())
 
   branches          Branch[]
   users             User[]
@@ -125,14 +129,18 @@ model Company {
 }
 
 model Branch {
-  id        String   @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   companyId String
-  company   Company  @relation(fields: [companyId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id])
   name      String
   address   String?
   phone     String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
 
   users          User[]
   stock          Stock[]
@@ -143,26 +151,38 @@ model Branch {
 }
 
 model Role {
-  id        String  @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id])
   name      String
-  isSystem  Boolean @default(false)
+  isSystem  Boolean   @default(false)
 
   users       User[]
   permissions RolePermission[]
 }
 
 model Permission {
-  id    String  @id @default(uuid())
-  code  String  @unique // например orders.view
-  label String
-  group String?
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
+  code      String    @unique // например orders.view
+  label     String
+  group     String?
 
   roles RolePermission[]
 }
 
 model RolePermission {
+  // --- синхронизация ---
+  updatedAt    DateTime   @default(now()) @updatedAt
+  deletedAt    DateTime?
+  syncNode     String?
   id           String     @id @default(uuid())
   roleId       String
   role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
@@ -173,13 +193,17 @@ model RolePermission {
 }
 
 model User {
-  id           String   @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt    DateTime   @default(now()) @updatedAt
+  deletedAt    DateTime?
+  syncNode     String?
+  id           String     @id @default(uuid())
   companyId    String
-  company      Company  @relation(fields: [companyId], references: [id])
+  company      Company    @relation(fields: [companyId], references: [id])
   branchId     String?
-  branch       Branch?  @relation(fields: [branchId], references: [id])
+  branch       Branch?    @relation(fields: [branchId], references: [id])
   roleId       String?
-  role         Role?    @relation(fields: [roleId], references: [id])
+  role         Role?      @relation(fields: [roleId], references: [id])
   login        String
   passwordHash String
   fullName     String
@@ -221,26 +245,39 @@ model Client {
   discount  Decimal    @default(0) @db.Decimal(5, 2) // скидка, %
   note      String?
   createdAt DateTime   @default(now())
+  // --- синхронизация ---
+  updatedAt DateTime   @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
 
   orders Order[]
   debts  ClientDebt[]
 
   @@index([companyId, phone])
+  @@index([companyId, updatedAt])
 }
 
 // ======================= УСЛУГИ =======================
 
 model ServiceCategory {
-  id        String  @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id])
   name      String
-  sortOrder Int     @default(0)
+  sortOrder Int       @default(0)
 
   services Service[]
 }
 
 model Service {
+  // --- синхронизация ---
+  updatedAt       DateTime         @default(now()) @updatedAt
+  deletedAt       DateTime?
+  syncNode        String?
   id              String           @id @default(uuid())
   companyId       String
   company         Company          @relation(fields: [companyId], references: [id])
@@ -261,45 +298,65 @@ model Service {
 }
 
 model ServicePriceTier {
-  id        String  @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   serviceId String
-  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service   Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   minQty    Int
   maxQty    Int?
-  price     Decimal @db.Decimal(12, 2)
+  price     Decimal   @db.Decimal(12, 2)
 }
 
 model ServiceSize {
-  id        String  @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   serviceId String
-  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service   Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   label     String // например 10x15, A4
-  price     Decimal @db.Decimal(12, 2)
+  price     Decimal   @db.Decimal(12, 2)
 }
 
 model ServiceOption {
-  id            String  @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt     DateTime  @default(now()) @updatedAt
+  deletedAt     DateTime?
+  syncNode      String?
+  id            String    @id @default(uuid())
   serviceId     String
-  service       Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service       Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   name          String // тип бумаги, срочность
-  priceModifier Decimal @default(0) @db.Decimal(12, 2)
+  priceModifier Decimal   @default(0) @db.Decimal(12, 2)
 }
 
 // ======================= ТОВАРЫ И СКЛАД =======================
 
 model ProductCategory {
-  id        String  @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id])
   name      String
 
   products Product[]
 }
 
 model Unit {
-  id        String  @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id])
   name      String // штука, рулон, метр квадратный
   shortName String // шт, рул, м²
 
@@ -307,6 +364,10 @@ model Unit {
 }
 
 model Product {
+  // --- синхронизация ---
+  updatedAt  DateTime         @default(now()) @updatedAt
+  deletedAt  DateTime?
+  syncNode   String?
   id         String           @id @default(uuid())
   companyId  String
   company    Company          @relation(fields: [companyId], references: [id])
@@ -328,17 +389,25 @@ model Product {
 }
 
 model Stock {
-  id        String  @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
   branchId  String
-  branch    Branch  @relation(fields: [branchId], references: [id])
-  quantity  Decimal @default(0) @db.Decimal(12, 3)
+  branch    Branch    @relation(fields: [branchId], references: [id])
+  quantity  Decimal   @default(0) @db.Decimal(12, 3)
 
   @@unique([productId, branchId])
 }
 
 model StockMovement {
+  // --- синхронизация ---
+  updatedAt DateTime          @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
   id        String            @id @default(uuid())
   companyId String
   productId String
@@ -356,9 +425,13 @@ model StockMovement {
 }
 
 model Supplier {
-  id        String  @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id])
   name      String
   phone     String?
   note      String?
@@ -367,6 +440,10 @@ model Supplier {
 }
 
 model StockReceipt {
+  // --- синхронизация ---
+  updatedAt  DateTime  @default(now()) @updatedAt
+  deletedAt  DateTime?
+  syncNode   String?
   id         String    @id @default(uuid())
   companyId  String
   supplierId String?
@@ -380,6 +457,10 @@ model StockReceipt {
 }
 
 model StockReceiptItem {
+  // --- синхронизация ---
+  updatedAt DateTime     @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
   id        String       @id @default(uuid())
   receiptId String
   receipt   StockReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
@@ -413,6 +494,10 @@ model Order {
   balanceDue     Decimal       @default(0) @db.Decimal(12, 2)
   note           String?
   createdAt      DateTime      @default(now())
+  // --- синхронизация ---
+  updatedAt      DateTime      @default(now()) @updatedAt
+  deletedAt      DateTime?
+  syncNode       String?
 
   items          OrderItem[]
   repairDetail   OrderRepairDetail?
@@ -426,55 +511,76 @@ model Order {
   proofs         DesignProof[]
 
   @@unique([companyId, orderNumber])
+  @@index([companyId, updatedAt])
 }
 
 model OrderItem {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   orderId     String
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   itemType    ItemType
   serviceId   String?
-  service     Service? @relation(fields: [serviceId], references: [id])
+  service     Service?  @relation(fields: [serviceId], references: [id])
   productId   String?
-  product     Product? @relation(fields: [productId], references: [id])
+  product     Product?  @relation(fields: [productId], references: [id])
   description String?
-  quantity    Decimal  @default(1) @db.Decimal(12, 3)
-  unitPrice   Decimal  @default(0) @db.Decimal(12, 2)
+  quantity    Decimal   @default(1) @db.Decimal(12, 3)
+  unitPrice   Decimal   @default(0) @db.Decimal(12, 2)
   options     Json? // выбранные опции/размер/тип бумаги
-  lineTotal   Decimal  @default(0) @db.Decimal(12, 2)
+  lineTotal   Decimal   @default(0) @db.Decimal(12, 2)
+  // --- синхронизация ---
+  updatedAt   DateTime  @default(now()) @updatedAt
+  deletedAt   DateTime?
+  syncNode    String?
 }
 
 model OrderRepairDetail {
-  id          String  @id @default(uuid())
-  orderId     String  @unique
-  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // --- синхронизация ---
+  updatedAt   DateTime  @default(now()) @updatedAt
+  deletedAt   DateTime?
+  syncNode    String?
+  id          String    @id @default(uuid())
+  orderId     String    @unique
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   deviceModel String?
   problem     String?
   diagnosis   String?
 }
 
 model OrderRecoveryDetail {
-  id            String  @id @default(uuid())
-  orderId       String  @unique
-  order         Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // --- синхронизация ---
+  updatedAt     DateTime  @default(now()) @updatedAt
+  deletedAt     DateTime?
+  syncNode      String?
+  id            String    @id @default(uuid())
+  orderId       String    @unique
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   deviceType    String? // HDD, SSD, USB, карта памяти
   mediaModel    String?
   whatToRecover String?
 }
 
 model OrderFile {
-  id        String   @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   orderId   String
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   fileUrl   String
   fileName  String?
   type      String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 }
 
 // ======================= КАССА И ДЕНЬГИ =======================
 
 model CashShift {
+  // --- синхронизация ---
+  updatedAt      DateTime  @default(now()) @updatedAt
+  deletedAt      DateTime?
+  syncNode       String?
   id             String    @id @default(uuid())
   companyId      String
   branchId       String?
@@ -502,9 +608,19 @@ model Payment {
   amount    Decimal       @db.Decimal(12, 2)
   method    PaymentMethod @default(CASH)
   createdAt DateTime      @default(now())
+  // --- синхронизация ---
+  updatedAt DateTime      @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+
+  @@index([companyId, updatedAt])
 }
 
 model CashMovement {
+  // --- синхронизация ---
+  updatedAt DateTime   @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
   id        String     @id @default(uuid())
   companyId String
   shiftId   String?
@@ -516,6 +632,10 @@ model CashMovement {
 }
 
 model ClientDebt {
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
   id        String    @id @default(uuid())
   companyId String
   clientId  String
@@ -531,6 +651,10 @@ model ClientDebt {
 // ======================= ЗАДАЧИ =======================
 
 model Task {
+  // --- синхронизация ---
+  updatedAt      DateTime   @default(now()) @updatedAt
+  deletedAt      DateTime?
+  syncNode       String?
   id             String     @id @default(uuid())
   companyId      String
   company        Company    @relation(fields: [companyId], references: [id])
@@ -552,6 +676,10 @@ model Task {
 // ======================= ПРОИЗВОДСТВО =======================
 
 model ProductionJob {
+  // --- синхронизация ---
+  updatedAt      DateTime         @default(now()) @updatedAt
+  deletedAt      DateTime?
+  syncNode       String?
   id             String           @id @default(uuid())
   companyId      String
   orderId        String
@@ -572,6 +700,9 @@ model ProductionJob {
 // ======================= ДИЗАЙН-МАКЕТЫ =======================
 
 model DesignProof {
+  // --- синхронизация ---
+  deletedAt      DateTime?
+  syncNode       String?
   id             String      @id @default(uuid())
   companyId      String
   orderId        String
@@ -593,40 +724,56 @@ model DesignProof {
 // ======================= ЗАРПЛАТА =======================
 
 model WorkTimeRecord {
-  id        String   @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   companyId String
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date      DateTime @default(now())
-  hours     Decimal  @db.Decimal(6, 2)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime  @default(now())
+  hours     Decimal   @db.Decimal(6, 2)
   note      String?
 
   @@index([companyId, userId])
 }
 
 model PayrollPeriod {
-  id        String   @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   companyId String
   name      String
   startDate DateTime
   endDate   DateTime
-  isClosed  Boolean  @default(false)
-  createdAt DateTime @default(now())
+  isClosed  Boolean   @default(false)
+  createdAt DateTime  @default(now())
 
   records SalaryRecord[]
 }
 
 model SalaryAdvance {
-  id        String   @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   companyId String
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  amount    Decimal  @db.Decimal(12, 2)
-  date      DateTime @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Decimal   @db.Decimal(12, 2)
+  date      DateTime  @default(now())
   note      String?
 }
 
 model SalaryRecord {
+  // --- синхронизация ---
+  updatedAt DateTime      @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
   id        String        @id @default(uuid())
   companyId String
   periodId  String
@@ -643,6 +790,17 @@ model SalaryRecord {
   @@unique([periodId, userId])
 }
 
+// ======================= СИНХРОНИЗАЦИЯ =======================
+
+// На каком моменте остановилась синхронизация с другим узлом.
+// peer — идентификатор другого узла (например "cloud" или "branch-1").
+model SyncCursor {
+  id         String   @id @default(uuid())
+  peer       String   @unique
+  lastPullAt DateTime @default(now()) // последняя забранная метка времени
+  updatedAt  DateTime @updatedAt
+}
+
 // ======================= СИСТЕМНОЕ =======================
 
 model AuditLog {
@@ -657,9 +815,13 @@ model AuditLog {
 }
 
 model Setting {
-  id        String  @id @default(uuid())
+  // --- синхронизация ---
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
   companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id])
   key       String
   value     String?
 

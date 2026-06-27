@@ -19,6 +19,7 @@ import { AuditModule } from './audit/audit.module';
 import { SettingsModule } from './settings/settings.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { TelegramModule } from './telegram/telegram.module';
+import { SyncModule } from './sync/sync.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { TasksModule } from './tasks/tasks.module';
 import { BranchesModule } from './branches/branches.module';
@@ -44,6 +45,7 @@ import { PublicModule } from './public/public.module';
     SettingsModule, // настройки компании (ключ-значение)
     NotificationsModule, // оповещения (колокольчик)
     TelegramModule, // отправка уведомлений в Telegram
+    SyncModule, // синхронизация локальный↔облако
     PayrollModule, // зарплата: ставки, время, авансы, расчёт
     TasksModule, // задачи сотрудникам
     BranchesModule, // филиалы

@@ -33,7 +33,7 @@ export class ProductionService {
   // Список заданий (доска производства), фильтр по статусу
   findAll(companyId: string, status?: ProductionStatus) {
     return this.prisma.productionJob.findMany({
-      where: { companyId, ...(status ? { status } : {}) },
+      where: { companyId, deletedAt: null, ...(status ? { status } : {}) },
       include: this.includes(),
       orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
     });
@@ -85,7 +85,11 @@ export class ProductionService {
 
   async remove(id: string) {
     await this.ensure(id);
-    await this.prisma.productionJob.delete({ where: { id } });
+    // Мягкое удаление — чтобы синхронизировалось между узлами
+    await this.prisma.productionJob.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
     return { ok: true };
   }
 
