@@ -14,8 +14,7 @@ services:
     runtime: node
     plan: free
     rootDir: printpro-api
-    buildCommand: npm install && npx prisma generate && npm run build
-    preDeployCommand: npx prisma migrate deploy && npx ts-node prisma/seed.ts
+    buildCommand: npm install && npx prisma generate && npm run build && npx prisma migrate deploy && npx ts-node prisma/seed.ts
     startCommand: node dist/main.js
     healthCheckPath: /api
     envVars:
