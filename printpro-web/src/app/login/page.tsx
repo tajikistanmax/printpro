@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { API_BASE, DEFAULT_COMPANY_ID } from '@/lib/config';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,6 +14,12 @@ export default function LoginPage() {
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // «Забыли пароль?»
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotLogin, setForgotLogin] = useState('');
+  const [forgotMsg, setForgotMsg] = useState('');
+  const [forgotBusy, setForgotBusy] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,36 +35,58 @@ export default function LoginPage() {
     }
   }
 
+  async function requestReset(e: React.FormEvent) {
+    e.preventDefault();
+    if (!forgotLogin.trim()) return;
+    setForgotBusy(true);
+    setForgotMsg('');
+    try {
+      await fetch(`${API_BASE}/public/password-reset-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId: DEFAULT_COMPANY_ID,
+          login: forgotLogin.trim(),
+        }),
+      });
+      setForgotMsg(
+        'Запрос отправлен администратору. Он сбросит ваш пароль в разделе «Сотрудники» и сообщит вам новый.',
+      );
+    } catch {
+      setForgotMsg('Не удалось отправить запрос. Обратитесь к администратору напрямую.');
+    } finally {
+      setForgotBusy(false);
+    }
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-200 p-4 sm:p-6">
-      {/* Окно приложения — не на весь экран */}
-      <div className="flex w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-2xl">
-      {/* ==================== Левая панель: форма ==================== */}
-      <div className="flex w-full flex-col justify-between bg-white px-7 py-7 lg:w-[350px] lg:px-9">
-        <div className="flex flex-1 flex-col justify-center">
+    <div className="flex min-h-screen w-full bg-white">
+      {/* ==================== Левая панель: форма (на весь экран) ==================== */}
+      <div className="flex w-full flex-col justify-between px-8 py-10 sm:px-14 sm:py-12 lg:w-[480px] lg:shrink-0 lg:px-16">
+        <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center">
           {/* Логотип */}
-          <div className="mb-6">
+          <div className="mb-8">
             <Logo />
-            <p className="mt-3 max-w-[240px] text-xs leading-snug text-slate-500">
+            <p className="mt-4 max-w-[280px] text-sm leading-snug text-slate-500">
               Система управления типографией
               <br />и полиграфическим производством
             </p>
           </div>
 
           {/* Приветствие */}
-          <h1 className="text-lg font-bold text-slate-800">Добро пожаловать!</h1>
-          <p className="mb-4 mt-1 text-xs text-slate-400">
+          <h1 className="text-2xl font-bold text-slate-800">Добро пожаловать!</h1>
+          <p className="mb-6 mt-1 text-sm text-slate-400">
             Войдите в систему, чтобы продолжить
           </p>
 
-          <form onSubmit={onSubmit} className="space-y-3">
+          <form onSubmit={onSubmit} className="space-y-4">
             {/* Логин */}
             <div className="relative">
               <UserIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={loginValue}
                 onChange={(e) => setLoginValue(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-slate-700 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-base text-slate-700 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
                 placeholder="Логин или e-mail"
                 autoFocus
               />
@@ -70,7 +99,7 @@ export default function LoginPage() {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm text-slate-700 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-11 text-base text-slate-700 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
                 placeholder="Пароль"
               />
               <button
@@ -97,6 +126,11 @@ export default function LoginPage() {
               </label>
               <button
                 type="button"
+                onClick={() => {
+                  setForgotOpen(true);
+                  setForgotMsg('');
+                  setForgotLogin(loginValue);
+                }}
                 className="font-medium text-indigo-600 hover:text-indigo-700"
               >
                 Забыли пароль?
@@ -113,26 +147,10 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={busy}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:from-indigo-600 hover:to-purple-700 disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 py-3.5 text-base font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:from-indigo-600 hover:to-purple-700 disabled:opacity-60"
             >
               {busy ? 'Вход…' : 'Войти в систему'}
               {!busy && <ArrowIcon className="h-5 w-5" />}
-            </button>
-
-            {/* Разделитель */}
-            <div className="flex items-center gap-3 py-1 text-xs text-slate-400">
-              <span className="h-px flex-1 bg-slate-200" />
-              или
-              <span className="h-px flex-1 bg-slate-200" />
-            </div>
-
-            {/* Вход по токену */}
-            <button
-              type="button"
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              <ShieldIcon className="h-5 w-5 text-indigo-600" />
-              Войти по токену
             </button>
           </form>
         </div>
@@ -236,7 +254,58 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
-      </div>
+
+      {/* ==================== Модалка «Забыли пароль?» ==================== */}
+      {forgotOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-1 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800">
+                Восстановление пароля
+              </h2>
+              <button
+                onClick={() => setForgotOpen(false)}
+                className="text-slate-400 hover:text-slate-600"
+                aria-label="Закрыть"
+              >
+                ✕
+              </button>
+            </div>
+            {forgotMsg ? (
+              <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-3 text-sm text-emerald-700">
+                {forgotMsg}
+              </div>
+            ) : (
+              <form onSubmit={requestReset}>
+                <p className="mb-3 text-sm text-slate-500">
+                  Введите свой логин — мы отправим запрос администратору, он
+                  сбросит пароль и сообщит вам новый.
+                </p>
+                <input
+                  value={forgotLogin}
+                  onChange={(e) => setForgotLogin(e.target.value)}
+                  placeholder="Ваш логин"
+                  autoFocus
+                  className="mb-3 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-700 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                />
+                <button
+                  type="submit"
+                  disabled={forgotBusy}
+                  className="w-full rounded-xl bg-indigo-600 py-3 text-base font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  {forgotBusy ? 'Отправка…' : 'Отправить запрос'}
+                </button>
+              </form>
+            )}
+            <button
+              onClick={() => setForgotOpen(false)}
+              className="mt-3 w-full rounded-xl border border-slate-200 py-2.5 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -270,13 +339,13 @@ function Stat({
 function Logo() {
   return (
     <div>
-      {/* Знак: стилизованная «P» с play-вырезом и цветной шкалой */}
-      <svg width="58" height="58" viewBox="0 0 58 58" fill="none">
+      {/* Знак: «P» с градиентом бренда, жёлтым уголком и CMYK-рядом точек */}
+      <svg width="76" height="76" viewBox="0 0 58 58" fill="none">
         <defs>
-          <linearGradient id="ppg" x1="6" y1="2" x2="50" y2="46">
-            <stop stopColor="#2563EB" />
-            <stop offset="0.5" stopColor="#9333EA" />
-            <stop offset="1" stopColor="#EC4899" />
+          <linearGradient id="ppg" x1="6" y1="2" x2="52" y2="44">
+            <stop stopColor="#EC4899" />
+            <stop offset="0.45" stopColor="#8B5CF6" />
+            <stop offset="1" stopColor="#2563EB" />
           </linearGradient>
         </defs>
         {/* Тело буквы P */}
@@ -284,18 +353,18 @@ function Logo() {
           d="M8 3h19a14 14 0 0 1 0 28H18v9H8V3Zm10 8v12h9a6 6 0 0 0 0-12h-9Z"
           fill="url(#ppg)"
         />
-        {/* Play-вырез внутри чаши */}
-        <path d="M20 13.5l7 4-7 4v-8Z" fill="#22D3EE" />
-        {/* Цветной ряд точек и штрихов */}
-        <circle cx="10" cy="47" r="2.3" fill="#F97316" />
-        <circle cx="17.5" cy="47" r="2.3" fill="#EC4899" />
-        <circle cx="25" cy="47" r="2.3" fill="#2563EB" />
-        <rect x="30" y="45" width="7" height="4" rx="2" fill="#22D3EE" />
-        <rect x="39" y="45" width="7" height="4" rx="2" fill="#A855F7" />
+        {/* Жёлтый уголок-«лента» у ножки */}
+        <path d="M8 21l9-3-2 7-7 2v-6Z" fill="#FBBF24" />
+        {/* CMYK-ряд: синий/жёлтый круги + малиновая/жёлтая/тёмная капсулы */}
+        <circle cx="10" cy="47" r="2.4" fill="#3B82F6" />
+        <circle cx="18" cy="47" r="2.4" fill="#FBBF24" />
+        <rect x="24" y="44.6" width="7" height="4.8" rx="2.4" fill="#EC4899" />
+        <rect x="33" y="44.6" width="7" height="4.8" rx="2.4" fill="#FBBF24" />
+        <rect x="42" y="44.6" width="7" height="4.8" rx="2.4" fill="#1E293B" />
       </svg>
 
       {/* Слово PrintPro (курсивное, как в макете) */}
-      <div className="mt-1.5 text-[34px] font-extrabold italic tracking-tight text-slate-900">
+      <div className="mt-2 text-[40px] font-extrabold italic leading-none tracking-tight text-slate-900">
         Print<span className="text-violet-600">Pro</span>
       </div>
     </div>

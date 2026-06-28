@@ -15,6 +15,7 @@ import { IsArray, IsOptional, IsString } from 'class-validator';
 import { OrderStatus, OrderType, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClientsService } from '../clients/clients.service';
+import { TelegramService } from '../telegram/telegram.service';
 
 class PublicFileDto {
   @IsString() url: string;
@@ -36,7 +37,27 @@ export class PublicController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly clients: ClientsService,
+    private readonly telegram: TelegramService,
   ) {}
+
+  // Запрос на сброс пароля — уведомляет администратора (Telegram).
+  // Не раскрываем, существует ли логин.
+  @Post('password-reset-request')
+  async passwordResetRequest(
+    @Body() body: { companyId: string; login: string },
+  ) {
+    const user = await this.prisma.user.findFirst({
+      where: { companyId: body.companyId, login: body.login },
+      select: { fullName: true, login: true },
+    });
+    if (user) {
+      void this.telegram.send(
+        body.companyId,
+        `🔑 Запрос на сброс пароля: ${user.fullName} (логин: <b>${user.login}</b>). Сбросьте пароль в разделе «Сотрудники».`,
+      );
+    }
+    return { ok: true };
+  }
 
   // Список активных услуг (для выбора на сайте)
   @Get('services')
