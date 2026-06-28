@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -32,6 +33,16 @@ export class ProductsController {
     return this.products.findOneProduct(id);
   }
 
+  @Patch('products/:id')
+  updateProduct(@Param('id') id: string, @Body() dto: Partial<CreateProductDto>) {
+    return this.products.updateProduct(id, dto);
+  }
+
+  @Delete('products/:id')
+  removeProduct(@Param('id') id: string) {
+    return this.products.removeProduct(id);
+  }
+
   // ---- Категории товаров ----
   @Post('product-categories')
   createCategory(@Body() dto: CreateCategoryDto) {
@@ -57,5 +68,10 @@ export class ProductsController {
   @Get('units')
   findUnits(@Query('companyId') companyId: string) {
     return this.products.findUnits(companyId);
+  }
+
+  @Delete('units/:id')
+  removeUnit(@Param('id') id: string) {
+    return this.products.removeUnit(id);
   }
 }

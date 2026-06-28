@@ -43,4 +43,10 @@ export class StockController {
   lowStock(@Query('companyId') companyId: string) {
     return this.stock.lowStock(companyId);
   }
+
+  // GET /api/stock/movements?companyId=... — история движений
+  @Get('movements')
+  listMovements(@Query('companyId') companyId: string) {
+    return this.stock.listMovements(companyId);
+  }
 }

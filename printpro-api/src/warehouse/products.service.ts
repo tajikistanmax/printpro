@@ -64,12 +64,39 @@ export class ProductsService {
     return { ok: true };
   }
 
+  async updateProduct(id: string, dto: Partial<CreateProductDto>) {
+    await this.prisma.product.findUniqueOrThrow({ where: { id } });
+    return this.prisma.product.update({
+      where: { id },
+      data: {
+        name: dto.name,
+        categoryId: dto.categoryId ?? null,
+        unitId: dto.unitId ?? null,
+        salePrice: dto.salePrice,
+        minStock: dto.minStock,
+        barcode: dto.barcode,
+        isActive: dto.isActive,
+      },
+      include: { category: true, unit: true },
+    });
+  }
+
+  async removeProduct(id: string) {
+    await this.prisma.product.findUniqueOrThrow({ where: { id } });
+    return this.prisma.product.delete({ where: { id } });
+  }
+
   // ---------- Единицы измерения ----------
   createUnit(dto: CreateUnitDto) {
     return this.prisma.unit.create({ data: dto });
   }
 
   findUnits(companyId: string) {
-    return this.prisma.unit.findMany({ where: { companyId } });
+    return this.prisma.unit.findMany({ where: { companyId }, orderBy: { name: 'asc' } });
+  }
+
+  async removeUnit(id: string) {
+    await this.prisma.unit.findUniqueOrThrow({ where: { id } });
+    return this.prisma.unit.delete({ where: { id } });
   }
 }

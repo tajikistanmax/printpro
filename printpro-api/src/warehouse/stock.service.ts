@@ -212,6 +212,20 @@ export class StockService {
     });
   }
 
+  // История движений склада (последние 200)
+  listMovements(companyId: string) {
+    return this.prisma.stockMovement.findMany({
+      where: { companyId },
+      include: {
+        product: { include: { unit: true } },
+        branch: true,
+        user: { select: { fullName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+  }
+
   // Текущие остатки по компании
   listStock(companyId: string) {
     return this.prisma.stock.findMany({
