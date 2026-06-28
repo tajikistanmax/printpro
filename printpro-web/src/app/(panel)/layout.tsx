@@ -250,23 +250,25 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
 
       {/* Контент */}
       <main className="min-w-0 flex-1 overflow-auto">
-        {/* Верхняя панель: бургер (моб.) + поиск + синхронизация + тема + уведомления */}
-        <div className="flex items-center justify-between gap-2 px-4 pt-4 sm:px-8 sm:pt-5">
-          <button
-            onClick={() => setMobileOpen(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm lg:hidden"
-            aria-label="Меню"
-          >
-            ☰
-          </button>
-          <div className="flex items-center gap-2">
+        {/* Шапка: поиск слева, действия справа — единой полосой */}
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white/80 px-4 backdrop-blur-md sm:px-8 dark:bg-slate-900/80">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-xl text-slate-600 transition hover:bg-slate-100 lg:hidden dark:text-slate-300 dark:hover:bg-slate-800"
+              aria-label="Меню"
+            >
+              ☰
+            </button>
             <GlobalSearch />
+          </div>
+          <div className="flex items-center gap-1.5">
             <SyncIndicator />
             <ThemeToggle />
             <NotificationBell />
           </div>
-        </div>
-        <div className="mx-auto max-w-6xl px-4 pb-8 pt-2 sm:px-8">{children}</div>
+        </header>
+        <div className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-8">{children}</div>
       </main>
     </div>
   );

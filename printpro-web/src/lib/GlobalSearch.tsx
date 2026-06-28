@@ -67,7 +67,7 @@ export default function GlobalSearch() {
         onChange={(e) => setQ(e.target.value)}
         onFocus={() => res && setOpen(true)}
         placeholder="Поиск… (заказ, клиент, услуга)"
-        className="w-56 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm shadow-sm focus:w-72 focus:outline-none focus:ring-2 focus:ring-indigo-200 md:w-64"
+        className="w-48 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm transition-all focus:w-64 focus:bg-white focus:outline-none md:w-60 dark:border-slate-700 dark:bg-slate-800"
       />
       {open && res && (
         <div className="absolute right-0 z-50 mt-2 max-h-[70vh] w-80 overflow-auto rounded-2xl border border-slate-100 bg-white p-2 shadow-xl">

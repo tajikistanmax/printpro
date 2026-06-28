@@ -25,7 +25,7 @@ export default function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-lg shadow-sm transition hover:opacity-80"
+      className="flex h-9 w-9 items-center justify-center rounded-lg text-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
       aria-label="Сменить тему"
       title={dark ? 'Светлая тема' : 'Тёмная тема'}
     >
