@@ -4,17 +4,30 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { API_BASE, DEFAULT_COMPANY_ID, SERVER_ORIGIN } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
+import {
+  PageHeader,
+  StatGrid,
+  StatCard,
+  Card,
+  SectionTitle,
+  Field,
+  Input,
+  Select,
+  Button,
+  Badge,
+  Tone,
+} from '@/components/ui';
 
 // Этапы производства по порядку
-const STAGES: { key: string; label: string; color: string }[] = [
-  { key: 'PENDING', label: 'Ожидает', color: 'border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-800' },
-  { key: 'PRINTING', label: 'Печать', color: 'border-sky-300 bg-sky-50 dark:border-sky-700 dark:bg-sky-900/20' },
-  { key: 'CUTTING', label: 'Резка', color: 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20' },
-  { key: 'BINDING', label: 'Брошюровка', color: 'border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-900/20' },
-  { key: 'PACKAGING', label: 'Упаковка', color: 'border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-900/20' },
-  { key: 'PAUSED', label: 'На паузе', color: 'border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700' },
-  { key: 'COMPLETED', label: 'Готово', color: 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20' },
-  { key: 'REWORK', label: 'Брак / переделка', color: 'border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-900/20' },
+const STAGES: { key: string; label: string; color: string; tone: Tone }[] = [
+  { key: 'PENDING', label: 'Ожидает', color: 'border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-800', tone: 'slate' },
+  { key: 'PRINTING', label: 'Печать', color: 'border-sky-300 bg-sky-50 dark:border-sky-700 dark:bg-sky-900/20', tone: 'sky' },
+  { key: 'CUTTING', label: 'Резка', color: 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20', tone: 'amber' },
+  { key: 'BINDING', label: 'Брошюровка', color: 'border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-900/20', tone: 'violet' },
+  { key: 'PACKAGING', label: 'Упаковка', color: 'border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-900/20', tone: 'indigo' },
+  { key: 'PAUSED', label: 'На паузе', color: 'border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-700', tone: 'slate' },
+  { key: 'COMPLETED', label: 'Готово', color: 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20', tone: 'emerald' },
+  { key: 'REWORK', label: 'Брак / переделка', color: 'border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-900/20', tone: 'rose' },
 ];
 
 // Следующий этап для кнопки «дальше»
@@ -119,22 +132,35 @@ export default function ProductionPage() {
 
   const byStage = (key: string) => jobs.filter((j) => j.status === key);
 
+  const activeCount = jobs.filter(
+    (j) => j.status !== 'COMPLETED' && j.status !== 'REWORK' && j.status !== 'CANCELLED',
+  ).length;
+  const completedCount = byStage('COMPLETED').length;
+  const reworkCount = byStage('REWORK').length;
+
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-800 dark:text-slate-100">Производство</h1>
+      <PageHeader
+        icon="production"
+        title="Производство"
+        subtitle={`${jobs.length} заданий · ${activeCount} в работе`}
+      />
+
+      <StatGrid cols={4}>
+        <StatCard icon="production" tone="indigo" label="Всего заданий" value={jobs.length} highlight />
+        <StatCard icon="orders" tone="sky" label="В работе" value={activeCount} />
+        <StatCard icon="reports" tone="emerald" label="Готово" value={completedCount} />
+        <StatCard icon="complaints" tone="rose" label="Брак / переделка" value={reworkCount} />
+      </StatGrid>
 
       {canManage && (
-        <div className="mb-6 rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">
-            Запустить заказ в производство
-          </h2>
+        <Card className="mb-6">
+          <SectionTitle>Запустить заказ в производство</SectionTitle>
           <form onSubmit={createJob} className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[220px] flex-1">
-              <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Заказ</label>
-              <select
+            <Field label="Заказ" className="min-w-[220px] flex-1">
+              <Select
                 value={orderId}
                 onChange={(e) => setOrderId(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 required
               >
                 <option value="">— выберите заказ —</option>
@@ -144,14 +170,12 @@ export default function ProductionPage() {
                     {o.client?.fullName ?? o.client?.phone ?? 'без клиента'}
                   </option>
                 ))}
-              </select>
-            </div>
-            <div className="min-w-[180px]">
-              <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Исполнитель</label>
-              <select
+              </Select>
+            </Field>
+            <Field label="Исполнитель" className="min-w-[180px]">
+              <Select
                 value={assignee}
                 onChange={(e) => setAssignee(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               >
                 <option value="">— не назначен —</option>
                 {users.map((u) => (
@@ -159,15 +183,13 @@ export default function ProductionPage() {
                     {u.fullName}
                   </option>
                 ))}
-              </select>
-            </div>
-            <div className="min-w-[170px]">
-              <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Оборудование</label>
+              </Select>
+            </Field>
+            <Field label="Оборудование" className="min-w-[170px]">
               {equipment.length > 0 ? (
-                <select
+                <Select
                   value={equipmentId}
                   onChange={(e) => setEquipmentId(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 >
                   <option value="">— не выбрано —</option>
                   {equipment.map((eq) => (
@@ -175,22 +197,19 @@ export default function ProductionPage() {
                       {eq.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               ) : (
-                <input
+                <Input
                   value={printer}
                   onChange={(e) => setPrinter(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                   placeholder="напр. Roland"
                 />
               )}
-            </div>
-            <button className="rounded-lg bg-indigo-600 px-5 py-2 font-medium text-white hover:bg-indigo-700">
-              В работу
-            </button>
+            </Field>
+            <Button type="submit">В работу</Button>
             {msg && <span className="text-sm text-slate-600 dark:text-slate-300">{msg}</span>}
           </form>
-        </div>
+        </Card>
       )}
 
       {/* Доска по этапам */}
@@ -204,9 +223,7 @@ export default function ProductionPage() {
             >
               <div className="mb-2 flex items-center justify-between px-1">
                 <span className="font-semibold text-slate-700 dark:text-slate-200">{stage.label}</span>
-                <span className="rounded-full bg-white dark:bg-slate-800 px-2 py-0.5 text-xs text-slate-500 dark:text-slate-400">
-                  {list.length}
-                </span>
+                <Badge tone={stage.tone}>{list.length}</Badge>
               </div>
               <div className="space-y-2">
                 {list.length === 0 ? (
@@ -222,9 +239,7 @@ export default function ProductionPage() {
                           №{j.order?.orderNumber}
                         </span>
                         {j.priority > 0 && (
-                          <span className="rounded bg-rose-100 dark:bg-rose-900/30 px-1.5 text-xs text-rose-600 dark:text-rose-300">
-                            приоритет
-                          </span>
+                          <Badge tone="rose">приоритет</Badge>
                         )}
                       </div>
                       <div className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
@@ -259,41 +274,44 @@ export default function ProductionPage() {
                       )}
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         {NEXT[j.status] && (
-                          <button
+                          <Button
+                            size="sm"
                             onClick={() => setStatus(j.id, NEXT[j.status])}
-                            className="rounded-lg bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-700"
                           >
                             →{' '}
                             {STAGES.find((s) => s.key === NEXT[j.status])?.label}
-                          </button>
+                          </Button>
                         )}
                         {/* Пауза / продолжить */}
                         {j.status !== 'PAUSED' &&
                           j.status !== 'COMPLETED' &&
                           j.status !== 'REWORK' &&
                           j.status !== 'CANCELLED' && (
-                            <button
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               onClick={() => setStatus(j.id, 'PAUSED')}
-                              className="rounded-lg border border-slate-300 dark:border-slate-600 px-2.5 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
                             >
                               ⏸ Пауза
-                            </button>
+                            </Button>
                           )}
                         {j.status === 'PAUSED' && (
-                          <button
+                          <Button
+                            variant="sky"
+                            size="sm"
                             onClick={() => setStatus(j.id, 'PRINTING')}
-                            className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-700"
                           >
                             ▶ Продолжить
-                          </button>
+                          </Button>
                         )}
                         {j.status === 'REWORK' && (
-                          <button
+                          <Button
+                            variant="amber"
+                            size="sm"
                             onClick={() => setStatus(j.id, 'PENDING')}
-                            className="rounded-lg bg-amber-500 px-3 py-1 text-xs font-medium text-white hover:bg-amber-600"
                           >
                             Вернуть в работу
-                          </button>
+                          </Button>
                         )}
                         {/* Фото результата */}
                         <label className="cursor-pointer rounded-lg border border-slate-200 dark:border-slate-600 px-2 py-1 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700">
@@ -311,12 +329,14 @@ export default function ProductionPage() {
                         </label>
                         {j.status !== 'REWORK' &&
                           j.status !== 'CANCELLED' && (
-                            <button
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-400 dark:hover:bg-rose-900/20"
                               onClick={() => sendRework(j.id)}
-                              className="rounded-lg border border-rose-200 dark:border-rose-700 px-2.5 py-1 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                             >
                               Брак
-                            </button>
+                            </Button>
                           )}
                         {canManage && (
                           <button

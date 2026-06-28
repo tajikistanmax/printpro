@@ -56,6 +56,9 @@ export class DesignService {
         fileUrl: dto.fileUrl,
         fileName: dto.fileName,
         comment: dto.comment,
+        ...(dto.checklist !== undefined
+          ? { checklist: dto.checklist }
+          : {}),
         ...(newFile
           ? { version: proof.version + 1, status: ProofStatus.IN_PROGRESS }
           : {}),
@@ -92,7 +95,13 @@ export class DesignService {
         select: {
           id: true,
           orderNumber: true,
-          client: { select: { fullName: true, phone: true } },
+          orderType: true,
+          total: true,
+          deadline: true,
+          createdAt: true,
+          client: { select: { fullName: true, phone: true, type: true } },
+          assignedUser: { select: { fullName: true } },
+          items: { select: { description: true, quantity: true }, take: 1 },
         },
       },
       assignedUser: { select: { id: true, fullName: true } },

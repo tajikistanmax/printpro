@@ -11,6 +11,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { ClientType } from '@prisma/client';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -45,13 +46,23 @@ export class ClientsController {
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('type') type?: ClientType,
+    @Query('status') status?: 'active' | 'inactive',
   ) {
-    return this.clients.findAll(
-      companyId,
+    return this.clients.findAll(companyId, {
       search,
-      page ? Number(page) : 1,
-      pageSize ? Number(pageSize) : 25,
-    );
+      type,
+      status,
+      page: page ? Number(page) : 1,
+      pageSize: pageSize ? Number(pageSize) : 25,
+    });
+  }
+
+  // Сводка по клиентам (карточки на странице)
+  @Get('stats')
+  @RequirePermissions('clients.view')
+  stats(@Query('companyId') companyId: string) {
+    return this.clients.stats(companyId);
   }
 
   @Get(':id')

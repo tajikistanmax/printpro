@@ -1,7 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { ClientType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
+
+export interface ClientFilters {
+  search?: string;
+  type?: ClientType;
+  status?: 'active' | 'inactive';
+  page?: number;
+  pageSize?: number;
+}
+
+const INACTIVE_MS = 30 * 24 * 3600 * 1000;
 
 @Injectable()
 export class ClientsService {
@@ -46,21 +56,31 @@ export class ClientsService {
     return this.prisma.client.update({ where: { id }, data: dto });
   }
 
-  async findAll(companyId: string, search?: string, page = 1, pageSize = 25) {
+  async findAll(companyId: string, f: ClientFilters = {}) {
+    const cutoff = new Date(Date.now() - INACTIVE_MS);
     const where: Prisma.ClientWhereInput = {
       companyId,
       deletedAt: null,
-      ...(search
+      ...(f.type ? { type: f.type } : {}),
+      ...(f.status === 'active'
+        ? { orders: { some: { createdAt: { gte: cutoff } } } }
+        : {}),
+      ...(f.status === 'inactive'
+        ? { NOT: { orders: { some: { createdAt: { gte: cutoff } } } } }
+        : {}),
+      ...(f.search
         ? {
             OR: [
-              { phone: { contains: search } },
-              { fullName: { contains: search, mode: 'insensitive' } },
+              { phone: { contains: f.search } },
+              { fullName: { contains: f.search, mode: 'insensitive' } },
+              { email: { contains: f.search, mode: 'insensitive' } },
             ],
           }
         : {}),
     };
-    const take = Math.min(Math.max(pageSize, 1), 100);
-    const skip = (Math.max(page, 1) - 1) * take;
+    const take = Math.min(Math.max(f.pageSize ?? 25, 1), 100);
+    const page = Math.max(f.page ?? 1, 1);
+    const skip = (page - 1) * take;
     const [items, total] = await this.prisma.$transaction([
       this.prisma.client.findMany({
         where,
@@ -70,7 +90,68 @@ export class ClientsService {
       }),
       this.prisma.client.count({ where }),
     ]);
-    return { items, total, page: Math.max(page, 1), pageSize: take };
+
+    // Агрегаты по заказам для клиентов текущей страницы
+    const ids = items.map((c) => c.id);
+    const agg = ids.length
+      ? await this.prisma.order.groupBy({
+          by: ['clientId'],
+          where: { clientId: { in: ids } },
+          _sum: { total: true },
+          _max: { createdAt: true },
+          _count: true,
+          orderBy: { clientId: 'asc' },
+        })
+      : [];
+    const map = new Map(agg.map((a) => [a.clientId, a]));
+
+    const withStats = items.map((c) => {
+      const a = map.get(c.id);
+      const last = a?._max.createdAt ?? null;
+      return {
+        ...c,
+        discount: Number(c.discount),
+        creditLimit: Number(c.creditLimit),
+        bonusPoints: Number(c.bonusPoints),
+        ordersCount: a?._count ?? 0,
+        ordersSum: Number(a?._sum.total ?? 0),
+        lastOrderAt: last,
+        inactive: last ? Date.now() - new Date(last).getTime() > INACTIVE_MS : true,
+      };
+    });
+
+    return { items: withStats, total, page, pageSize: take };
+  }
+
+  // Сводка для карточек на странице «Клиенты»
+  async stats(companyId: string) {
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const cutoff = new Date(Date.now() - INACTIVE_MS);
+    const [total, newThisMonth, active, revenueAgg] = await Promise.all([
+      this.prisma.client.count({ where: { companyId, deletedAt: null } }),
+      this.prisma.client.count({
+        where: { companyId, deletedAt: null, createdAt: { gte: monthStart } },
+      }),
+      this.prisma.client.count({
+        where: {
+          companyId,
+          deletedAt: null,
+          orders: { some: { createdAt: { gte: cutoff } } },
+        },
+      }),
+      this.prisma.order.aggregate({
+        where: { companyId, clientId: { not: null } },
+        _sum: { total: true },
+      }),
+    ]);
+    return {
+      total,
+      newThisMonth,
+      active,
+      revenue: Number(revenueAgg._sum.total ?? 0),
+    };
   }
 
   async findOne(id: string) {

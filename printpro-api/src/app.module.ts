@@ -31,6 +31,7 @@ import { SearchModule } from './search/search.module';
 import { PromocodesModule } from './promocodes/promocodes.module';
 import { ComplaintsModule } from './complaints/complaints.module';
 import { EmailModule } from './email/email.module';
+import { SystemModule } from './system/system.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { EmailModule } from './email/email.module';
     PromocodesModule, // промокоды
     ComplaintsModule, // рекламации (жалобы)
     EmailModule, // email-уведомления (SMTP)
+    SystemModule, // информация о системе (версия, СУБД, аптайм)
   ],
   controllers: [AppController],
   providers: [AppService],

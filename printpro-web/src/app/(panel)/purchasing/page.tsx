@@ -4,6 +4,20 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
+import {
+  PageHeader,
+  StatGrid,
+  StatCard,
+  Card,
+  TableCard,
+  Toolbar,
+  SectionTitle,
+  Field,
+  Input,
+  Select,
+  Button,
+  EmptyState,
+} from '@/components/ui';
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(n) + ' c.';
@@ -123,33 +137,38 @@ export default function PurchasingPage() {
     );
   }
 
+  const receiptsValue = receipts.reduce((s, r) => s + receiptSum(r), 0);
+
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-800 dark:text-slate-100">Закупки</h1>
+      <PageHeader icon="purchasing" title="Закупки" subtitle="Поставщики, приёмка товара и история закупок" />
+
+      <StatGrid cols={3}>
+        <StatCard icon="purchasing" tone="indigo" label="Поставщиков" value={suppliers.length} highlight />
+        <StatCard icon="reports" tone="sky" label="Приёмок" value={receipts.length} />
+        <StatCard icon="cash" tone="emerald" label="Сумма закупок" value={money(receiptsValue)} sub="по всем приёмкам" />
+      </StatGrid>
 
       <div className="mb-6 grid gap-6 lg:grid-cols-3">
         {/* Поставщики */}
-        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Поставщики</h2>
+        <Card>
+          <SectionTitle>Поставщики</SectionTitle>
           {canManage && (
             <form onSubmit={addSupplier} className="mb-3 space-y-2">
-              <input
+              <Input
                 value={sName}
                 onChange={(e) => setSName(e.target.value)}
                 placeholder="Название"
                 required
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
               />
               <div className="flex gap-2">
-                <input
+                <Input
                   value={sPhone}
                   onChange={(e) => setSPhone(e.target.value)}
                   placeholder="Телефон"
-                  className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
+                  className="flex-1"
                 />
-                <button className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
-                  +
-                </button>
+                <Button type="submit" className="shrink-0">+</Button>
               </div>
               {sMsg && <p className="text-xs text-slate-500 dark:text-slate-400">{sMsg}</p>}
             </form>
@@ -169,49 +188,43 @@ export default function PurchasingPage() {
               ))
             )}
           </div>
-        </div>
+        </Card>
 
         {/* Приёмка */}
         {canManage && (
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm lg:col-span-2">
-            <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">
-              Приёмка товара на склад
-            </h2>
+          <Card className="lg:col-span-2">
+            <SectionTitle>Приёмка товара на склад</SectionTitle>
             <form onSubmit={submitReceipt} className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={supplierId}
-                  onChange={(e) => setSupplierId(e.target.value)}
-                  className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
-                >
-                  <option value="">— поставщик (необяз.) —</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={branchId}
-                  onChange={(e) => setBranchId(e.target.value)}
-                  className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
-                >
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
+                <Field label="Поставщик">
+                  <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+                    <option value="">— поставщик (необяз.) —</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Филиал">
+                  <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
               </div>
 
               {/* Позиции */}
               <div className="space-y-2">
                 {rows.map((r, i) => (
                   <div key={i} className="flex gap-2">
-                    <select
+                    <Select
                       value={r.productId}
                       onChange={(e) => setRow(i, { productId: e.target.value })}
-                      className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
+                      className="flex-1"
                     >
                       <option value="">— товар —</option>
                       {products.map((p) => (
@@ -219,22 +232,22 @@ export default function PurchasingPage() {
                           {p.name}
                         </option>
                       ))}
-                    </select>
-                    <input
+                    </Select>
+                    <Input
                       value={r.quantity}
                       onChange={(e) => setRow(i, { quantity: e.target.value })}
                       type="number"
                       step="0.001"
                       placeholder="Кол-во"
-                      className="w-24 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
+                      className="w-24"
                     />
-                    <input
+                    <Input
                       value={r.cost}
                       onChange={(e) => setRow(i, { cost: e.target.value })}
                       type="number"
                       step="0.01"
                       placeholder="Цена/ед"
-                      className="w-24 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
+                      className="w-24"
                     />
                     <button
                       type="button"
@@ -263,57 +276,59 @@ export default function PurchasingPage() {
                 </span>
               </div>
 
-              <button className="w-full rounded-lg bg-emerald-600 py-2.5 font-medium text-white hover:bg-emerald-700">
-                Принять на склад
-              </button>
+              <Button type="submit" variant="emerald" className="w-full">Принять на склад</Button>
               {rMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{rMsg}</p>}
             </form>
-          </div>
+          </Card>
         )}
       </div>
 
       {/* История приёмок */}
-      <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-        <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">История приёмок</h2>
+      <TableCard>
+        <Toolbar>
+          <SectionTitle className="mb-0">История приёмок</SectionTitle>
+        </Toolbar>
         {receipts.length === 0 ? (
-          <p className="text-sm text-slate-400 dark:text-slate-500">Приёмок пока нет.</p>
+          <EmptyState icon="purchasing" title="Приёмок пока нет" hint="Проведите первую приёмку товара, чтобы пополнить склад." />
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-400 dark:text-slate-500">
-                <th className="py-2 font-medium">Документ</th>
-                <th className="py-2 font-medium">Дата</th>
-                <th className="py-2 font-medium">Поставщик</th>
-                <th className="py-2 font-medium">Филиал</th>
-                <th className="py-2 text-right font-medium">Позиций</th>
-                <th className="py-2 text-right font-medium">Сумма</th>
-              </tr>
-            </thead>
-            <tbody>
-              {receipts.map((r) => (
-                <tr key={r.id} className="border-b border-slate-50 dark:border-slate-800 last:border-0">
-                  <td className="py-2 font-medium text-slate-700 dark:text-slate-200">
-                    {r.number ?? '—'}
-                  </td>
-                  <td className="py-2 text-slate-500 dark:text-slate-400">
-                    {new Date(r.date).toLocaleDateString('ru-RU')}
-                  </td>
-                  <td className="py-2 text-slate-700 dark:text-slate-200">
-                    {r.supplier?.name ?? '—'}
-                  </td>
-                  <td className="py-2 text-slate-500 dark:text-slate-400">{r.branch?.name ?? '—'}</td>
-                  <td className="py-2 text-right text-slate-500 dark:text-slate-400">
-                    {r.items.length}
-                  </td>
-                  <td className="py-2 text-right font-medium text-slate-800 dark:text-slate-100">
-                    {money(receiptSum(r))}
-                  </td>
+          <div className="pp-table-scroll">
+            <table className="pp-table">
+              <thead>
+                <tr>
+                  <th>Документ</th>
+                  <th>Дата</th>
+                  <th>Поставщик</th>
+                  <th>Филиал</th>
+                  <th className="text-right">Позиций</th>
+                  <th className="text-right">Сумма</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {receipts.map((r) => (
+                  <tr key={r.id}>
+                    <td className="font-medium text-slate-700 dark:text-slate-200">
+                      {r.number ?? '—'}
+                    </td>
+                    <td className="text-slate-500 dark:text-slate-400">
+                      {new Date(r.date).toLocaleDateString('ru-RU')}
+                    </td>
+                    <td className="text-slate-700 dark:text-slate-200">
+                      {r.supplier?.name ?? '—'}
+                    </td>
+                    <td className="text-slate-500 dark:text-slate-400">{r.branch?.name ?? '—'}</td>
+                    <td className="text-right text-slate-500 dark:text-slate-400">
+                      {r.items.length}
+                    </td>
+                    <td className="text-right font-medium text-slate-800 dark:text-slate-100">
+                      {money(receiptSum(r))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </TableCard>
     </div>
   );
 }

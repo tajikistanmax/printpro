@@ -8,7 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, OrderType } from '@prisma/client';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import {
@@ -54,7 +54,7 @@ export class OrdersController {
     return this.orders.reorder(id);
   }
 
-  // Список заказов (постранично)
+  // Список заказов (постранично, с фильтрами)
   @Get()
   @RequirePermissions('orders.view')
   findAll(
@@ -63,14 +63,41 @@ export class OrdersController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('search') search?: string,
+    @Query('orderType') orderType?: OrderType,
+    @Query('managerId') managerId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
-    return this.orders.findAll(
-      companyId,
+    return this.orders.findAll(companyId, {
       status,
-      page ? Number(page) : 1,
-      pageSize ? Number(pageSize) : 25,
+      orderType,
+      managerId,
       search,
-    );
+      dateFrom,
+      dateTo,
+      page: page ? Number(page) : 1,
+      pageSize: pageSize ? Number(pageSize) : 25,
+    });
+  }
+
+  // Сводка по статусам и суммам (карточки на странице «Заказы»)
+  @Get('stats')
+  @RequirePermissions('orders.view')
+  stats(
+    @Query('companyId') companyId: string,
+    @Query('orderType') orderType?: OrderType,
+    @Query('managerId') managerId?: string,
+    @Query('search') search?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.orders.stats(companyId, {
+      orderType,
+      managerId,
+      search,
+      dateFrom,
+      dateTo,
+    });
   }
 
   // Долги (кто сколько должен)

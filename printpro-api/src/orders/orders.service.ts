@@ -21,6 +21,18 @@ import { AddPaymentDto, QuickSaleDto } from './dto/order-actions.dto';
 import { PromocodesService } from '../promocodes/promocodes.service';
 import { EmailService } from '../email/email.service';
 
+// Фильтры для списка заказов и сводки (страница «Заказы»).
+export interface OrderFilters {
+  status?: OrderStatus;
+  orderType?: OrderType;
+  managerId?: string;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -98,13 +110,28 @@ export class OrdersService {
 
     // 3. Всё в одной транзакции (либо всё, либо ничего)
     return this.prisma.$transaction(async (tx) => {
-      // Номер заказа: ORD-<УЗЕЛ>-ГОД-NNNNNN.
+      // Необязательные настройки заказов: префикс номера и срок по умолчанию.
+      const orderSettings = await tx.setting.findMany({
+        where: {
+          companyId: dto.companyId,
+          key: { in: ['orderPrefix', 'orderDefaultLeadDays'] },
+        },
+      });
+      const settingMap: Record<string, string> = {};
+      for (const r of orderSettings) settingMap[r.key] = r.value ?? '';
+      const prefix =
+        (settingMap.orderPrefix || '')
+          .replace(/[^A-Za-z0-9]/g, '')
+          .toUpperCase() || 'ORD';
+      const leadDays = Number(settingMap.orderDefaultLeadDays || 0);
+
+      // Номер заказа: <ПРЕФИКС>-<УЗЕЛ>-ГОД-NNNNNN.
       // Префикс узла (NODE_ID) гарантирует уникальность между точками сети.
       const node = (process.env.NODE_ID ?? 'C').toUpperCase();
       const count = await tx.order.count({ where: { companyId: dto.companyId } });
       const year = new Date().getFullYear();
       const seq = String(count + 1).padStart(6, '0');
-      const orderNumber = `ORD-${node}-${year}-${seq}`;
+      const orderNumber = `${prefix}-${node}-${year}-${seq}`;
 
       // Создаём заказ с позициями
       const order = await tx.order.create({
@@ -121,7 +148,11 @@ export class OrdersService {
           format: dto.format,
           colorMode: dto.colorMode,
           urgency: dto.urgency,
-          deadline: dto.deadline ? new Date(dto.deadline) : undefined,
+          deadline: dto.deadline
+            ? new Date(dto.deadline)
+            : leadDays > 0
+              ? new Date(Date.now() + leadDays * 86400000)
+              : undefined,
           note: dto.note,
           total,
           paid: 0,
@@ -509,39 +540,84 @@ export class OrdersService {
   }
 
   // ---------- Списки и чтение ----------
-  async findAll(
+  // Общий конструктор условий выборки заказов из фильтров.
+  private buildWhere(
     companyId: string,
-    status?: OrderStatus,
-    page = 1,
-    pageSize = 25,
-    search?: string,
-  ) {
-    const where: Prisma.OrderWhereInput = {
+    f: OrderFilters,
+  ): Prisma.OrderWhereInput {
+    return {
       companyId,
-      ...(status ? { status } : {}),
-      ...(search
+      ...(f.status ? { status: f.status } : {}),
+      ...(f.orderType ? { orderType: f.orderType } : {}),
+      ...(f.managerId ? { assignedUserId: f.managerId } : {}),
+      ...(f.dateFrom || f.dateTo
+        ? {
+            createdAt: {
+              ...(f.dateFrom ? { gte: new Date(f.dateFrom) } : {}),
+              ...(f.dateTo ? { lte: new Date(f.dateTo) } : {}),
+            },
+          }
+        : {}),
+      ...(f.search
         ? {
             OR: [
-              { orderNumber: { contains: search, mode: 'insensitive' } },
-              { client: { fullName: { contains: search, mode: 'insensitive' } } },
-              { client: { phone: { contains: search } } },
+              { orderNumber: { contains: f.search, mode: 'insensitive' } },
+              {
+                client: {
+                  fullName: { contains: f.search, mode: 'insensitive' },
+                },
+              },
+              { client: { phone: { contains: f.search } } },
             ],
           }
         : {}),
     };
-    const take = Math.min(Math.max(pageSize, 1), 100);
-    const skip = (Math.max(page, 1) - 1) * take;
+  }
+
+  async findAll(companyId: string, f: OrderFilters = {}) {
+    const where = this.buildWhere(companyId, f);
+    const take = Math.min(Math.max(f.pageSize ?? 25, 1), 100);
+    const page = Math.max(f.page ?? 1, 1);
+    const skip = (page - 1) * take;
     const [items, total] = await this.prisma.$transaction([
       this.prisma.order.findMany({
         where,
-        include: { client: true, items: true },
+        include: {
+          client: true,
+          items: true,
+          assignedUser: { select: { id: true, fullName: true } },
+        },
         orderBy: { createdAt: 'desc' },
         skip,
         take,
       }),
       this.prisma.order.count({ where }),
     ]);
-    return { items, total, page: Math.max(page, 1), pageSize: take };
+    return { items, total, page, pageSize: take };
+  }
+
+  // Сводка по статусам и суммам для карточек на странице «Заказы».
+  // Учитывает все фильтры, КРОМЕ статуса — чтобы карточки показывали разбивку.
+  async stats(companyId: string, f: OrderFilters = {}) {
+    const where = this.buildWhere(companyId, { ...f, status: undefined });
+    const grouped = await this.prisma.order.groupBy({
+      by: ['status'],
+      where,
+      _count: { _all: true },
+      orderBy: { status: 'asc' },
+    });
+    const agg = await this.prisma.order.aggregate({
+      where,
+      _sum: { total: true },
+      _count: true,
+    });
+    const byStatus: Record<string, number> = {};
+    for (const g of grouped) byStatus[g.status] = g._count._all;
+    return {
+      total: agg._count,
+      totalSum: Number(agg._sum.total ?? 0),
+      byStatus,
+    };
   }
 
   async findOne(id: string) {

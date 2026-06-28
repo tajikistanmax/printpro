@@ -4,11 +4,25 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
+import {
+  PageHeader,
+  StatGrid,
+  StatCard,
+  Card,
+  SectionTitle,
+  Field,
+  Input,
+  Select,
+  Button,
+  Badge,
+  EmptyState,
+  Tone,
+} from '@/components/ui';
 
-const STATUS: Record<string, { label: string; cls: string }> = {
-  ACTIVE: { label: 'Работает', cls: 'bg-emerald-100 text-emerald-700' },
-  REPAIR: { label: 'На ремонте', cls: 'bg-amber-100 text-amber-700' },
-  OFF: { label: 'Выключено', cls: 'bg-slate-200 text-slate-600' },
+const STATUS: Record<string, { label: string; tone: Tone }> = {
+  ACTIVE: { label: 'Работает', tone: 'emerald' },
+  REPAIR: { label: 'На ремонте', tone: 'amber' },
+  OFF: { label: 'Выключено', tone: 'slate' },
 };
 
 const TYPES = [
@@ -85,67 +99,71 @@ export default function EquipmentPage() {
     load();
   }
 
+  const activeCount = list.filter((e) => (e.status ?? 'ACTIVE') === 'ACTIVE').length;
+  const repairCount = list.filter((e) => e.status === 'REPAIR').length;
+  const offCount = list.filter((e) => e.status === 'OFF').length;
+
   return (
     <div className="max-w-4xl">
-      <h1 className="mb-2 text-2xl font-bold text-slate-800">Оборудование</h1>
-      <p className="mb-6 text-sm text-slate-500">
-        Принтеры, плоттеры и станки. Выбираются при назначении задания в
-        производстве.
-      </p>
+      <PageHeader
+        icon="equipment"
+        title="Оборудование"
+        subtitle="Принтеры, плоттеры и станки. Выбираются при назначении задания в производстве."
+      />
+
+      <StatGrid cols={4}>
+        <StatCard icon="equipment" tone="indigo" label="Всего" value={list.length} highlight />
+        <StatCard icon="reports" tone="emerald" label="Работает" value={activeCount} />
+        <StatCard icon="complaints" tone="amber" label="На ремонте" value={repairCount} />
+        <StatCard icon="settings" tone="slate" label="Выключено" value={offCount} />
+      </StatGrid>
 
       {manage && (
-        <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700">Добавить оборудование</h2>
+        <Card className="mb-6">
+          <SectionTitle>Добавить оборудование</SectionTitle>
           <form onSubmit={create} className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[180px] flex-1">
-              <label className="mb-1 block text-sm text-slate-500">Название</label>
-              <input
+            <Field label="Название" className="min-w-[180px] flex-1">
+              <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
                 placeholder="Напр. Epson L1300 №1"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
               />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm text-slate-500">Тип</label>
-              <input
+            </Field>
+            <Field label="Тип">
+              <Input
                 value={type}
                 onChange={(e) => setType(e.target.value)}
                 list="eq-types"
-                className="w-40 rounded-lg border border-slate-300 px-3 py-2"
+                className="w-40"
               />
               <datalist id="eq-types">
                 {TYPES.map((t) => (
                   <option key={t} value={t} />
                 ))}
               </datalist>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm text-slate-500">Модель</label>
-              <input
+            </Field>
+            <Field label="Модель">
+              <Input
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 placeholder="—"
-                className="w-36 rounded-lg border border-slate-300 px-3 py-2"
+                className="w-36"
               />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm text-slate-500">Инв./серийный №</label>
-              <input
+            </Field>
+            <Field label="Инв./серийный №">
+              <Input
                 value={serial}
                 onChange={(e) => setSerial(e.target.value)}
                 placeholder="—"
-                className="w-32 rounded-lg border border-slate-300 px-3 py-2"
+                className="w-32"
               />
-            </div>
+            </Field>
             {branches.length > 1 && (
-              <div>
-                <label className="mb-1 block text-sm text-slate-500">Филиал</label>
-                <select
+              <Field label="Филиал">
+                <Select
                   value={branchId}
                   onChange={(e) => setBranchId(e.target.value)}
-                  className="rounded-lg border border-slate-300 px-3 py-2"
                 >
                   <option value="">—</option>
                   {branches.map((b) => (
@@ -153,38 +171,36 @@ export default function EquipmentPage() {
                       {b.name}
                     </option>
                   ))}
-                </select>
-              </div>
+                </Select>
+              </Field>
             )}
-            <button className="rounded-lg bg-indigo-600 px-5 py-2 font-medium text-white hover:bg-indigo-700">
-              Добавить
-            </button>
-            {msg && <span className="text-sm text-slate-600">{msg}</span>}
+            <Button type="submit">Добавить</Button>
+            {msg && <span className="text-sm text-slate-600 dark:text-slate-300">{msg}</span>}
           </form>
-        </div>
+        </Card>
       )}
 
       {loading ? (
-        <p className="text-slate-400">Загрузка…</p>
+        <EmptyState title="Загрузка…" />
       ) : list.length === 0 ? (
-        <p className="text-slate-400">Оборудование пока не добавлено.</p>
+        <EmptyState icon="equipment" title="Оборудование пока не добавлено." />
       ) : (
         <div className="space-y-2">
           {list.map((e) => {
             const st = STATUS[e.status] ?? STATUS.ACTIVE;
             return (
-              <div
+              <Card
                 key={e.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-4 shadow-sm"
+                className="flex flex-wrap items-center justify-between gap-3"
               >
                 <div>
-                  <div className="font-medium text-slate-800">
+                  <div className="font-medium text-slate-800 dark:text-slate-100">
                     {e.name}
-                    <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${st.cls}`}>
+                    <Badge tone={st.tone} className="ml-2">
                       {st.label}
-                    </span>
+                    </Badge>
                   </div>
-                  <div className="text-sm text-slate-500">
+                  <div className="text-sm text-slate-500 dark:text-slate-400">
                     {[e.type, e.model, e.serial && `№ ${e.serial}`, e.branch?.name]
                       .filter(Boolean)
                       .join(' · ') || '—'}
@@ -192,25 +208,25 @@ export default function EquipmentPage() {
                 </div>
                 {manage && (
                   <div className="flex items-center gap-2">
-                    <select
+                    <Select
                       value={e.status}
                       onChange={(ev) => setStatus(e.id, ev.target.value)}
-                      className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                      className="w-auto"
                     >
                       <option value="ACTIVE">Работает</option>
                       <option value="REPAIR">На ремонте</option>
                       <option value="OFF">Выключено</option>
-                    </select>
+                    </Select>
                     <button
                       onClick={() => remove(e.id)}
-                      className="rounded px-2 py-1 text-rose-500 hover:bg-rose-50"
+                      className="rounded px-2 py-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                       title="Удалить"
                     >
                       ✕
                     </button>
                   </div>
                 )}
-              </div>
+              </Card>
             );
           })}
         </div>

@@ -3,11 +3,20 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
+import {
+  PageHeader,
+  TableCard,
+  Toolbar,
+  Button,
+  Badge,
+  EmptyState,
+  Tone,
+} from '@/components/ui';
 
-const ACTION_COLORS: Record<string, string> = {
-  Создание: 'bg-emerald-100 text-emerald-700',
-  Изменение: 'bg-amber-100 text-amber-700',
-  Удаление: 'bg-rose-100 text-rose-700',
+const ACTION_TONES: Record<string, Tone> = {
+  Создание: 'emerald',
+  Изменение: 'amber',
+  Удаление: 'rose',
 };
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -46,70 +55,69 @@ export default function AuditPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Журнал действий</h1>
-        <span className="text-sm text-slate-400">всего: {total}</span>
-      </div>
+      <PageHeader
+        icon="audit"
+        title="Журнал действий"
+        subtitle={`Всего записей: ${total}`}
+      />
 
-      <div className="rounded-2xl bg-white p-5 shadow-sm">
+      <TableCard>
         {rows.length === 0 ? (
-          <p className="text-slate-400">Записей пока нет.</p>
+          <EmptyState icon="audit" title="Записей пока нет" />
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-slate-400">
-                <th className="py-2 font-medium">Время</th>
-                <th className="py-2 font-medium">Сотрудник</th>
-                <th className="py-2 font-medium">Действие</th>
-                <th className="py-2 font-medium">Раздел</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-b border-slate-50 last:border-0">
-                  <td className="py-2 text-slate-500">
-                    {new Date(r.createdAt).toLocaleString('ru-RU')}
-                  </td>
-                  <td className="py-2 text-slate-700">{r.user}</td>
-                  <td className="py-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        ACTION_COLORS[r.action] ?? 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
-                      {r.action}
-                    </span>
-                  </td>
-                  <td className="py-2 text-slate-500">
-                    {ENTITY_LABELS[r.entity] ?? r.entity}
-                  </td>
+          <div className="pp-table-scroll">
+            <table className="pp-table">
+              <thead>
+                <tr>
+                  <th>Время</th>
+                  <th>Сотрудник</th>
+                  <th>Действие</th>
+                  <th>Раздел</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {pages > 1 && (
-          <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-sm">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-            >
-              ← Назад
-            </button>
-            <span className="text-slate-500">
-              Стр. {page} из {pages}
-            </span>
-            <button
-              onClick={() => setPage((p) => Math.min(pages, p + 1))}
-              disabled={page >= pages}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-            >
-              Вперёд →
-            </button>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td className="text-slate-500 dark:text-slate-400">
+                      {new Date(r.createdAt).toLocaleString('ru-RU')}
+                    </td>
+                    <td className="font-medium text-slate-700 dark:text-slate-200">{r.user}</td>
+                    <td>
+                      <Badge tone={ACTION_TONES[r.action] ?? 'slate'}>{r.action}</Badge>
+                    </td>
+                    <td className="text-slate-500 dark:text-slate-400">
+                      {ENTITY_LABELS[r.entity] ?? r.entity}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
-      </div>
+        {pages > 1 && (
+          <Toolbar className="justify-between border-b-0 border-t border-slate-100 dark:border-slate-700/60">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              ← Назад
+            </Button>
+            <span className="text-sm text-slate-500">
+              Стр. {page} из {pages}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(pages, p + 1))}
+              disabled={page >= pages}
+            >
+              Вперёд →
+            </Button>
+          </Toolbar>
+        )}
+      </TableCard>
     </div>
   );
 }

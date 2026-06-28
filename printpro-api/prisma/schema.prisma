@@ -507,6 +507,9 @@ model Product {
   salePrice  Decimal          @default(0) @db.Decimal(12, 2)
   minStock   Decimal          @default(0) @db.Decimal(12, 3) // порог оповещения
   barcode    String?
+  sku        String? // артикул
+  size       String? // размер (напр. 610 x 860 мм)
+  weight     String? // вес (напр. 2.5 кг)
   isActive   Boolean          @default(true)
   createdAt  DateTime         @default(now())
 
@@ -947,6 +950,7 @@ model DesignProof {
   fileUrl        String?
   fileName       String?
   comment        String? // комментарий клиента/правки
+  checklist      Json? // чек-лист перед печатью { cmyk: true, bleed: true, ... }
   assignedUserId String?
   assignedUser   User?       @relation("DesignProofAssignee", fields: [assignedUserId], references: [id])
   createdAt      DateTime    @default(now())

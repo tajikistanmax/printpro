@@ -5,6 +5,20 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
+import {
+  PageHeader,
+  StatGrid,
+  StatCard,
+  Card,
+  SectionTitle,
+  Field,
+  Input,
+  Select,
+  Button,
+  Badge,
+  EmptyState,
+  Tone,
+} from '@/components/ui';
 
 interface Line {
   itemType: 'SERVICE' | 'PRODUCT';
@@ -14,11 +28,11 @@ interface Line {
   unitPrice: number;
 }
 
-const STATUS: Record<string, { label: string; cls: string }> = {
-  DRAFT: { label: 'Черновик', cls: 'bg-slate-100 text-slate-600 dark:bg-slate-900/30 dark:text-slate-300' },
-  SENT: { label: 'Отправлено', cls: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' },
-  ACCEPTED: { label: 'Принято', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
-  REJECTED: { label: 'Отклонено', cls: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' },
+const STATUS: Record<string, { label: string; tone: Tone }> = {
+  DRAFT: { label: 'Черновик', tone: 'slate' },
+  SENT: { label: 'Отправлено', tone: 'sky' },
+  ACCEPTED: { label: 'Принято', tone: 'emerald' },
+  REJECTED: { label: 'Отклонено', tone: 'rose' },
 };
 
 export default function QuotesPage() {
@@ -131,69 +145,66 @@ export default function QuotesPage() {
     load();
   }
 
+  const acceptedCount = quotes.filter((q) => q.status === 'ACCEPTED').length;
+  const sentCount = quotes.filter((q) => q.status === 'SENT').length;
+  const quotesValue = quotes.reduce((s, q) => s + (Number(q.total) || 0), 0);
+
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-800 dark:text-slate-100">
-        Коммерческие предложения
-      </h1>
+      <PageHeader icon="quotes" title="Коммерческие предложения" subtitle="Создание КП и превращение их в заказы" />
+
+      <StatGrid cols={4}>
+        <StatCard icon="quotes" tone="indigo" label="Всего КП" value={quotes.length} highlight />
+        <StatCard icon="reports" tone="sky" label="Отправлено" value={sentCount} />
+        <StatCard icon="orders" tone="emerald" label="Принято" value={acceptedCount} />
+        <StatCard icon="cash" tone="violet" label="Сумма" value={`${quotesValue} c.`} />
+      </StatGrid>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Создание КП */}
         {manage && (
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-            <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Новое КП</h2>
+          <Card>
+            <SectionTitle>Новое КП</SectionTitle>
             <form onSubmit={create} className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
-                <input
+                <Input
                   value={clientPhone}
                   onChange={(e) => setClientPhone(e.target.value)}
                   placeholder="Телефон клиента"
-                  className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 />
-                <input
+                <Input
                   value={clientName}
                   onChange={(e) => setClientName(e.target.value)}
                   placeholder="Имя / компания"
-                  className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 />
-                <input
+                <Input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Заголовок (напр. Печать каталога)"
-                  className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 />
-                <input
+                <Input
                   value={validUntil}
                   onChange={(e) => setValidUntil(e.target.value)}
                   type="date"
                   title="Действительно до"
-                  className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 />
               </div>
 
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => addLine('SERVICE')}
-                  className="rounded-lg bg-indigo-100 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
-                >
+                <Button type="button" variant="ghost" onClick={() => addLine('SERVICE')}>
                   + Услуга
-                </button>
-                <button
-                  type="button"
-                  onClick={() => addLine('PRODUCT')}
-                  className="rounded-lg bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
-                >
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => addLine('PRODUCT')}>
                   + Товар
-                </button>
+                </Button>
               </div>
 
               {lines.map((l, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
-                  <select
+                  <Select
                     value={l.refId}
                     onChange={(e) => pickRef(i, e.target.value)}
-                    className="min-w-[150px] flex-1 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1.5 text-sm dark:bg-slate-800 dark:text-slate-100"
+                    className="min-w-[150px] flex-1"
                   >
                     <option value="">— выбрать —</option>
                     {(l.itemType === 'SERVICE' ? services : products).map((x) => (
@@ -201,22 +212,22 @@ export default function QuotesPage() {
                         {x.name}
                       </option>
                     ))}
-                  </select>
-                  <input
+                  </Select>
+                  <Input
                     type="number"
                     value={l.quantity}
                     min={0.001}
                     step="0.001"
                     onChange={(e) => updateLine(i, { quantity: Number(e.target.value) })}
-                    className="w-16 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1.5 text-sm dark:bg-slate-800 dark:text-slate-100"
+                    className="w-16"
                   />
-                  <input
+                  <Input
                     type="number"
                     value={l.unitPrice}
                     min={0}
                     step="0.01"
                     onChange={(e) => updateLine(i, { unitPrice: Number(e.target.value) })}
-                    className="w-20 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1.5 text-sm dark:bg-slate-800 dark:text-slate-100"
+                    className="w-20"
                   />
                   <span className="w-16 text-right text-sm text-slate-600 dark:text-slate-300">
                     {(l.quantity * l.unitPrice).toFixed(2)}
@@ -235,23 +246,20 @@ export default function QuotesPage() {
                 <span className="text-lg font-bold text-slate-800 dark:text-slate-100">
                   Итого: {total.toFixed(2)} c.
                 </span>
-                <button
-                  disabled={creating}
-                  className="rounded-lg bg-indigo-600 px-5 py-2 font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                >
+                <Button type="submit" disabled={creating}>
                   {creating ? 'Создание…' : 'Создать КП'}
-                </button>
+                </Button>
               </div>
               {msg && <p className="text-sm text-slate-600 dark:text-slate-300">{msg}</p>}
             </form>
-          </div>
+          </Card>
         )}
 
         {/* Список + детали */}
-        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Список КП</h2>
+        <Card>
+          <SectionTitle>Список КП</SectionTitle>
           {quotes.length === 0 ? (
-            <p className="text-slate-400 dark:text-slate-500">КП пока нет.</p>
+            <EmptyState icon="quotes" title="КП пока нет" hint="Создайте первое коммерческое предложение в форме слева." />
           ) : (
             <div className="space-y-1">
               {quotes.map((q) => {
@@ -269,39 +277,25 @@ export default function QuotesPage() {
                       </span>
                       <span className="flex items-center gap-2">
                         <span className="text-slate-500 dark:text-slate-400">{q.total} c.</span>
-                        <span className={`rounded-full px-2 py-0.5 text-xs ${st.cls}`}>
-                          {st.label}
-                        </span>
+                        <Badge tone={st.tone}>{st.label}</Badge>
                       </span>
                     </div>
                     {manage && q.status !== 'ACCEPTED' && (
                       <div className="mt-2 flex flex-wrap gap-2">
                         {q.status === 'DRAFT' && (
-                          <button
-                            onClick={() => setStatus(q.id, 'SENT')}
-                            className="rounded bg-sky-100 px-2.5 py-1 text-xs text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:hover:bg-sky-900/50"
-                          >
+                          <Button variant="sky" size="sm" onClick={() => setStatus(q.id, 'SENT')}>
                             Отправлено
-                          </button>
+                          </Button>
                         )}
-                        <button
-                          onClick={() => convert(q.id)}
-                          className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700"
-                        >
+                        <Button variant="emerald" size="sm" onClick={() => convert(q.id)}>
                           → В заказ
-                        </button>
-                        <button
-                          onClick={() => setStatus(q.id, 'REJECTED')}
-                          className="rounded px-2.5 py-1 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20"
-                        >
+                        </Button>
+                        <Button variant="ghost" size="sm" className="text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => setStatus(q.id, 'REJECTED')}>
                           Отклонить
-                        </button>
-                        <button
-                          onClick={() => remove(q.id)}
-                          className="rounded px-2 py-1 text-xs text-slate-400 hover:text-rose-600 dark:text-slate-500"
-                        >
+                        </Button>
+                        <Button variant="ghost" size="sm" className="text-slate-400 hover:text-rose-600 dark:text-slate-500" onClick={() => remove(q.id)}>
                           Удалить
-                        </button>
+                        </Button>
                       </div>
                     )}
                     {q.convertedOrderId && (
@@ -314,7 +308,7 @@ export default function QuotesPage() {
               })}
             </div>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

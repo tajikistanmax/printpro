@@ -4,36 +4,38 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
+import {
+  PageHeader,
+  StatGrid,
+  StatCard,
+  Tabs,
+  TabItem,
+  Card,
+  TableCard,
+  SectionTitle,
+  Field,
+  Input,
+  Select,
+  Button,
+  Badge,
+  EmptyState,
+} from '@/components/ui';
 
 export default function StaffPage() {
   const cid = DEFAULT_COMPANY_ID;
   const { can } = useAuth();
   const [tab, setTab] = useState<'users' | 'roles'>('users');
 
+  const tabs: TabItem[] = [
+    { key: 'users', label: 'Сотрудники' },
+    ...(can('roles.manage') ? [{ key: 'roles', label: 'Роли и права' }] : []),
+  ];
+
   return (
     <div>
-      <h1 className="mb-4 text-2xl font-bold text-slate-800 dark:text-slate-100">Сотрудники и роли</h1>
+      <PageHeader icon="staff" title="Сотрудники и роли" subtitle="Учётные записи, роли и права доступа" />
 
-      <div className="mb-6 flex gap-2">
-        <button
-          onClick={() => setTab('users')}
-          className={`rounded-lg px-4 py-2 text-sm font-medium ${
-            tab === 'users' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-          }`}
-        >
-          Сотрудники
-        </button>
-        {can('roles.manage') && (
-          <button
-            onClick={() => setTab('roles')}
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${
-              tab === 'roles' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-            }`}
-          >
-            Роли и права
-          </button>
-        )}
-      </div>
+      <Tabs tabs={tabs} active={tab} onChange={(k) => setTab(k as 'users' | 'roles')} />
 
       {tab === 'users' ? <UsersTab cid={cid} /> : <RolesTab cid={cid} />}
     </div>
@@ -99,38 +101,42 @@ function UsersTab({ cid }: { cid: string }) {
     }
   }
 
+  const activeCount = users.filter((u) => u.isActive).length;
+
   return (
     <div className="space-y-6">
+      <StatGrid cols={3}>
+        <StatCard icon="staff" tone="indigo" label="Сотрудников" value={users.length} highlight />
+        <StatCard icon="reports" tone="emerald" label="Активных" value={activeCount} />
+        <StatCard icon="settings" tone="amber" label="Ролей" value={roles.length} />
+      </StatGrid>
+
       {can('users.manage') && (
-        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Новый сотрудник</h2>
+        <Card>
+          <SectionTitle>Новый сотрудник</SectionTitle>
           <form onSubmit={create} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <input
+            <Input
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Ф.И.О."
               required
-              className="rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2"
             />
-            <input
+            <Input
               value={login}
               onChange={(e) => setLogin(e.target.value)}
               placeholder="Логин"
               required
-              className="rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2"
             />
-            <input
+            <Input
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type="password"
               placeholder="Пароль (мин. 4)"
               required
-              className="rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2"
             />
-            <select
+            <Select
               value={roleId}
               onChange={(e) => setRoleId(e.target.value)}
-              className="rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2"
             >
               <option value="">— роль —</option>
               {roles.map((r) => (
@@ -138,11 +144,10 @@ function UsersTab({ cid }: { cid: string }) {
                   {r.name}
                 </option>
               ))}
-            </select>
-            <select
+            </Select>
+            <Select
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
-              className="rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2"
             >
               <option value="">— филиал —</option>
               {branches.map((b) => (
@@ -150,64 +155,77 @@ function UsersTab({ cid }: { cid: string }) {
                   {b.name}
                 </option>
               ))}
-            </select>
-            <button className="rounded-lg bg-indigo-600 px-5 py-2 font-medium text-white hover:bg-indigo-700">
-              Добавить
-            </button>
+            </Select>
+            <Button type="submit">Добавить</Button>
           </form>
           {msg && <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{msg}</p>}
-        </div>
+        </Card>
       )}
 
-      <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-        <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Список сотрудников</h2>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-500 dark:text-slate-400">
-              <th className="py-2">Имя</th>
-              <th>Логин</th>
-              <th>Роль</th>
-              <th className="text-right">Статус</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-b border-slate-100 dark:border-slate-700 last:border-0">
-                <td className="py-2 font-medium text-slate-700 dark:text-slate-200">{u.fullName}</td>
-                <td className="text-slate-500 dark:text-slate-400">{u.login}</td>
-                <td className="text-slate-500 dark:text-slate-400">{u.role?.name ?? '—'}</td>
-                <td className="text-right">
-                  {can('users.manage') ? (
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => resetPassword(u)}
-                        className="rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-0.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
-                        title="Сбросить пароль"
-                      >
-                        🔑 Пароль
-                      </button>
-                      <button
-                        onClick={() => toggle(u)}
-                        className={`rounded-full px-2.5 py-0.5 text-xs ${
-                          u.isActive
-                            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                            : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
-                        }`}
-                      >
-                        {u.isActive ? 'Активен' : 'Отключён'}
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-slate-400 dark:text-slate-500">
-                      {u.isActive ? 'Активен' : 'Отключён'}
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <TableCard>
+        <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-700/60">
+          <h2 className="font-semibold text-slate-700 dark:text-slate-200">Список сотрудников</h2>
+        </div>
+        {users.length === 0 ? (
+          <EmptyState icon="staff" title="Сотрудников нет" />
+        ) : (
+          <div className="pp-table-scroll">
+            <table className="pp-table">
+              <thead>
+                <tr>
+                  <th>Имя</th>
+                  <th>Логин</th>
+                  <th>Роль</th>
+                  <th className="text-right">Статус</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td className="font-medium text-slate-700 dark:text-slate-200">{u.fullName}</td>
+                    <td className="text-slate-500 dark:text-slate-400">{u.login}</td>
+                    <td>
+                      {u.role?.name ? (
+                        <Badge tone="indigo">{u.role.name}</Badge>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="text-right">
+                      {can('users.manage') ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => resetPassword(u)}
+                            title="Сбросить пароль"
+                          >
+                            🔑 Пароль
+                          </Button>
+                          <button
+                            onClick={() => toggle(u)}
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                              u.isActive
+                                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                            }`}
+                          >
+                            {u.isActive ? 'Активен' : 'Отключён'}
+                          </button>
+                        </div>
+                      ) : u.isActive ? (
+                        <Badge tone="emerald">Активен</Badge>
+                      ) : (
+                        <Badge tone="slate">Отключён</Badge>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </TableCard>
     </div>
   );
 }
@@ -279,8 +297,8 @@ function RolesTab({ cid }: { cid: string }) {
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       {/* Список ролей */}
-      <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-        <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Роли</h2>
+      <Card>
+        <SectionTitle>Роли</SectionTitle>
         <div className="space-y-1">
           {roles.map((r) => (
             <button
@@ -298,35 +316,25 @@ function RolesTab({ cid }: { cid: string }) {
           ))}
         </div>
         <form onSubmit={createRole} className="mt-4 flex gap-2">
-          <input
+          <Input
             value={newRole}
             onChange={(e) => setNewRole(e.target.value)}
             placeholder="Новая роль"
-            className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-sm"
+            className="flex-1"
           />
-          <button className="rounded-lg bg-slate-700 dark:bg-slate-600 px-3 text-sm text-white hover:bg-slate-800 dark:hover:bg-slate-500">
-            +
-          </button>
+          <Button type="submit" variant="ghost" className="shrink-0">+</Button>
         </form>
-      </div>
+      </Card>
 
       {/* Права роли — галочки */}
-      <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm lg:col-span-2">
+      <Card className="lg:col-span-2">
         {!selectedRole ? (
-          <p className="text-slate-400 dark:text-slate-500">Выберите роль слева, чтобы настроить права.</p>
+          <EmptyState icon="settings" title="Выберите роль слева, чтобы настроить права." />
         ) : (
           <>
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="font-semibold text-slate-700 dark:text-slate-200">
-                Права роли: {selectedRole.name}
-              </h2>
-              <button
-                onClick={save}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
-              >
-                Сохранить
-              </button>
-            </div>
+            <SectionTitle right={<Button variant="emerald" onClick={save}>Сохранить</Button>}>
+              Права роли: {selectedRole.name}
+            </SectionTitle>
 
             <div className="space-y-4">
               {Object.entries(grouped).map(([group, perms]) => (
@@ -355,7 +363,7 @@ function RolesTab({ cid }: { cid: string }) {
             {msg && <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{msg}</p>}
           </>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

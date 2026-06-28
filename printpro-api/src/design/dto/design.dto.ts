@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsObject, IsOptional, IsString } from 'class-validator';
 import { ProofStatus } from '@prisma/client';
 
 export class CreateProofDto {
@@ -17,6 +17,7 @@ export class UpdateProofDto {
   @IsOptional() @IsString() fileUrl?: string;
   @IsOptional() @IsString() fileName?: string;
   @IsOptional() @IsString() comment?: string;
+  @IsOptional() @IsObject() checklist?: Record<string, boolean>;
 }
 
 export class UpdateProofStatusDto {

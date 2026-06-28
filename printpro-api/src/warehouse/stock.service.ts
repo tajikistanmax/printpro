@@ -9,6 +9,27 @@ import { TransferStockDto, RecountStockDto } from './dto/transfer-stock.dto';
 export class StockService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Сводка для карточек склада: поставщиков + поступления сегодня (по закупкам)
+  async stats(companyId: string) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const [suppliers, items] = await Promise.all([
+      this.prisma.supplier.count({ where: { companyId, deletedAt: null } }),
+      this.prisma.stockReceiptItem.findMany({
+        where: {
+          deletedAt: null,
+          receipt: { companyId, date: { gte: todayStart } },
+        },
+        select: { cost: true, quantity: true },
+      }),
+    ]);
+    const todayReceipts = items.reduce(
+      (s, i) => s + Number(i.cost) * Number(i.quantity),
+      0,
+    );
+    return { suppliers, todayReceipts };
+  }
+
   // Приём товара (приход): увеличиваем остаток + записываем движение
   async receive(dto: ReceiveStockDto) {
     return this.prisma.$transaction(async (tx) => {

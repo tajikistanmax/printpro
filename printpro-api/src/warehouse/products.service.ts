@@ -19,6 +19,9 @@ export class ProductsService {
         salePrice: dto.salePrice ?? 0,
         minStock: dto.minStock ?? 0,
         barcode: dto.barcode,
+        sku: dto.sku,
+        size: dto.size,
+        weight: dto.weight,
         isActive: dto.isActive ?? true,
       },
       include: { category: true, unit: true },
@@ -28,7 +31,11 @@ export class ProductsService {
   findAllProducts(companyId: string) {
     return this.prisma.product.findMany({
       where: { companyId },
-      include: { category: true, unit: true, stock: true },
+      include: {
+        category: true,
+        unit: true,
+        stock: { include: { branch: { select: { name: true } } } },
+      },
       orderBy: { name: 'asc' },
     });
   }
@@ -36,10 +43,52 @@ export class ProductsService {
   async findOneProduct(id: string) {
     const product = await this.prisma.product.findUnique({
       where: { id },
-      include: { category: true, unit: true, stock: { include: { branch: true } } },
+      include: {
+        category: true,
+        unit: true,
+        stock: { include: { branch: true } },
+        serviceMaterials: { include: { service: { select: { id: true, name: true } } } },
+      },
     });
     if (!product) throw new NotFoundException('Товар не найден');
-    return product;
+
+    // Последняя закупка (поставщик, дата, цена)
+    const lastItem = await this.prisma.stockReceiptItem.findFirst({
+      where: { productId: id, deletedAt: null },
+      orderBy: { receipt: { date: 'desc' } },
+      include: { receipt: { include: { supplier: { select: { name: true } } } } },
+    });
+    const lastReceipt = lastItem
+      ? {
+          supplier: lastItem.receipt?.supplier?.name ?? null,
+          date: lastItem.receipt?.date ?? null,
+          cost: Number(lastItem.cost),
+          quantity: Number(lastItem.quantity),
+        }
+      : null;
+
+    // Средний расход за 30 дней (OUT + WRITE_OFF) и «хватит на N дней»
+    const since = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    const consumedAgg = await this.prisma.stockMovement.aggregate({
+      where: {
+        productId: id,
+        type: { in: ['OUT', 'WRITE_OFF'] },
+        createdAt: { gte: since },
+      },
+      _sum: { quantity: true },
+    });
+    const consumed = Number(consumedAgg._sum.quantity ?? 0);
+    const avgPerDay = consumed > 0 ? Number((consumed / 30).toFixed(2)) : 0;
+    const stockTotal = product.stock.reduce((s, r) => s + Number(r.quantity), 0);
+    const daysLeft = avgPerDay > 0 ? Math.floor(stockTotal / avgPerDay) : null;
+
+    return {
+      ...product,
+      stockTotal,
+      usedInServices: product.serviceMaterials.map((m) => m.service),
+      lastReceipt,
+      consumption: { avgPerDay, daysLeft },
+    };
   }
 
   // ---------- Категории товаров ----------
@@ -75,6 +124,9 @@ export class ProductsService {
         salePrice: dto.salePrice,
         minStock: dto.minStock,
         barcode: dto.barcode,
+        sku: dto.sku,
+        size: dto.size,
+        weight: dto.weight,
         isActive: dto.isActive,
       },
       include: { category: true, unit: true },

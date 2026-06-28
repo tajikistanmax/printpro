@@ -339,29 +339,9 @@ function Stat({
 function Logo() {
   return (
     <div>
-      {/* Знак: «P» с градиентом бренда, жёлтым уголком и CMYK-рядом точек */}
-      <svg width="76" height="76" viewBox="0 0 58 58" fill="none">
-        <defs>
-          <linearGradient id="ppg" x1="6" y1="2" x2="52" y2="44">
-            <stop stopColor="#EC4899" />
-            <stop offset="0.45" stopColor="#8B5CF6" />
-            <stop offset="1" stopColor="#2563EB" />
-          </linearGradient>
-        </defs>
-        {/* Тело буквы P */}
-        <path
-          d="M8 3h19a14 14 0 0 1 0 28H18v9H8V3Zm10 8v12h9a6 6 0 0 0 0-12h-9Z"
-          fill="url(#ppg)"
-        />
-        {/* Жёлтый уголок-«лента» у ножки */}
-        <path d="M8 21l9-3-2 7-7 2v-6Z" fill="#FBBF24" />
-        {/* CMYK-ряд: синий/жёлтый круги + малиновая/жёлтая/тёмная капсулы */}
-        <circle cx="10" cy="47" r="2.4" fill="#3B82F6" />
-        <circle cx="18" cy="47" r="2.4" fill="#FBBF24" />
-        <rect x="24" y="44.6" width="7" height="4.8" rx="2.4" fill="#EC4899" />
-        <rect x="33" y="44.6" width="7" height="4.8" rx="2.4" fill="#FBBF24" />
-        <rect x="42" y="44.6" width="7" height="4.8" rx="2.4" fill="#1E293B" />
-      </svg>
+      {/* Знак бренда «P» (логотип компании) */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/logo.svg" alt="PrintPro" width={84} height={84} className="object-contain" />
 
       {/* Слово PrintPro (курсивное, как в макете) */}
       <div className="mt-2 text-[40px] font-extrabold italic leading-none tracking-tight text-slate-900">

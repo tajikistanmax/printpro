@@ -4,6 +4,20 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
+import {
+  PageHeader,
+  StatGrid,
+  StatCard,
+  Card,
+  TableCard,
+  SectionTitle,
+  Field,
+  Input,
+  Select,
+  Button,
+  Badge,
+  EmptyState,
+} from '@/components/ui';
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(n) + ' c.';
@@ -133,39 +147,58 @@ export default function PayrollPage() {
 
   const period = periods.find((p) => p.id === periodId);
 
+  const totalPayroll = records.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
+  const paidCount = records.filter((r) => r.isPaid).length;
+  const unpaidCount = records.length - paidCount;
+
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-800 dark:text-slate-100">Зарплата</h1>
+      <PageHeader
+        icon="payroll"
+        title="Зарплата"
+        subtitle={period ? `Период: ${period.name}` : 'Ставки, ведомость и выплаты'}
+      />
       {msg && <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">{msg}</p>}
 
+      <StatGrid cols={4}>
+        <StatCard icon="cash" tone="indigo" label="К выплате за период" value={money(totalPayroll)} sub={period?.name} highlight />
+        <StatCard icon="staff" tone="sky" label="Сотрудников" value={staff.length} />
+        <StatCard icon="reports" tone="emerald" label="Выплачено" value={paidCount} />
+        <StatCard icon="complaints" tone="amber" label="К выплате" value={unpaidCount} />
+      </StatGrid>
+
       {/* Ставки */}
-      <div className="mb-6 rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-        <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Ставки сотрудников</h2>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-400 dark:text-slate-500">
-              <th className="py-2 font-medium">Сотрудник</th>
-              <th className="py-2 font-medium">Должность</th>
-              <th className="py-2 font-medium">Тип</th>
-              <th className="py-2 text-right font-medium">Ставка / оклад</th>
-            </tr>
-          </thead>
-          <tbody>
-            {staff.map((u) => (
-              <SalaryRow key={u.id} u={u} canManage={canManage} onSave={saveSalary} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <TableCard className="mb-6">
+        <div className="px-4 pt-4">
+          <SectionTitle>Ставки сотрудников</SectionTitle>
+        </div>
+        <div className="pp-table-scroll">
+          <table className="pp-table">
+            <thead>
+              <tr>
+                <th>Сотрудник</th>
+                <th>Должность</th>
+                <th>Тип</th>
+                <th className="text-right">Ставка / оклад</th>
+              </tr>
+            </thead>
+            <tbody>
+              {staff.map((u) => (
+                <SalaryRow key={u.id} u={u} canManage={canManage} onSave={saveSalary} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </TableCard>
 
       {/* Период + расчёт */}
       <div className="mb-6 grid gap-6 lg:grid-cols-[1fr_2fr]">
-        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Период</h2>
-          <select
+        <Card>
+          <SectionTitle>Период</SectionTitle>
+          <Select
             value={periodId}
             onChange={(e) => setPeriodId(e.target.value)}
-            className="mb-3 w-full rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2"
+            className="mb-3"
           >
             <option value="">— выберите период —</option>
             {periods.map((p) => (
@@ -173,177 +206,170 @@ export default function PayrollPage() {
                 {p.name} {p.isClosed ? '(закрыт)' : ''}
               </option>
             ))}
-          </select>
+          </Select>
           {periodId && canManage && !period?.isClosed && (
-            <button
-              onClick={calculate}
-              className="mb-4 w-full rounded-lg bg-indigo-600 py-2 font-medium text-white hover:bg-indigo-700"
-            >
+            <Button onClick={calculate} className="mb-4 w-full">
               Рассчитать зарплату
-            </button>
+            </Button>
           )}
 
           {canManage && (
             <form onSubmit={createPeriod} className="space-y-2 border-t border-slate-100 dark:border-slate-700 pt-3">
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Новый период</p>
-              <input
+              <Input
                 value={pName}
                 onChange={(e) => setPName(e.target.value)}
                 placeholder="Напр. Июнь 2026"
                 required
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-sm"
               />
               <div className="grid grid-cols-2 gap-2">
-                <input
+                <Input
                   value={pStart}
                   onChange={(e) => setPStart(e.target.value)}
                   type="date"
                   required
-                  className="rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-2 py-2 text-sm"
                 />
-                <input
+                <Input
                   value={pEnd}
                   onChange={(e) => setPEnd(e.target.value)}
                   type="date"
                   required
-                  className="rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-2 py-2 text-sm"
                 />
               </div>
-              <button className="w-full rounded-lg bg-slate-700 dark:bg-slate-600 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-500">
+              <Button type="submit" variant="ghost" className="w-full">
                 Создать период
-              </button>
+              </Button>
             </form>
           )}
-        </div>
+        </Card>
 
         {/* Расчётная ведомость */}
-        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Ведомость</h2>
+        <TableCard>
+          <div className="px-4 pt-4">
+            <SectionTitle>Ведомость</SectionTitle>
+          </div>
           {records.length === 0 ? (
-            <p className="text-sm text-slate-400 dark:text-slate-500">
-              Нет расчёта. Выберите период и нажмите «Рассчитать».
-            </p>
+            <EmptyState icon="payroll" title="Нет расчёта" hint="Выберите период и нажмите «Рассчитать»." />
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-400 dark:text-slate-500">
-                  <th className="py-2 font-medium">Сотрудник</th>
-                  <th className="py-2 text-right font-medium">База</th>
-                  <th className="py-2 text-right font-medium">Аванс</th>
-                  <th className="py-2 text-right font-medium">Бонус</th>
-                  <th className="py-2 text-right font-medium">Удерж.</th>
-                  <th className="py-2 text-right font-medium">К выплате</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.map((r) => (
-                  <tr key={r.id} className="border-b border-slate-50 dark:border-slate-800 last:border-0">
-                    <td className="py-2 text-slate-700 dark:text-slate-200">{r.name}</td>
-                    <td className="py-2 text-right text-slate-500 dark:text-slate-400">{money(r.base)}</td>
-                    <td className="py-2 text-right text-amber-600 dark:text-amber-300">−{money(r.advance)}</td>
-                    <td className="py-2 text-right">
-                      <input
-                        defaultValue={r.bonus}
-                        onBlur={(e) => setBonus(r.id, 'bonus', e.target.value)}
-                        disabled={!canManage || r.isPaid}
-                        type="number"
-                        className="w-16 rounded border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 px-1 py-0.5 text-right text-xs"
-                      />
-                    </td>
-                    <td className="py-2 text-right">
-                      <input
-                        defaultValue={r.deduction}
-                        onBlur={(e) => setBonus(r.id, 'deduction', e.target.value)}
-                        disabled={!canManage || r.isPaid}
-                        type="number"
-                        className="w-16 rounded border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 px-1 py-0.5 text-right text-xs"
-                      />
-                    </td>
-                    <td className="py-2 text-right font-semibold text-slate-800 dark:text-slate-100">
-                      {money(r.total)}
-                    </td>
-                    <td className="py-2 text-right">
-                      {r.isPaid ? (
-                        <span className="text-xs text-emerald-600 dark:text-emerald-400">выплачено</span>
-                      ) : (
-                        canManage && (
-                          <button
-                            onClick={() => pay(r.id)}
-                            className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700"
-                          >
-                            Выплатить
-                          </button>
-                        )
-                      )}
-                    </td>
+            <div className="pp-table-scroll">
+              <table className="pp-table">
+                <thead>
+                  <tr>
+                    <th>Сотрудник</th>
+                    <th className="text-right">База</th>
+                    <th className="text-right">Аванс</th>
+                    <th className="text-right">Бонус</th>
+                    <th className="text-right">Удерж.</th>
+                    <th className="text-right">К выплате</th>
+                    <th></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {records.map((r) => (
+                    <tr key={r.id}>
+                      <td className="font-medium text-slate-700 dark:text-slate-200">{r.name}</td>
+                      <td className="text-right text-slate-500 dark:text-slate-400">{money(r.base)}</td>
+                      <td className="text-right text-amber-600 dark:text-amber-300">−{money(r.advance)}</td>
+                      <td className="text-right">
+                        <input
+                          defaultValue={r.bonus}
+                          onBlur={(e) => setBonus(r.id, 'bonus', e.target.value)}
+                          disabled={!canManage || r.isPaid}
+                          type="number"
+                          className="w-16 rounded border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 px-1 py-0.5 text-right text-xs"
+                        />
+                      </td>
+                      <td className="text-right">
+                        <input
+                          defaultValue={r.deduction}
+                          onBlur={(e) => setBonus(r.id, 'deduction', e.target.value)}
+                          disabled={!canManage || r.isPaid}
+                          type="number"
+                          className="w-16 rounded border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 px-1 py-0.5 text-right text-xs"
+                        />
+                      </td>
+                      <td className="text-right font-semibold text-slate-800 dark:text-slate-100">
+                        {money(r.total)}
+                      </td>
+                      <td className="text-right">
+                        {r.isPaid ? (
+                          <Badge tone="emerald">выплачено</Badge>
+                        ) : (
+                          canManage && (
+                            <Button variant="emerald" size="sm" onClick={() => pay(r.id)}>
+                              Выплатить
+                            </Button>
+                          )
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
+        </TableCard>
       </div>
 
       {/* Аванс / Время */}
       {canManage && (
         <div className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-            <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Выдать аванс</h2>
+          <Card>
+            <SectionTitle>Выдать аванс</SectionTitle>
             <form onSubmit={addAdvance} className="flex flex-wrap items-end gap-2">
-              <select
+              <Select
                 value={aUser}
                 onChange={(e) => setAUser(e.target.value)}
-                className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-sm"
+                className="flex-1"
               >
                 {staff.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.fullName}
                   </option>
                 ))}
-              </select>
-              <input
+              </Select>
+              <Input
                 value={aAmount}
                 onChange={(e) => setAAmount(e.target.value)}
                 type="number"
                 placeholder="Сумма"
                 required
-                className="w-28 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-sm"
+                className="w-28"
               />
-              <button className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700">
+              <Button type="submit" variant="amber">
                 Выдать
-              </button>
+              </Button>
             </form>
-          </div>
+          </Card>
 
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-            <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Учёт времени (часы)</h2>
+          <Card>
+            <SectionTitle>Учёт времени (часы)</SectionTitle>
             <form onSubmit={addWorkTime} className="flex flex-wrap items-end gap-2">
-              <select
+              <Select
                 value={wUser}
                 onChange={(e) => setWUser(e.target.value)}
-                className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-sm"
+                className="flex-1"
               >
                 {staff.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.fullName}
                   </option>
                 ))}
-              </select>
-              <input
+              </Select>
+              <Input
                 value={wHours}
                 onChange={(e) => setWHours(e.target.value)}
                 type="number"
                 step="0.5"
                 placeholder="Часов"
                 required
-                className="w-28 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-sm"
+                className="w-28"
               />
-              <button className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700">
+              <Button type="submit" variant="sky">
                 Записать
-              </button>
+              </Button>
             </form>
-          </div>
+          </Card>
         </div>
       )}
     </div>
@@ -363,10 +389,10 @@ function SalaryRow({
   const [rate, setRate] = useState(String(u.rate));
 
   return (
-    <tr className="border-b border-slate-50 dark:border-slate-800 last:border-0">
-      <td className="py-2 text-slate-700 dark:text-slate-200">{u.fullName}</td>
-      <td className="py-2 text-slate-400 dark:text-slate-500">{u.position ?? '—'}</td>
-      <td className="py-2">
+    <tr>
+      <td className="font-medium text-slate-700 dark:text-slate-200">{u.fullName}</td>
+      <td className="text-slate-400 dark:text-slate-500">{u.position ?? '—'}</td>
+      <td>
         <select
           value={type}
           onChange={(e) => setType(e.target.value)}
@@ -377,7 +403,7 @@ function SalaryRow({
           <option value="HOURLY">Почасовая</option>
         </select>
       </td>
-      <td className="py-2 text-right">
+      <td className="text-right">
         <input
           value={rate}
           onChange={(e) => setRate(e.target.value)}
@@ -386,12 +412,9 @@ function SalaryRow({
           className="w-24 rounded border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 px-1 py-0.5 text-right text-xs"
         />
         {canManage && (
-          <button
-            onClick={() => onSave(u, type, rate)}
-            className="ml-2 rounded bg-indigo-600 px-2 py-0.5 text-xs text-white hover:bg-indigo-700"
-          >
+          <Button size="sm" onClick={() => onSave(u, type, rate)} className="ml-2 px-2 py-0.5">
             ✓
-          </button>
+          </Button>
         )}
       </td>
     </tr>

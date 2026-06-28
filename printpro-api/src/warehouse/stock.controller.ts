@@ -49,4 +49,10 @@ export class StockController {
   listMovements(@Query('companyId') companyId: string) {
     return this.stock.listMovements(companyId);
   }
+
+  // GET /api/stock/stats?companyId=... — сводка (поставщиков, поступления сегодня)
+  @Get('stats')
+  stats(@Query('companyId') companyId: string) {
+    return this.stock.stats(companyId);
+  }
 }

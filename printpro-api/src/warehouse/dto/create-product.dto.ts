@@ -13,5 +13,8 @@ export class CreateProductDto {
   @IsOptional() @IsNumber() @Min(0) minStock?: number;
 
   @IsOptional() @IsString() barcode?: string;
+  @IsOptional() @IsString() sku?: string;
+  @IsOptional() @IsString() size?: string;
+  @IsOptional() @IsString() weight?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }

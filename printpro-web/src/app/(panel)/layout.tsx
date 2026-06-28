@@ -136,20 +136,8 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
             railCollapsed ? 'lg:justify-center lg:px-0' : ''
           }`}
         >
-          <svg width="32" height="32" viewBox="0 0 58 58" fill="none" className="shrink-0">
-            <defs>
-              <linearGradient id="navlogo" x1="6" y1="2" x2="50" y2="46">
-                <stop stopColor="#3B82F6" />
-                <stop offset="0.5" stopColor="#9333EA" />
-                <stop offset="1" stopColor="#EC4899" />
-              </linearGradient>
-            </defs>
-            <path
-              d="M8 3h19a14 14 0 0 1 0 28H18v9H8V3Zm10 8v12h9a6 6 0 0 0 0-12h-9Z"
-              fill="url(#navlogo)"
-            />
-            <path d="M20 13.5l7 4-7 4v-8Z" fill="#22D3EE" />
-          </svg>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.svg" alt="PrintPro" className="h-9 w-9 shrink-0 object-contain" />
           <span
             className={`text-xl font-extrabold italic tracking-tight text-slate-800 ${hideOnRail}`}
           >
