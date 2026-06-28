@@ -88,6 +88,17 @@ function UsersTab({ cid }: { cid: string }) {
     load();
   }
 
+  async function resetPassword(u: any) {
+    const pwd = prompt(`Новый пароль для «${u.fullName}»:`);
+    if (!pwd) return;
+    try {
+      await api.patch(`/users/${u.id}/password`, { password: pwd });
+      alert(`Пароль для «${u.fullName}» изменён. Сообщите ему новый пароль.`);
+    } catch (err: any) {
+      alert('Ошибка: ' + err.message);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {can('users.manage') && (
@@ -167,16 +178,25 @@ function UsersTab({ cid }: { cid: string }) {
                 <td className="text-slate-500">{u.role?.name ?? '—'}</td>
                 <td className="text-right">
                   {can('users.manage') ? (
-                    <button
-                      onClick={() => toggle(u)}
-                      className={`rounded-full px-2.5 py-0.5 text-xs ${
-                        u.isActive
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-slate-200 text-slate-500'
-                      }`}
-                    >
-                      {u.isActive ? 'Активен' : 'Отключён'}
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => resetPassword(u)}
+                        className="rounded-lg border border-slate-200 px-2.5 py-0.5 text-xs text-slate-600 hover:bg-slate-50"
+                        title="Сбросить пароль"
+                      >
+                        🔑 Пароль
+                      </button>
+                      <button
+                        onClick={() => toggle(u)}
+                        className={`rounded-full px-2.5 py-0.5 text-xs ${
+                          u.isActive
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-slate-200 text-slate-500'
+                        }`}
+                      >
+                        {u.isActive ? 'Активен' : 'Отключён'}
+                      </button>
+                    </div>
                   ) : (
                     <span className="text-xs text-slate-400">
                       {u.isActive ? 'Активен' : 'Отключён'}

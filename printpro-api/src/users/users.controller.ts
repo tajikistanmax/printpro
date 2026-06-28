@@ -37,4 +37,11 @@ export class UsersController {
   setActive(@Param('id') id: string, @Body('isActive') isActive: boolean) {
     return this.users.setActive(id, isActive);
   }
+
+  // Сбросить пароль сотрудника
+  @Patch(':id/password')
+  @RequirePermissions('users.manage')
+  resetPassword(@Param('id') id: string, @Body('password') password: string) {
+    return this.users.resetPassword(id, password);
+  }
 }

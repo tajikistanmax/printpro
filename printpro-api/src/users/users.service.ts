@@ -36,6 +36,18 @@ export class UsersService {
     return users.map((u) => this.safe(u));
   }
 
+  // Сбросить пароль сотрудника (админом)
+  async resetPassword(id: string, newPassword: string) {
+    const exists = await this.prisma.user.findUnique({ where: { id } });
+    if (!exists) throw new NotFoundException('Сотрудник не найден');
+    if (!newPassword || newPassword.length < 4) {
+      throw new NotFoundException('Пароль слишком короткий (мин. 4 символа)');
+    }
+    const passwordHash = await AuthService.hashPassword(newPassword);
+    await this.prisma.user.update({ where: { id }, data: { passwordHash } });
+    return { ok: true };
+  }
+
   // Включить/выключить сотрудника
   async setActive(id: string, isActive: boolean) {
     const exists = await this.prisma.user.findUnique({ where: { id } });
