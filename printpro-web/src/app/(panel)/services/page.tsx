@@ -18,7 +18,13 @@ export default function ServicesPage() {
   const { can } = useAuth();
   const [services, setServices] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Категории услуг
+  const [catName, setCatName] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [filterCat, setFilterCat] = useState<string>('ALL');
 
   // Добавление материала к услуге: { [serviceId]: {productId, qty} }
   const [matForm, setMatForm] = useState<
@@ -46,10 +52,44 @@ export default function ServicesPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }
+  function loadCategories() {
+    api
+      .get(`/service-categories?companyId=${cid}`)
+      .then(setCategories)
+      .catch(() => {});
+  }
   useEffect(() => {
     load();
+    loadCategories();
     api.get(`/products?companyId=${cid}`).then(setProducts).catch(() => {});
   }, [cid]);
+
+  async function addCategory() {
+    if (!catName.trim()) return;
+    try {
+      await api.post('/service-categories', {
+        companyId: cid,
+        name: catName.trim(),
+      });
+      setCatName('');
+      loadCategories();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  async function removeCategory(id: string) {
+    if (!confirm('Удалить категорию? Услуги останутся без категории.')) return;
+    try {
+      await api.del(`/service-categories/${id}`);
+      if (categoryId === id) setCategoryId('');
+      if (filterCat === id) setFilterCat('ALL');
+      loadCategories();
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
 
   async function addMaterial(serviceId: string) {
     const f = matForm[serviceId];
@@ -78,6 +118,7 @@ export default function ServicesPage() {
       await api.post('/services', {
         companyId: cid,
         name,
+        categoryId: categoryId || undefined,
         pricingType,
         basePrice: basePrice ? Number(basePrice) : 0,
         costPrice: costPrice ? Number(costPrice) : 0,
@@ -114,6 +155,49 @@ export default function ServicesPage() {
 
       {can('services.manage') && (
         <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="mb-3 font-semibold text-slate-700">Категории услуг</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            {categories.map((c) => (
+              <span
+                key={c.id}
+                className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-700"
+              >
+                {c.name}
+                <button
+                  onClick={() => removeCategory(c.id)}
+                  className="text-rose-400 hover:text-rose-600"
+                  title="Удалить категорию"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+            {categories.length === 0 && (
+              <span className="text-sm text-slate-400">
+                Категорий пока нет — добавьте, чтобы группировать услуги.
+              </span>
+            )}
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              value={catName}
+              onChange={(e) => setCatName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addCategory()}
+              placeholder="Новая категория (напр. Полиграфия)"
+              className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm sm:max-w-xs"
+            />
+            <button
+              onClick={addCategory}
+              className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              + Категория
+            </button>
+          </div>
+        </div>
+      )}
+
+      {can('services.manage') && (
+        <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="mb-3 font-semibold text-slate-700">Новая услуга</h2>
           <form onSubmit={createService} className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[200px]">
@@ -125,6 +209,21 @@ export default function ServicesPage() {
                 placeholder="Например: Печать баннеров"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2"
               />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-slate-500">Категория</label>
+              <select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                className="rounded-lg border border-slate-300 px-3 py-2"
+              >
+                <option value="">— без категории —</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-sm text-slate-500">Тип цены</label>
@@ -189,17 +288,54 @@ export default function ServicesPage() {
         </div>
       )}
 
+      {categories.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            onClick={() => setFilterCat('ALL')}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+              filterCat === 'ALL'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white text-slate-600 shadow-sm hover:bg-slate-50'
+            }`}
+          >
+            Все
+          </button>
+          {categories.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setFilterCat(c.id)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                filterCat === c.id
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-slate-600 shadow-sm hover:bg-slate-50'
+              }`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <p className="text-slate-400">Загрузка…</p>
       ) : services.length === 0 ? (
         <p className="text-slate-400">Услуг пока нет.</p>
       ) : (
         <div className="space-y-3">
-          {services.map((s) => (
+          {services
+            .filter((s) => filterCat === 'ALL' || s.categoryId === filterCat)
+            .map((s) => (
             <div key={s.id} className="rounded-2xl bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-semibold text-slate-800">{s.name}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-800">{s.name}</span>
+                    {s.category?.name && (
+                      <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-600">
+                        {s.category.name}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-sm text-slate-500">
                     {PRICING_LABELS[s.pricingType] ?? s.pricingType}
                     {Number(s.designSurcharge) > 0 &&

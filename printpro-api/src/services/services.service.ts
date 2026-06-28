@@ -75,6 +75,30 @@ export class ServicesService {
     });
   }
 
+  // ---------- Категории услуг ----------
+  createCategory(dto: { companyId: string; name: string }) {
+    return this.prisma.serviceCategory.create({
+      data: { companyId: dto.companyId, name: dto.name },
+    });
+  }
+
+  findCategories(companyId: string) {
+    return this.prisma.serviceCategory.findMany({
+      where: { companyId, deletedAt: null },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  // Удалить категорию: сначала открепляем услуги, чтобы не нарушать связь
+  async removeCategory(id: string) {
+    await this.prisma.service.updateMany({
+      where: { categoryId: id },
+      data: { categoryId: null },
+    });
+    await this.prisma.serviceCategory.delete({ where: { id } });
+    return { ok: true };
+  }
+
   // ---------- Материалы услуги (спецификация для авто-списания) ----------
   async addMaterial(serviceId: string, productId: string, qtyPerUnit: number) {
     await this.findOne(serviceId);

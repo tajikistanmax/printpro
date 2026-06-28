@@ -29,6 +29,9 @@ export default function PosPage() {
   const [tab, setTab] = useState<'SERVICE' | 'PRODUCT'>('SERVICE');
   const [services, setServices] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [serviceCats, setServiceCats] = useState<any[]>([]);
+  const [productCats, setProductCats] = useState<any[]>([]);
+  const [catFilter, setCatFilter] = useState<string>('ALL');
   const [branchId, setBranchId] = useState('');
   const [search, setSearch] = useState('');
 
@@ -49,19 +52,35 @@ export default function PosPage() {
     api.get(`/services?companyId=${cid}`).then(setServices).catch(() => {});
     api.get(`/products?companyId=${cid}`).then(setProducts).catch(() => {});
     api
+      .get(`/service-categories?companyId=${cid}`)
+      .then(setServiceCats)
+      .catch(() => {});
+    api
+      .get(`/product-categories?companyId=${cid}`)
+      .then(setProductCats)
+      .catch(() => {});
+    api
       .get(`/branches?companyId=${cid}`)
       .then((b) => b[0] && setBranchId(b[0].id))
       .catch(() => {});
   }, [cid]);
 
   const catalog = tab === 'SERVICE' ? services : products;
+  const cats = tab === 'SERVICE' ? serviceCats : productCats;
   const filtered = useMemo(
     () =>
-      catalog.filter((c) =>
-        c.name.toLowerCase().includes(search.toLowerCase()),
+      catalog.filter(
+        (c) =>
+          c.name.toLowerCase().includes(search.toLowerCase()) &&
+          (catFilter === 'ALL' || c.categoryId === catFilter),
       ),
-    [catalog, search, tab],
+    [catalog, search, catFilter, tab],
   );
+
+  function switchTab(t: 'SERVICE' | 'PRODUCT') {
+    setTab(t);
+    setCatFilter('ALL');
+  }
 
   function addItem(c: any) {
     const itemType = tab;
@@ -96,6 +115,7 @@ export default function PosPage() {
     Number((afterPromo * 0.3).toFixed(2)),
   );
   const total = Math.max(0, Number((afterPromo - bonusApplied).toFixed(2)));
+  const cartCount = cart.reduce((s, c) => s + c.quantity, 0);
 
   async function checkPromo() {
     setPromoMsg('');
@@ -191,77 +211,145 @@ export default function PosPage() {
     <div>
       <h1 className="mb-6 text-2xl font-bold text-slate-800">Касса — продажа</h1>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        {/* Каталог */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
+        {/* ===== Каталог ===== */}
         <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <div className="mb-3 flex items-center gap-2">
-            <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-              {(['SERVICE', 'PRODUCT'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`rounded-md px-4 py-1.5 text-sm font-medium ${
-                    tab === t ? 'bg-indigo-600 text-white' : 'text-slate-500'
-                  }`}
-                >
-                  {t === 'SERVICE' ? 'Услуги' : 'Товары'}
-                </button>
-              ))}
-            </div>
+          {/* Услуги / Товары */}
+          <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+            {(['SERVICE', 'PRODUCT'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => switchTab(t)}
+                className={`rounded-lg py-2.5 text-sm font-semibold transition ${
+                  tab === t
+                    ? 'bg-white text-indigo-600 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {t === 'SERVICE' ? 'Услуги' : 'Товары'}
+              </button>
+            ))}
+          </div>
+
+          {/* Поиск */}
+          <div className="relative mb-3">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+              🔍
+            </span>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Поиск…"
-              className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder={tab === 'SERVICE' ? 'Поиск услуги…' : 'Поиск товара…'}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm focus:border-indigo-400 focus:bg-white focus:outline-none"
             />
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {filtered.map((c) => (
+
+          {/* Категории */}
+          {cats.length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-2">
               <button
-                key={c.id}
-                onClick={() => addItem(c)}
-                className="rounded-xl border border-slate-200 p-3 text-left transition hover:border-indigo-400 hover:bg-indigo-50"
+                onClick={() => setCatFilter('ALL')}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
+                  catFilter === 'ALL'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
               >
-                <div className="text-sm font-medium text-slate-800">{c.name}</div>
-                <div className="mt-1 text-sm text-indigo-600">
-                  {money(Number(tab === 'SERVICE' ? c.basePrice : c.salePrice) || 0)}
-                </div>
+                Все
               </button>
-            ))}
+              {cats.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setCatFilter(c.id)}
+                  className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
+                    catFilter === c.id
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Сетка карточек */}
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
+            {filtered.map((c) => {
+              const price = Number(tab === 'SERVICE' ? c.basePrice : c.salePrice) || 0;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => addItem(c)}
+                  className="group flex min-h-[88px] flex-col justify-between rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:-translate-y-0.5 hover:border-indigo-400 hover:shadow-md active:translate-y-0"
+                >
+                  <div className="line-clamp-2 text-sm font-medium leading-snug text-slate-800">
+                    {c.name}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="font-semibold text-indigo-600">
+                      {money(price)}
+                    </span>
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-400 transition group-hover:bg-indigo-600 group-hover:text-white">
+                      +
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
             {filtered.length === 0 && (
-              <p className="col-span-full py-6 text-center text-sm text-slate-400">
+              <p className="col-span-full py-10 text-center text-sm text-slate-400">
                 Ничего не найдено
               </p>
             )}
           </div>
         </div>
 
-        {/* Корзина */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700">Чек</h2>
+        {/* ===== Корзина / Чек ===== */}
+        <div className="rounded-2xl bg-white p-5 shadow-sm lg:sticky lg:top-4 lg:self-start">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold text-slate-700">Чек</h2>
+            {cartCount > 0 && (
+              <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-600">
+                {cartCount} поз.
+              </span>
+            )}
+          </div>
+
           {cart.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-400">
-              Добавьте услуги или товары
-            </p>
+            <div className="py-10 text-center">
+              <div className="mb-2 text-3xl">🧾</div>
+              <p className="text-sm text-slate-400">
+                Нажмите на услугу или товар, чтобы добавить
+              </p>
+            </div>
           ) : (
-            <div className="mb-3 space-y-2">
+            <div className="mb-3 max-h-[40vh] space-y-2 overflow-auto pr-1">
               {cart.map((c) => (
-                <div key={c.key} className="flex items-center gap-2 text-sm">
-                  <span className="flex-1 text-slate-700">{c.name}</span>
+                <div
+                  key={c.key}
+                  className="flex items-center gap-2 rounded-lg bg-slate-50 p-2 text-sm"
+                >
+                  <div className="flex-1">
+                    <div className="font-medium text-slate-700">{c.name}</div>
+                    <div className="text-xs text-slate-400">
+                      {money(c.unitPrice)} × {c.quantity}
+                    </div>
+                  </div>
                   <button
                     onClick={() => setQty(c.key, c.quantity - 1)}
-                    className="h-6 w-6 rounded bg-slate-100 text-slate-600"
+                    className="h-7 w-7 rounded-lg bg-white text-slate-600 shadow-sm hover:bg-slate-100"
                   >
                     −
                   </button>
-                  <span className="w-6 text-center">{c.quantity}</span>
+                  <span className="w-6 text-center font-medium">{c.quantity}</span>
                   <button
                     onClick={() => setQty(c.key, c.quantity + 1)}
-                    className="h-6 w-6 rounded bg-slate-100 text-slate-600"
+                    className="h-7 w-7 rounded-lg bg-white text-slate-600 shadow-sm hover:bg-slate-100"
                   >
                     +
                   </button>
-                  <span className="w-20 text-right font-medium text-slate-800">
+                  <span className="w-20 text-right font-semibold text-slate-800">
                     {money(c.unitPrice * c.quantity)}
                   </span>
                 </div>
@@ -398,9 +486,9 @@ export default function PosPage() {
             <button
               onClick={pay}
               disabled={cart.length === 0}
-              className="w-full rounded-lg bg-emerald-600 py-3 font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+              className="w-full rounded-xl bg-emerald-600 py-3 text-base font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
             >
-              Оплатить и выдать
+              Оплатить{total > 0 ? ` · ${money(total)}` : ''}
             </button>
             {msg && <p className="text-sm text-rose-600">{msg}</p>}
           </div>

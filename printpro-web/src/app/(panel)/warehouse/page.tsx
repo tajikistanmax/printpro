@@ -14,7 +14,11 @@ export default function WarehousePage() {
   const [products, setProducts] = useState<any[]>([]);
   const [units, setUnits] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Категории товаров
+  const [catName, setCatName] = useState('');
 
   // Форма прихода
   const [productId, setProductId] = useState('');
@@ -25,6 +29,7 @@ export default function WarehousePage() {
   // Форма нового товара
   const [pName, setPName] = useState('');
   const [pUnit, setPUnit] = useState('');
+  const [pCat, setPCat] = useState('');
   const [pPrice, setPPrice] = useState('');
   const [pMin, setPMin] = useState('');
   const [pMsg, setPMsg] = useState('');
@@ -50,13 +55,15 @@ export default function WarehousePage() {
       api.get(`/products?companyId=${cid}`),
       api.get(`/units?companyId=${cid}`),
       api.get(`/branches?companyId=${cid}`),
+      api.get(`/product-categories?companyId=${cid}`),
     ])
-      .then(([s, l, p, u, b]) => {
+      .then(([s, l, p, u, b, c]) => {
         setStock(s);
         setLow(l);
         setProducts(p);
         setUnits(u);
         setBranches(b);
+        setCategories(c);
         if (p[0]) setProductId(p[0].id);
         if (b[0]) setBranchId(b[0].id);
         if (u[0]) setPUnit(u[0].id);
@@ -66,7 +73,34 @@ export default function WarehousePage() {
   }
   useEffect(load, [cid]);
 
+  async function addCategory() {
+    if (!catName.trim()) return;
+    try {
+      await api.post('/product-categories', {
+        companyId: cid,
+        name: catName.trim(),
+      });
+      setCatName('');
+      load();
+    } catch (err: any) {
+      setPMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  async function removeCategory(id: string) {
+    if (!confirm('Удалить категорию? Товары останутся без категории.')) return;
+    try {
+      await api.del(`/product-categories/${id}`);
+      if (pCat === id) setPCat('');
+      load();
+    } catch (err: any) {
+      setPMsg('Ошибка: ' + err.message);
+    }
+  }
+
   const lowIds = new Set(low.map((l) => l.productId));
+  const catNameOf = (productId: string) =>
+    products.find((p) => p.id === productId)?.category?.name as string | undefined;
 
   async function receive(e: React.FormEvent) {
     e.preventDefault();
@@ -131,6 +165,7 @@ export default function WarehousePage() {
       await api.post('/products', {
         companyId: cid,
         name: pName,
+        categoryId: pCat || undefined,
         unitId: pUnit || undefined,
         salePrice: pPrice ? Number(pPrice) : 0,
         minStock: pMin ? Number(pMin) : 0,
@@ -162,6 +197,18 @@ export default function WarehousePage() {
                 required
                 className="w-full rounded-lg border border-slate-300 px-3 py-2"
               />
+              <select
+                value={pCat}
+                onChange={(e) => setPCat(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">— без категории —</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
               <div className="grid grid-cols-3 gap-2">
                 <select
                   value={pUnit}
@@ -196,6 +243,52 @@ export default function WarehousePage() {
               </button>
               {pMsg && <p className="text-sm text-slate-600">{pMsg}</p>}
             </form>
+
+            {/* Категории товаров */}
+            <div className="mt-4 border-t border-slate-100 pt-3">
+              <div className="mb-2 text-xs font-medium text-slate-500">
+                Категории товаров
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {categories.map((c) => (
+                  <span
+                    key={c.id}
+                    className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-sm text-slate-700"
+                  >
+                    {c.name}
+                    <button
+                      type="button"
+                      onClick={() => removeCategory(c.id)}
+                      className="text-rose-400 hover:text-rose-600"
+                      title="Удалить категорию"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+                {categories.length === 0 && (
+                  <span className="text-xs text-slate-400">
+                    Категорий пока нет.
+                  </span>
+                )}
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  value={catName}
+                  onChange={(e) => setCatName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addCategory()}
+                  placeholder="Новая категория (напр. Бумага)"
+                  className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={addCategory}
+                  className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                  + Категория
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -380,6 +473,11 @@ export default function WarehousePage() {
                   <tr key={s.id} className="border-b border-slate-100 last:border-0">
                     <td className="py-2 font-medium text-slate-700">
                       {s.product.name}
+                      {catNameOf(s.productId) && (
+                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-500">
+                          {catNameOf(s.productId)}
+                        </span>
+                      )}
                     </td>
                     <td className="text-slate-500">{s.branch.name}</td>
                     <td className="text-right font-semibold">

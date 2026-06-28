@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -33,6 +41,11 @@ export class ProductsController {
   @Get('product-categories')
   findCategories(@Query('companyId') companyId: string) {
     return this.products.findCategories(companyId);
+  }
+
+  @Delete('product-categories/:id')
+  removeCategory(@Param('id') id: string) {
+    return this.products.removeCategory(id);
   }
 
   // ---- Единицы измерения ----

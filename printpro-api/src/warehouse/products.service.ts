@@ -48,7 +48,20 @@ export class ProductsService {
   }
 
   findCategories(companyId: string) {
-    return this.prisma.productCategory.findMany({ where: { companyId } });
+    return this.prisma.productCategory.findMany({
+      where: { companyId, deletedAt: null },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  // Удалить категорию: сначала открепляем товары, чтобы не нарушать связь
+  async removeCategory(id: string) {
+    await this.prisma.product.updateMany({
+      where: { categoryId: id },
+      data: { categoryId: null },
+    });
+    await this.prisma.productCategory.delete({ where: { id } });
+    return { ok: true };
   }
 
   // ---------- Единицы измерения ----------
