@@ -30,19 +30,19 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: 'Склад и услуги',
+    items: [
+      { href: '/warehouse', label: 'Склад', icon: 'warehouse', perm: 'stock.view' },
+      { href: '/purchasing', label: 'Закупки', icon: 'purchasing', perm: 'stock.view' },
+      { href: '/services', label: 'Услуги', icon: 'services', perm: 'services.view' },
+    ],
+  },
+  {
     label: 'Производство',
     items: [
       { href: '/production', label: 'Производство', icon: 'production', perm: 'production.view' },
       { href: '/design', label: 'Дизайн-макеты', icon: 'design', perm: 'design.view' },
       { href: '/equipment', label: 'Оборудование', icon: 'equipment', perm: 'production.view' },
-    ],
-  },
-  {
-    label: 'Склад',
-    items: [
-      { href: '/warehouse', label: 'Склад', icon: 'warehouse', perm: 'stock.view' },
-      { href: '/purchasing', label: 'Закупки', icon: 'purchasing', perm: 'stock.view' },
-      { href: '/services', label: 'Услуги', icon: 'services', perm: 'services.view' },
     ],
   },
   {
