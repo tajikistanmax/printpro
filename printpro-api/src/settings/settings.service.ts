@@ -13,6 +13,21 @@ export class SettingsService {
     return map;
   }
 
+  // Безопасные UI-настройки (без секретов) — доступны без права settings.manage,
+  // чтобы касса/панель могли узнать выбранное оформление, валюту и т.п.
+  async getUi(companyId: string): Promise<Record<string, string>> {
+    const all = await this.getAll(companyId);
+    const PUBLIC_KEYS = [
+      'posLayout',
+      'companyName',
+      'currency',
+      'language',
+    ];
+    const out: Record<string, string> = {};
+    for (const k of PUBLIC_KEYS) if (all[k] != null) out[k] = all[k];
+    return out;
+  }
+
   // Сохранить пачку настроек
   async setMany(companyId: string, values: Record<string, string>) {
     const entries = Object.entries(values);

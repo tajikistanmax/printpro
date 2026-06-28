@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
+import { POS_LAYOUTS, DEFAULT_POS_LAYOUT } from '@/lib/pos-layouts';
 
 const CURRENCIES = ['TJS', 'USD', 'RUB', 'EUR'];
 const LANGUAGES = [
@@ -149,6 +150,46 @@ export default function SettingsPage() {
                 ))}
               </select>
             </Field>
+          </div>
+        </div>
+
+        {/* Оформление кассы */}
+        <div className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="mb-1 font-semibold text-slate-700">Оформление кассы</h2>
+          <p className="mb-4 text-xs text-slate-400">
+            Выберите внешний вид страницы «Касса — продажа». Изменение применится
+            у всех кассиров после сохранения.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {POS_LAYOUTS.map((opt) => {
+              const active = (s.posLayout ?? DEFAULT_POS_LAYOUT) === opt.k;
+              return (
+                <button
+                  key={opt.k}
+                  type="button"
+                  onClick={() => set('posLayout', opt.k)}
+                  className={`rounded-xl border-2 p-4 text-left transition ${
+                    active
+                      ? 'border-indigo-500 bg-indigo-50/50'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-slate-800">{opt.name}</span>
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${
+                        active
+                          ? 'border-indigo-500 bg-indigo-500 text-white'
+                          : 'border-slate-300'
+                      }`}
+                    >
+                      {active && '✓'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">{opt.desc}</p>
+                </button>
+              );
+            })}
           </div>
         </div>
 
