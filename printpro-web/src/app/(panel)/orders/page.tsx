@@ -117,6 +117,22 @@ export default function OrdersPage() {
     }
   }
 
+  // Сообщить клиенту о готовности через WhatsApp / Telegram (ссылка-переход)
+  function notifyClient(order: any, channel: 'whatsapp' | 'telegram') {
+    const phone = (order.client?.phone ?? '').replace(/\D/g, '');
+    const due = Number(order.balanceDue) > 0;
+    const msg =
+      `Здравствуйте${order.client?.fullName ? ', ' + order.client.fullName : ''}! ` +
+      `Ваш заказ №${order.orderNumber} готов к выдаче.` +
+      (due ? ` К оплате: ${order.balanceDue} c.` : '') +
+      ` Спасибо, что выбрали нас!`;
+    const url =
+      channel === 'whatsapp'
+        ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
+        : `https://t.me/share/url?url=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
   async function reorder() {
     if (!selected) return;
     setMsg('');
@@ -411,6 +427,29 @@ export default function OrdersPage() {
                   danger={Number(selected.balanceDue) > 0}
                 />
               </div>
+
+              {/* Сообщить клиенту: WhatsApp / Telegram */}
+              {selected.client?.phone && (
+                <div className="mb-4">
+                  <div className="mb-1.5 text-xs font-medium text-slate-500">
+                    Сообщить клиенту, что заказ готов
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => notifyClient(selected, 'whatsapp')}
+                      className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-600"
+                    >
+                      <span>📲</span> WhatsApp
+                    </button>
+                    <button
+                      onClick={() => notifyClient(selected, 'telegram')}
+                      className="flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-600"
+                    >
+                      <span>✈️</span> Telegram
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Касса: оплата */}
               {can('cash.operate') && Number(selected.balanceDue) > 0 && (
