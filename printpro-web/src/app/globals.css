@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Тёмная тема включается классом .dark на <html> (см. ThemeToggle),
+   поэтому переключаем dark:-варианты Tailwind на классовый режим. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
