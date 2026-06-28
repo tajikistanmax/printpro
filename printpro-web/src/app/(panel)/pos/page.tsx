@@ -5,6 +5,8 @@ import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { DEFAULT_POS_LAYOUT } from '@/lib/pos-layouts';
 import { SKINS, type CartItem, type PosCtx } from './_pos';
+import { useFeatureFlags } from '@/lib/feature-flags';
+import { sendDisplay, openCustomerDisplay } from '@/lib/customer-display';
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(n) + ' c.';
@@ -19,6 +21,8 @@ const METHODS = [
 
 export default function PosPage() {
   const cid = DEFAULT_COMPANY_ID;
+  const { isEnabled } = useFeatureFlags();
+  const [shopName, setShopName] = useState('PrintPro');
   const [tab, setTab] = useState<'SERVICE' | 'PRODUCT'>('SERVICE');
   const [services, setServices] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -64,10 +68,13 @@ export default function PosPage() {
       .get(`/branches?companyId=${cid}`)
       .then((b) => b[0] && setBranchId(b[0].id))
       .catch(() => {});
-    // Выбранное оформление кассы (публичная UI-настройка)
+    // Выбранное оформление кассы + название (публичные UI-настройки)
     api
       .get(`/settings/ui?companyId=${cid}`)
-      .then((ui) => ui?.posLayout && setLayout(ui.posLayout))
+      .then((ui) => {
+        if (ui?.posLayout) setLayout(ui.posLayout);
+        if (ui?.companyName) setShopName(ui.companyName);
+      })
       .catch(() => {});
     // Недавние заказы + статистика (для богатых оформлений). Требует orders.view —
     // если права нет, просто останутся пустыми.
@@ -157,6 +164,42 @@ export default function PosPage() {
   );
   const total = Math.max(0, Number((afterPromo - bonusApplied).toFixed(2)));
   const cartCount = cart.reduce((s, c) => s + c.quantity, 0);
+  const totalDiscount = Math.max(0, Number((subtotal - total).toFixed(2)));
+  const displayOn = isEnabled('feature.customerDisplay');
+
+  // Транслируем корзину на дисплей покупателя (второй экран)
+  useEffect(() => {
+    if (!displayOn) return;
+    if (receipt) return; // во время показа чека дисплей держит экран оплаты
+    if (cart.length === 0) {
+      sendDisplay({ type: 'welcome', shopName });
+    } else {
+      sendDisplay({
+        type: 'cart',
+        shopName,
+        lines: cart.map((c) => ({
+          name: c.name,
+          qty: c.quantity,
+          price: c.unitPrice,
+          total: Number((c.unitPrice * c.quantity).toFixed(2)),
+        })),
+        subtotal,
+        discount: totalDiscount,
+        total,
+      });
+    }
+  }, [cart, subtotal, total, totalDiscount, shopName, receipt, displayOn]);
+
+  // После оплаты показываем итог/«спасибо» на дисплее
+  useEffect(() => {
+    if (!displayOn || !receipt) return;
+    sendDisplay({
+      type: 'total',
+      shopName,
+      total: Number(receipt.total),
+      method: receipt._method,
+    });
+  }, [receipt, shopName, displayOn]);
 
   async function checkPromo() {
     setPromoMsg('');
@@ -325,7 +368,18 @@ export default function PosPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-800">Касса — продажа</h1>
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-slate-800">Касса — продажа</h1>
+        {displayOn && (
+          <button
+            onClick={openCustomerDisplay}
+            title="Открыть второй экран для покупателя"
+            className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            🖥 Второй экран
+          </button>
+        )}
+      </div>
 
       <Skin ctx={ctx} />
 

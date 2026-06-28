@@ -9,6 +9,7 @@ import ThemeToggle from '@/lib/ThemeToggle';
 import SyncIndicator from '@/lib/SyncIndicator';
 import GlobalSearch from '@/lib/GlobalSearch';
 import NavIcon from '@/lib/NavIcons';
+import { useFeatureFlags, NAV_FLAG_BY_HREF } from '@/lib/feature-flags';
 
 type NavItem = { href: string; label: string; icon: string; perm: string | null };
 type NavGroup = { label: string | null; items: NavItem[] };
@@ -71,6 +72,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 export default function PanelLayout({ children }: { children: ReactNode }) {
   const { user, loading, logout, can } = useAuth();
+  const { isEnabled } = useFeatureFlags();
   const router = useRouter();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -157,7 +159,12 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
 
         <nav className="flex-1 overflow-y-auto px-2.5 py-3">
           {NAV_GROUPS.map((group, gi) => {
-            const items = group.items.filter((n) => !n.perm || can(n.perm));
+            const items = group.items.filter((n) => {
+              if (n.perm && !can(n.perm)) return false;
+              const flag = NAV_FLAG_BY_HREF[n.href];
+              if (flag && !isEnabled(flag)) return false;
+              return true;
+            });
             if (items.length === 0) return null;
             return (
               <div key={group.label ?? `g${gi}`} className="mb-1">

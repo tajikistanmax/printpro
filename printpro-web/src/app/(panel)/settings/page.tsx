@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { POS_LAYOUTS, DEFAULT_POS_LAYOUT } from '@/lib/pos-layouts';
+import { FEATURE_GROUPS, clearFeatureFlagsCache } from '@/lib/feature-flags';
 
 const CURRENCIES = ['TJS', 'USD', 'RUB', 'EUR'];
 const LANGUAGES = [
@@ -34,6 +35,7 @@ export default function SettingsPage() {
     setMsg('');
     try {
       await api.put('/settings', { companyId: cid, values: s });
+      clearFeatureFlagsCache();
       setMsg('✓ Настройки сохранены');
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
@@ -315,6 +317,36 @@ export default function SettingsPage() {
           </button>
         </div>
 
+        {/* Функции системы */}
+        <div className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="mb-1 font-semibold text-slate-700">Функции системы</h2>
+          <p className="mb-4 text-xs text-slate-400">
+            Скройте разделы и возможности, которыми не пользуетесь — меню станет
+            короче. По умолчанию всё включено. Изменения применятся после
+            сохранения и обновления страницы.
+          </p>
+          <div className="space-y-5">
+            {FEATURE_GROUPS.map((g) => (
+              <div key={g.group}>
+                <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  {g.group}
+                </div>
+                <div className="space-y-3">
+                  {g.items.map((f) => (
+                    <Toggle
+                      key={f.key}
+                      label={f.label}
+                      desc={f.desc}
+                      checked={s[f.key] !== 'false'}
+                      onChange={(v) => set(f.key, String(v))}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Резервное копирование */}
         <div className="rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="mb-1 font-semibold text-slate-700">Резервная копия</h2>
@@ -356,20 +388,25 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Toggle({
   label,
+  desc,
   checked,
   onChange,
 }: {
   label: string;
+  desc?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-center justify-between">
-      <span className="text-sm text-slate-600">{label}</span>
+    <label className="flex cursor-pointer items-center justify-between gap-3">
+      <span className="min-w-0">
+        <span className="block text-sm text-slate-600">{label}</span>
+        {desc && <span className="block text-xs text-slate-400">{desc}</span>}
+      </span>
       <button
         type="button"
         onClick={() => onChange(!checked)}
-        className={`relative h-6 w-11 rounded-full transition ${
+        className={`relative h-6 w-11 shrink-0 rounded-full transition ${
           checked ? 'bg-indigo-600' : 'bg-slate-300'
         }`}
       >

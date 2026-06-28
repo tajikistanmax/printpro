@@ -389,7 +389,28 @@ export default function ReportsPage() {
       {/* Загрузка оборудования */}
       {eqLoad.length > 0 && (
         <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700">Загрузка оборудования</h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold text-slate-700">Загрузка оборудования</h2>
+            <button
+              onClick={() =>
+                downloadCSV(
+                  'equipment-load.csv',
+                  ['Оборудование', 'Тип', 'В очереди', 'В работе', 'Готово', 'Брак'],
+                  eqLoad.map((e: any) => [
+                    e.name,
+                    e.type,
+                    e.inQueue,
+                    e.inWork,
+                    e.completed,
+                    e.rework || 0,
+                  ]),
+                )
+              }
+              className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              ⬇ CSV
+            </button>
+          </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-slate-400">
@@ -428,9 +449,32 @@ export default function ReportsPage() {
 
       {/* Эффективность сотрудников */}
       <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm">
-        <h2 className="mb-3 font-semibold text-slate-700">
-          Эффективность сотрудников
-        </h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-700">
+            Эффективность сотрудников
+          </h2>
+          {staff.length > 0 && (
+            <button
+              onClick={() =>
+                downloadCSV(
+                  'staff.csv',
+                  ['Сотрудник', 'Роль', 'Заказов', 'Сумма продаж', 'Произв.', 'Задач'],
+                  staff.map((u: any) => [
+                    u.name,
+                    u.role,
+                    u.ordersCreated,
+                    u.salesSum,
+                    u.productionDone,
+                    u.tasksDone,
+                  ]),
+                )
+              }
+              className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              ⬇ CSV
+            </button>
+          )}
+        </div>
         {staff.length === 0 ? (
           <p className="text-sm text-slate-400">Нет данных</p>
         ) : (
