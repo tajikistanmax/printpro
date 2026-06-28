@@ -12,10 +12,10 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Отменена',
 };
 const STATUS_COLORS: Record<string, string> = {
-  NEW: 'bg-slate-100 text-slate-600',
-  IN_PROGRESS: 'bg-amber-100 text-amber-700',
-  DONE: 'bg-emerald-100 text-emerald-700',
-  CANCELLED: 'bg-slate-100 text-slate-400',
+  NEW: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+  IN_PROGRESS: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  DONE: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  CANCELLED: 'bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500',
 };
 
 export default function TasksPage() {
@@ -59,30 +59,36 @@ export default function TasksPage() {
     load();
   }
 
+  async function deleteTask(id: string) {
+    if (!confirm('Удалить задачу?')) return;
+    await api.del(`/tasks/${id}`);
+    load();
+  }
+
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-800">Задачи</h1>
+      <h1 className="mb-6 text-2xl font-bold text-slate-800 dark:text-slate-100">Задачи</h1>
 
       {can('tasks.manage') && (
-        <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700">Новая задача</h2>
+        <div className="mb-6 rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Новая задача</h2>
           <form onSubmit={createTask} className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[240px]">
-              <label className="mb-1 block text-sm text-slate-500">Что сделать</label>
+              <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Что сделать</label>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 placeholder="Например: подготовить визитки к печати"
                 required
               />
             </div>
             <div className="min-w-[180px]">
-              <label className="mb-1 block text-sm text-slate-500">Исполнитель</label>
+              <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Исполнитель</label>
               <select
                 value={assignee}
                 onChange={(e) => setAssignee(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               >
                 <option value="">— не назначен —</option>
                 {users.map((u) => (
@@ -95,23 +101,23 @@ export default function TasksPage() {
             <button className="rounded-lg bg-indigo-600 px-5 py-2 font-medium text-white hover:bg-indigo-700">
               Поставить
             </button>
-            {msg && <span className="text-sm text-slate-600">{msg}</span>}
+            {msg && <span className="text-sm text-slate-600 dark:text-slate-300">{msg}</span>}
           </form>
         </div>
       )}
 
       <div className="space-y-2">
         {tasks.length === 0 ? (
-          <p className="text-slate-400">Задач пока нет.</p>
+          <p className="text-slate-400 dark:text-slate-500">Задач пока нет.</p>
         ) : (
           tasks.map((t) => (
             <div
               key={t.id}
-              className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm"
+              className="flex items-center justify-between rounded-2xl bg-white dark:bg-slate-900 p-4 shadow-sm"
             >
               <div>
-                <div className="font-medium text-slate-800">{t.title}</div>
-                <div className="text-sm text-slate-500">
+                <div className="font-medium text-slate-800 dark:text-slate-100">{t.title}</div>
+                <div className="text-sm text-slate-500 dark:text-slate-400">
                   {t.assignedUser?.fullName ?? 'без исполнителя'}
                   {t.priority > 0 && ` · приоритет ${t.priority}`}
                 </div>
@@ -138,6 +144,12 @@ export default function TasksPage() {
                     Выполнено
                   </button>
                 )}
+                <button
+                  onClick={() => deleteTask(t.id)}
+                  className="rounded-lg px-2 py-1 text-xs text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400"
+                >
+                  Удалить
+                </button>
               </div>
             </div>
           ))

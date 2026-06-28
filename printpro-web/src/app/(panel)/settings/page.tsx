@@ -101,36 +101,36 @@ export default function SettingsPage() {
     }
   }
 
-  if (loading) return <p className="text-slate-400">Загрузка…</p>;
+  if (loading) return <p className="text-slate-400 dark:text-slate-500">Загрузка…</p>;
 
   return (
     <div className="max-w-2xl">
-      <h1 className="mb-6 text-2xl font-bold text-slate-800">Настройки</h1>
+      <h1 className="mb-6 text-2xl font-bold text-slate-800 dark:text-slate-100">Настройки</h1>
 
       <div className="space-y-6">
         {/* Общие */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-4 font-semibold text-slate-700">Общие</h2>
+        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <h2 className="mb-4 font-semibold text-slate-700 dark:text-slate-200">Общие</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Название компании">
               <input
                 value={s.companyName ?? ''}
                 onChange={(e) => set('companyName', e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               />
             </Field>
             <Field label="Телефон">
               <input
                 value={s.phone ?? ''}
                 onChange={(e) => set('phone', e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               />
             </Field>
             <Field label="Валюта">
               <select
                 value={s.currency ?? 'TJS'}
                 onChange={(e) => set('currency', e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               >
                 {CURRENCIES.map((c) => (
                   <option key={c} value={c}>
@@ -143,7 +143,7 @@ export default function SettingsPage() {
               <select
                 value={s.language ?? 'ru'}
                 onChange={(e) => set('language', e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               >
                 {LANGUAGES.map((l) => (
                   <option key={l.k} value={l.k}>
@@ -156,9 +156,9 @@ export default function SettingsPage() {
         </div>
 
         {/* Оформление кассы */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-1 font-semibold text-slate-700">Оформление кассы</h2>
-          <p className="mb-4 text-xs text-slate-400">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <h2 className="mb-1 font-semibold text-slate-700 dark:text-slate-200">Оформление кассы</h2>
+          <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
             Выберите внешний вид страницы «Касса — продажа». Изменение применится
             у всех кассиров после сохранения.
           </p>
@@ -172,23 +172,23 @@ export default function SettingsPage() {
                   onClick={() => set('posLayout', opt.k)}
                   className={`rounded-xl border-2 p-4 text-left transition ${
                     active
-                      ? 'border-indigo-500 bg-indigo-50/50'
-                      : 'border-slate-200 hover:border-slate-300'
+                      ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20'
+                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-slate-800">{opt.name}</span>
+                    <span className="font-medium text-slate-800 dark:text-slate-100">{opt.name}</span>
                     <span
                       className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${
                         active
                           ? 'border-indigo-500 bg-indigo-500 text-white'
-                          : 'border-slate-300'
+                          : 'border-slate-300 dark:border-slate-600'
                       }`}
                     >
                       {active && '✓'}
                     </span>
                   </div>
-                  <p className="mt-1 text-xs text-slate-500">{opt.desc}</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{opt.desc}</p>
                 </button>
               );
             })}
@@ -196,8 +196,8 @@ export default function SettingsPage() {
         </div>
 
         {/* Уведомления */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-4 font-semibold text-slate-700">Уведомления</h2>
+        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <h2 className="mb-4 font-semibold text-slate-700 dark:text-slate-200">Уведомления</h2>
           <div className="space-y-3">
             <Toggle
               label="Оповещать о низком остатке на складе"
@@ -218,9 +218,9 @@ export default function SettingsPage() {
         </div>
 
         {/* Telegram */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-1 font-semibold text-slate-700">Telegram-уведомления</h2>
-          <p className="mb-4 text-xs text-slate-400">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <h2 className="mb-1 font-semibold text-slate-700 dark:text-slate-200">Telegram-уведомления</h2>
+          <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
             Создайте бота через @BotFather, вставьте токен и chat_id (свой ID можно
             узнать у @userinfobot). Бот будет писать о готовых заказах и оповещениях.
           </p>
@@ -230,7 +230,7 @@ export default function SettingsPage() {
                 value={s.telegramBotToken ?? ''}
                 onChange={(e) => set('telegramBotToken', e.target.value)}
                 placeholder="123456:ABC-..."
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               />
             </Field>
             <Field label="Chat ID">
@@ -238,22 +238,22 @@ export default function SettingsPage() {
                 value={s.telegramChatId ?? ''}
                 onChange={(e) => set('telegramChatId', e.target.value)}
                 placeholder="напр. 123456789"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               />
             </Field>
           </div>
           <button
             onClick={testTelegram}
-            className="mt-3 rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            className="mt-3 rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Сохранить и проверить
           </button>
         </div>
 
         {/* Email (SMTP) */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-1 font-semibold text-slate-700">Email-уведомления</h2>
-          <p className="mb-4 text-xs text-slate-400">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <h2 className="mb-1 font-semibold text-slate-700 dark:text-slate-200">Email-уведомления</h2>
+          <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
             Gmail: включите 2-этапную аутентификацию и создайте «пароль приложения»
             (myaccount.google.com/apppasswords). Хост <b>smtp.gmail.com</b>, порт{' '}
             <b>587</b>, логин — ваш email, пароль — 16-значный пароль приложения.
@@ -264,7 +264,7 @@ export default function SettingsPage() {
                 value={s.smtpHost ?? ''}
                 onChange={(e) => set('smtpHost', e.target.value)}
                 placeholder="smtp.gmail.com"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               />
             </Field>
             <Field label="Порт">
@@ -272,7 +272,7 @@ export default function SettingsPage() {
                 value={s.smtpPort ?? ''}
                 onChange={(e) => set('smtpPort', e.target.value)}
                 placeholder="587"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               />
             </Field>
             <Field label="Логин (email)">
@@ -280,7 +280,7 @@ export default function SettingsPage() {
                 value={s.smtpUser ?? ''}
                 onChange={(e) => set('smtpUser', e.target.value)}
                 placeholder="you@gmail.com"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               />
             </Field>
             <Field label="Пароль приложения">
@@ -289,7 +289,7 @@ export default function SettingsPage() {
                 onChange={(e) => set('smtpPass', e.target.value)}
                 type="password"
                 placeholder="16 символов"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               />
             </Field>
             <Field label="Отправитель (необяз.)">
@@ -297,7 +297,7 @@ export default function SettingsPage() {
                 value={s.smtpFrom ?? ''}
                 onChange={(e) => set('smtpFrom', e.target.value)}
                 placeholder="PrintPro <you@gmail.com>"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               />
             </Field>
             <Field label="Кому отправить тест">
@@ -305,22 +305,22 @@ export default function SettingsPage() {
                 value={s.smtpTestTo ?? ''}
                 onChange={(e) => set('smtpTestTo', e.target.value)}
                 placeholder="по умолчанию — себе"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               />
             </Field>
           </div>
           <button
             onClick={testEmail}
-            className="mt-3 rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            className="mt-3 rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Сохранить и отправить тест
           </button>
         </div>
 
         {/* Функции системы */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-1 font-semibold text-slate-700">Функции системы</h2>
-          <p className="mb-4 text-xs text-slate-400">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <h2 className="mb-1 font-semibold text-slate-700 dark:text-slate-200">Функции системы</h2>
+          <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
             Скройте разделы и возможности, которыми не пользуетесь — меню станет
             короче. По умолчанию всё включено. Изменения применятся после
             сохранения и обновления страницы.
@@ -328,7 +328,7 @@ export default function SettingsPage() {
           <div className="space-y-5">
             {FEATURE_GROUPS.map((g) => (
               <div key={g.group}>
-                <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                   {g.group}
                 </div>
                 <div className="space-y-3">
@@ -348,16 +348,16 @@ export default function SettingsPage() {
         </div>
 
         {/* Резервное копирование */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-1 font-semibold text-slate-700">Резервная копия</h2>
-          <p className="mb-4 text-xs text-slate-400">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <h2 className="mb-1 font-semibold text-slate-700 dark:text-slate-200">Резервная копия</h2>
+          <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
             Скачивает все данные компании (заказы, клиенты, склад, финансы и т.д.)
             одним JSON-файлом. Храните копию в надёжном месте. База в облаке
             дополнительно резервируется на стороне Render.
           </p>
           <button
             onClick={downloadBackup}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             ⬇ Скачать резервную копию (JSON)
           </button>
@@ -370,7 +370,7 @@ export default function SettingsPage() {
           >
             Сохранить
           </button>
-          {msg && <span className="text-sm text-slate-600">{msg}</span>}
+          {msg && <span className="text-sm text-slate-600 dark:text-slate-300">{msg}</span>}
         </div>
       </div>
     </div>
@@ -380,7 +380,7 @@ export default function SettingsPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm text-slate-500">{label}</span>
+      <span className="mb-1 block text-sm text-slate-500 dark:text-slate-400">{label}</span>
       {children}
     </label>
   );
@@ -400,14 +400,14 @@ function Toggle({
   return (
     <label className="flex cursor-pointer items-center justify-between gap-3">
       <span className="min-w-0">
-        <span className="block text-sm text-slate-600">{label}</span>
-        {desc && <span className="block text-xs text-slate-400">{desc}</span>}
+        <span className="block text-sm text-slate-600 dark:text-slate-300">{label}</span>
+        {desc && <span className="block text-xs text-slate-400 dark:text-slate-500">{desc}</span>}
       </span>
       <button
         type="button"
         onClick={() => onChange(!checked)}
         className={`relative h-6 w-11 shrink-0 rounded-full transition ${
-          checked ? 'bg-indigo-600' : 'bg-slate-300'
+          checked ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'
         }`}
       >
         <span

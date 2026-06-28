@@ -125,12 +125,12 @@ export default function PurchasingPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-800">Закупки</h1>
+      <h1 className="mb-6 text-2xl font-bold text-slate-800 dark:text-slate-100">Закупки</h1>
 
       <div className="mb-6 grid gap-6 lg:grid-cols-3">
         {/* Поставщики */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700">Поставщики</h2>
+        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Поставщики</h2>
           {canManage && (
             <form onSubmit={addSupplier} className="mb-3 space-y-2">
               <input
@@ -138,33 +138,33 @@ export default function PurchasingPage() {
                 onChange={(e) => setSName(e.target.value)}
                 placeholder="Название"
                 required
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
               />
               <div className="flex gap-2">
                 <input
                   value={sPhone}
                   onChange={(e) => setSPhone(e.target.value)}
                   placeholder="Телефон"
-                  className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
                 />
                 <button className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
                   +
                 </button>
               </div>
-              {sMsg && <p className="text-xs text-slate-500">{sMsg}</p>}
+              {sMsg && <p className="text-xs text-slate-500 dark:text-slate-400">{sMsg}</p>}
             </form>
           )}
           <div className="space-y-1">
             {suppliers.length === 0 ? (
-              <p className="text-sm text-slate-400">Пока нет поставщиков.</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500">Пока нет поставщиков.</p>
             ) : (
               suppliers.map((s) => (
                 <div
                   key={s.id}
-                  className="flex items-center justify-between border-b border-slate-100 py-1.5 text-sm last:border-0"
+                  className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 py-1.5 text-sm last:border-0"
                 >
-                  <span className="text-slate-700">{s.name}</span>
-                  <span className="text-slate-400">{s.phone}</span>
+                  <span className="text-slate-700 dark:text-slate-200">{s.name}</span>
+                  <span className="text-slate-400 dark:text-slate-500">{s.phone}</span>
                 </div>
               ))
             )}
@@ -173,8 +173,8 @@ export default function PurchasingPage() {
 
         {/* Приёмка */}
         {canManage && (
-          <div className="rounded-2xl bg-white p-5 shadow-sm lg:col-span-2">
-            <h2 className="mb-3 font-semibold text-slate-700">
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm lg:col-span-2">
+            <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">
               Приёмка товара на склад
             </h2>
             <form onSubmit={submitReceipt} className="space-y-3">
@@ -182,7 +182,7 @@ export default function PurchasingPage() {
                 <select
                   value={supplierId}
                   onChange={(e) => setSupplierId(e.target.value)}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
                 >
                   <option value="">— поставщик (необяз.) —</option>
                   {suppliers.map((s) => (
@@ -194,7 +194,7 @@ export default function PurchasingPage() {
                 <select
                   value={branchId}
                   onChange={(e) => setBranchId(e.target.value)}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
                 >
                   {branches.map((b) => (
                     <option key={b.id} value={b.id}>
@@ -211,7 +211,7 @@ export default function PurchasingPage() {
                     <select
                       value={r.productId}
                       onChange={(e) => setRow(i, { productId: e.target.value })}
-                      className="flex-1 rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                      className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
                     >
                       <option value="">— товар —</option>
                       {products.map((p) => (
@@ -226,7 +226,7 @@ export default function PurchasingPage() {
                       type="number"
                       step="0.001"
                       placeholder="Кол-во"
-                      className="w-24 rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                      className="w-24 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
                     />
                     <input
                       value={r.cost}
@@ -234,12 +234,12 @@ export default function PurchasingPage() {
                       type="number"
                       step="0.01"
                       placeholder="Цена/ед"
-                      className="w-24 rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                      className="w-24 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
                     />
                     <button
                       type="button"
                       onClick={() => removeRow(i)}
-                      className="px-2 text-slate-400 hover:text-rose-600"
+                      className="px-2 text-slate-400 dark:text-slate-500 hover:text-rose-600"
                     >
                       ✕
                     </button>
@@ -255,9 +255,9 @@ export default function PurchasingPage() {
                 >
                   + позиция
                 </button>
-                <span className="text-sm text-slate-500">
+                <span className="text-sm text-slate-500 dark:text-slate-400">
                   Сумма закупки:{' '}
-                  <span className="font-semibold text-slate-800">
+                  <span className="font-semibold text-slate-800 dark:text-slate-100">
                     {money(receiptTotal)}
                   </span>
                 </span>
@@ -266,21 +266,21 @@ export default function PurchasingPage() {
               <button className="w-full rounded-lg bg-emerald-600 py-2.5 font-medium text-white hover:bg-emerald-700">
                 Принять на склад
               </button>
-              {rMsg && <p className="text-sm text-slate-600">{rMsg}</p>}
+              {rMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{rMsg}</p>}
             </form>
           </div>
         )}
       </div>
 
       {/* История приёмок */}
-      <div className="rounded-2xl bg-white p-5 shadow-sm">
-        <h2 className="mb-3 font-semibold text-slate-700">История приёмок</h2>
+      <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+        <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">История приёмок</h2>
         {receipts.length === 0 ? (
-          <p className="text-sm text-slate-400">Приёмок пока нет.</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500">Приёмок пока нет.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-slate-400">
+              <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-400 dark:text-slate-500">
                 <th className="py-2 font-medium">Документ</th>
                 <th className="py-2 font-medium">Дата</th>
                 <th className="py-2 font-medium">Поставщик</th>
@@ -291,21 +291,21 @@ export default function PurchasingPage() {
             </thead>
             <tbody>
               {receipts.map((r) => (
-                <tr key={r.id} className="border-b border-slate-50 last:border-0">
-                  <td className="py-2 font-medium text-slate-700">
+                <tr key={r.id} className="border-b border-slate-50 dark:border-slate-800 last:border-0">
+                  <td className="py-2 font-medium text-slate-700 dark:text-slate-200">
                     {r.number ?? '—'}
                   </td>
-                  <td className="py-2 text-slate-500">
+                  <td className="py-2 text-slate-500 dark:text-slate-400">
                     {new Date(r.date).toLocaleDateString('ru-RU')}
                   </td>
-                  <td className="py-2 text-slate-700">
+                  <td className="py-2 text-slate-700 dark:text-slate-200">
                     {r.supplier?.name ?? '—'}
                   </td>
-                  <td className="py-2 text-slate-500">{r.branch?.name ?? '—'}</td>
-                  <td className="py-2 text-right text-slate-500">
+                  <td className="py-2 text-slate-500 dark:text-slate-400">{r.branch?.name ?? '—'}</td>
+                  <td className="py-2 text-right text-slate-500 dark:text-slate-400">
                     {r.items.length}
                   </td>
-                  <td className="py-2 text-right font-medium text-slate-800">
+                  <td className="py-2 text-right font-medium text-slate-800 dark:text-slate-100">
                     {money(receiptSum(r))}
                   </td>
                 </tr>

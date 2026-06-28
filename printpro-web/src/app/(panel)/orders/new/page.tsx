@@ -152,8 +152,8 @@ export default function NewOrderPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Новый заказ</h1>
-        <Link href="/orders" className="text-sm text-slate-500 hover:text-slate-700">
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Новый заказ</h1>
+        <Link href="/orders" className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
           ← к списку
         </Link>
       </div>
@@ -162,14 +162,14 @@ export default function NewOrderPage() {
         {/* Левая часть — параметры */}
         <div className="space-y-4 lg:col-span-2">
           {/* Тип и филиал */}
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm text-slate-500">Тип заказа</label>
+                <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Тип заказа</label>
                 <select
                   value={orderType}
                   onChange={(e) => setOrderType(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 >
                   {ORDER_TYPES.map((t) => (
                     <option key={t.value} value={t.value}>
@@ -179,11 +179,11 @@ export default function NewOrderPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-500">Филиал</label>
+                <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Филиал</label>
                 <select
                   value={branchId}
                   onChange={(e) => setBranchId(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 >
                   {branches.map((b) => (
                     <option key={b.id} value={b.id}>
@@ -196,38 +196,38 @@ export default function NewOrderPage() {
           </div>
 
           {/* Клиент */}
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <h2 className="mb-3 font-semibold text-slate-700">Клиент</h2>
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Клиент</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <input
                 value={clientPhone}
                 onChange={(e) => setClientPhone(e.target.value)}
                 placeholder="Телефон"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               />
               <input
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
                 placeholder="Имя (необязательно)"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
               />
             </div>
           </div>
 
           {/* Характеристики заказа */}
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <h2 className="mb-3 font-semibold text-slate-700">Характеристики</h2>
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Характеристики</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               {orderType === 'PRINT' && (
                 <>
                   <div>
-                    <label className="mb-1 block text-sm text-slate-500">Формат</label>
+                    <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Формат</label>
                     <input
                       value={format}
                       onChange={(e) => setFormat(e.target.value)}
                       placeholder="A4, A3, баннер 1×2м…"
                       list="format-list"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                     />
                     <datalist id="format-list">
                       <option value="A4" />
@@ -240,11 +240,11 @@ export default function NewOrderPage() {
                     </datalist>
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm text-slate-500">Цветность</label>
+                    <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Цветность</label>
                     <select
                       value={colorMode}
                       onChange={(e) => setColorMode(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                     >
                       <option value="">— не указано —</option>
                       <option value="Цветной">Цветной</option>
@@ -254,11 +254,11 @@ export default function NewOrderPage() {
                 </>
               )}
               <div>
-                <label className="mb-1 block text-sm text-slate-500">Срочность</label>
+                <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Срочность</label>
                 <select
                   value={urgency}
                   onChange={(e) => setUrgency(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 >
                   <option value="NORMAL">Обычная</option>
                   <option value="URGENT">Срочно</option>
@@ -266,20 +266,20 @@ export default function NewOrderPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-500">Срок готовности</label>
+                <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Срок готовности</label>
                 <input
                   type="datetime-local"
                   value={deadline}
                   onChange={(e) => setDeadline(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-500">Дизайнер</label>
+                <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Дизайнер</label>
                 <select
                   value={designerId}
                   onChange={(e) => setDesignerId(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 >
                   <option value="">— не назначен —</option>
                   {users.map((u) => (
@@ -290,13 +290,13 @@ export default function NewOrderPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-500">
+                <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">
                   Оператор / печатник
                 </label>
                 <select
                   value={operatorId}
                   onChange={(e) => setOperatorId(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 >
                   <option value="">— не назначен —</option>
                   {users.map((u) => (
@@ -311,60 +311,60 @@ export default function NewOrderPage() {
 
           {/* Детали ремонта/восстановления */}
           {orderType === 'REPAIR' && (
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
-              <h2 className="mb-3 font-semibold text-slate-700">Ремонт</h2>
+            <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+              <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Ремонт</h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 <input
                   value={deviceModel}
                   onChange={(e) => setDeviceModel(e.target.value)}
                   placeholder="Модель устройства"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 />
                 <input
                   value={problem}
                   onChange={(e) => setProblem(e.target.value)}
                   placeholder="Неисправность"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 />
               </div>
             </div>
           )}
           {orderType === 'RECOVERY' && (
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
-              <h2 className="mb-3 font-semibold text-slate-700">Восстановление данных</h2>
+            <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+              <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Восстановление данных</h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 <input
                   value={deviceType}
                   onChange={(e) => setDeviceType(e.target.value)}
                   placeholder="Носитель (HDD/SSD/USB/карта)"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 />
                 <input
                   value={whatToRecover}
                   onChange={(e) => setWhatToRecover(e.target.value)}
                   placeholder="Что восстановить"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
                 />
               </div>
             </div>
           )}
 
           {/* Позиции */}
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-semibold text-slate-700">Позиции</h2>
+              <h2 className="font-semibold text-slate-700 dark:text-slate-200">Позиции</h2>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => addLine('SERVICE')}
-                  className="rounded-lg bg-indigo-100 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-200"
+                  className="rounded-lg bg-indigo-100 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
                 >
                   + Услуга
                 </button>
                 <button
                   type="button"
                   onClick={() => addLine('PRODUCT')}
-                  className="rounded-lg bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-200"
+                  className="rounded-lg bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
                 >
                   + Товар
                 </button>
@@ -372,7 +372,7 @@ export default function NewOrderPage() {
             </div>
 
             {lines.length === 0 ? (
-              <p className="py-4 text-center text-sm text-slate-400">
+              <p className="py-4 text-center text-sm text-slate-400 dark:text-slate-500">
                 Добавьте услугу или товар
               </p>
             ) : (
@@ -382,8 +382,8 @@ export default function NewOrderPage() {
                     <span
                       className={`rounded px-2 py-1 text-xs ${
                         l.itemType === 'SERVICE'
-                          ? 'bg-indigo-100 text-indigo-700'
-                          : 'bg-emerald-100 text-emerald-700'
+                          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+                          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
                       }`}
                     >
                       {l.itemType === 'SERVICE' ? 'Услуга' : 'Товар'}
@@ -391,7 +391,7 @@ export default function NewOrderPage() {
                     <select
                       value={l.refId}
                       onChange={(e) => pickRef(i, e.target.value)}
-                      className="min-w-[180px] flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                      className="min-w-[180px] flex-1 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1.5 text-sm dark:bg-slate-800 dark:text-slate-100"
                     >
                       <option value="">— выбрать —</option>
                       {(l.itemType === 'SERVICE' ? services : products).map(
@@ -410,7 +410,7 @@ export default function NewOrderPage() {
                       onChange={(e) =>
                         updateLine(i, { quantity: Number(e.target.value) })
                       }
-                      className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                      className="w-20 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1.5 text-sm dark:bg-slate-800 dark:text-slate-100"
                       title="Количество"
                     />
                     <input
@@ -421,16 +421,16 @@ export default function NewOrderPage() {
                       onChange={(e) =>
                         updateLine(i, { unitPrice: Number(e.target.value) })
                       }
-                      className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                      className="w-24 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1.5 text-sm dark:bg-slate-800 dark:text-slate-100"
                       title="Цена"
                     />
-                    <span className="w-20 text-right text-sm font-medium text-slate-600">
+                    <span className="w-20 text-right text-sm font-medium text-slate-600 dark:text-slate-300">
                       {(l.quantity * l.unitPrice).toFixed(2)}
                     </span>
                     <button
                       type="button"
                       onClick={() => removeLine(i)}
-                      className="rounded px-2 text-rose-500 hover:bg-rose-50"
+                      className="rounded px-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                     >
                       ✕
                     </button>
@@ -443,13 +443,13 @@ export default function NewOrderPage() {
 
         {/* Правая часть — итог */}
         <div className="space-y-4">
-          <div className="sticky top-8 rounded-2xl bg-white p-5 shadow-sm">
-            <h2 className="mb-3 font-semibold text-slate-700">Итог</h2>
-            <div className="mb-4 text-3xl font-bold text-slate-800">
+          <div className="sticky top-8 rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Итог</h2>
+            <div className="mb-4 text-3xl font-bold text-slate-800 dark:text-slate-100">
               {total.toFixed(2)} c.
             </div>
 
-            <label className="mb-4 flex items-center gap-2 text-sm text-slate-600">
+            <label className="mb-4 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
               <input
                 type="checkbox"
                 checked={decrementStock}
@@ -463,11 +463,11 @@ export default function NewOrderPage() {
               onChange={(e) => setNote(e.target.value)}
               placeholder="Примечание к заказу"
               rows={2}
-              className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="mb-3 w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm dark:bg-slate-800 dark:text-slate-100"
             />
 
             {msg && (
-              <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+              <div className="mb-3 rounded-lg bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-600 dark:text-red-400">
                 {msg}
               </div>
             )}

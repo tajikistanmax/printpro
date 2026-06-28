@@ -135,15 +135,15 @@ export default function PayrollPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-800">Зарплата</h1>
-      {msg && <p className="mb-4 text-sm text-slate-600">{msg}</p>}
+      <h1 className="mb-6 text-2xl font-bold text-slate-800 dark:text-slate-100">Зарплата</h1>
+      {msg && <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">{msg}</p>}
 
       {/* Ставки */}
-      <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm">
-        <h2 className="mb-3 font-semibold text-slate-700">Ставки сотрудников</h2>
+      <div className="mb-6 rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+        <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Ставки сотрудников</h2>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-400">
+            <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-400 dark:text-slate-500">
               <th className="py-2 font-medium">Сотрудник</th>
               <th className="py-2 font-medium">Должность</th>
               <th className="py-2 font-medium">Тип</th>
@@ -160,12 +160,12 @@ export default function PayrollPage() {
 
       {/* Период + расчёт */}
       <div className="mb-6 grid gap-6 lg:grid-cols-[1fr_2fr]">
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700">Период</h2>
+        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Период</h2>
           <select
             value={periodId}
             onChange={(e) => setPeriodId(e.target.value)}
-            className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2"
+            className="mb-3 w-full rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2"
           >
             <option value="">— выберите период —</option>
             {periods.map((p) => (
@@ -184,14 +184,14 @@ export default function PayrollPage() {
           )}
 
           {canManage && (
-            <form onSubmit={createPeriod} className="space-y-2 border-t border-slate-100 pt-3">
-              <p className="text-xs font-medium text-slate-500">Новый период</p>
+            <form onSubmit={createPeriod} className="space-y-2 border-t border-slate-100 dark:border-slate-700 pt-3">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Новый период</p>
               <input
                 value={pName}
                 onChange={(e) => setPName(e.target.value)}
                 placeholder="Напр. Июнь 2026"
                 required
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-sm"
               />
               <div className="grid grid-cols-2 gap-2">
                 <input
@@ -199,17 +199,17 @@ export default function PayrollPage() {
                   onChange={(e) => setPStart(e.target.value)}
                   type="date"
                   required
-                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                  className="rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-2 py-2 text-sm"
                 />
                 <input
                   value={pEnd}
                   onChange={(e) => setPEnd(e.target.value)}
                   type="date"
                   required
-                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                  className="rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-2 py-2 text-sm"
                 />
               </div>
-              <button className="w-full rounded-lg bg-slate-700 py-2 text-sm font-medium text-white hover:bg-slate-800">
+              <button className="w-full rounded-lg bg-slate-700 dark:bg-slate-600 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-500">
                 Создать период
               </button>
             </form>
@@ -217,16 +217,16 @@ export default function PayrollPage() {
         </div>
 
         {/* Расчётная ведомость */}
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-3 font-semibold text-slate-700">Ведомость</h2>
+        <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Ведомость</h2>
           {records.length === 0 ? (
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-slate-400 dark:text-slate-500">
               Нет расчёта. Выберите период и нажмите «Рассчитать».
             </p>
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-400">
+                <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-400 dark:text-slate-500">
                   <th className="py-2 font-medium">Сотрудник</th>
                   <th className="py-2 text-right font-medium">База</th>
                   <th className="py-2 text-right font-medium">Аванс</th>
@@ -238,17 +238,17 @@ export default function PayrollPage() {
               </thead>
               <tbody>
                 {records.map((r) => (
-                  <tr key={r.id} className="border-b border-slate-50 last:border-0">
-                    <td className="py-2 text-slate-700">{r.name}</td>
-                    <td className="py-2 text-right text-slate-500">{money(r.base)}</td>
-                    <td className="py-2 text-right text-amber-600">−{money(r.advance)}</td>
+                  <tr key={r.id} className="border-b border-slate-50 dark:border-slate-800 last:border-0">
+                    <td className="py-2 text-slate-700 dark:text-slate-200">{r.name}</td>
+                    <td className="py-2 text-right text-slate-500 dark:text-slate-400">{money(r.base)}</td>
+                    <td className="py-2 text-right text-amber-600 dark:text-amber-300">−{money(r.advance)}</td>
                     <td className="py-2 text-right">
                       <input
                         defaultValue={r.bonus}
                         onBlur={(e) => setBonus(r.id, 'bonus', e.target.value)}
                         disabled={!canManage || r.isPaid}
                         type="number"
-                        className="w-16 rounded border border-slate-200 px-1 py-0.5 text-right text-xs"
+                        className="w-16 rounded border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 px-1 py-0.5 text-right text-xs"
                       />
                     </td>
                     <td className="py-2 text-right">
@@ -257,15 +257,15 @@ export default function PayrollPage() {
                         onBlur={(e) => setBonus(r.id, 'deduction', e.target.value)}
                         disabled={!canManage || r.isPaid}
                         type="number"
-                        className="w-16 rounded border border-slate-200 px-1 py-0.5 text-right text-xs"
+                        className="w-16 rounded border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 px-1 py-0.5 text-right text-xs"
                       />
                     </td>
-                    <td className="py-2 text-right font-semibold text-slate-800">
+                    <td className="py-2 text-right font-semibold text-slate-800 dark:text-slate-100">
                       {money(r.total)}
                     </td>
                     <td className="py-2 text-right">
                       {r.isPaid ? (
-                        <span className="text-xs text-emerald-600">выплачено</span>
+                        <span className="text-xs text-emerald-600 dark:text-emerald-400">выплачено</span>
                       ) : (
                         canManage && (
                           <button
@@ -288,13 +288,13 @@ export default function PayrollPage() {
       {/* Аванс / Время */}
       {canManage && (
         <div className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <h2 className="mb-3 font-semibold text-slate-700">Выдать аванс</h2>
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Выдать аванс</h2>
             <form onSubmit={addAdvance} className="flex flex-wrap items-end gap-2">
               <select
                 value={aUser}
                 onChange={(e) => setAUser(e.target.value)}
-                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-sm"
               >
                 {staff.map((u) => (
                   <option key={u.id} value={u.id}>
@@ -308,7 +308,7 @@ export default function PayrollPage() {
                 type="number"
                 placeholder="Сумма"
                 required
-                className="w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="w-28 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-sm"
               />
               <button className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700">
                 Выдать
@@ -316,13 +316,13 @@ export default function PayrollPage() {
             </form>
           </div>
 
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <h2 className="mb-3 font-semibold text-slate-700">Учёт времени (часы)</h2>
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Учёт времени (часы)</h2>
             <form onSubmit={addWorkTime} className="flex flex-wrap items-end gap-2">
               <select
                 value={wUser}
                 onChange={(e) => setWUser(e.target.value)}
-                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-sm"
               >
                 {staff.map((u) => (
                   <option key={u.id} value={u.id}>
@@ -337,7 +337,7 @@ export default function PayrollPage() {
                 step="0.5"
                 placeholder="Часов"
                 required
-                className="w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="w-28 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 px-3 py-2 text-sm"
               />
               <button className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700">
                 Записать
@@ -363,15 +363,15 @@ function SalaryRow({
   const [rate, setRate] = useState(String(u.rate));
 
   return (
-    <tr className="border-b border-slate-50 last:border-0">
-      <td className="py-2 text-slate-700">{u.fullName}</td>
-      <td className="py-2 text-slate-400">{u.position ?? '—'}</td>
+    <tr className="border-b border-slate-50 dark:border-slate-800 last:border-0">
+      <td className="py-2 text-slate-700 dark:text-slate-200">{u.fullName}</td>
+      <td className="py-2 text-slate-400 dark:text-slate-500">{u.position ?? '—'}</td>
       <td className="py-2">
         <select
           value={type}
           onChange={(e) => setType(e.target.value)}
           disabled={!canManage}
-          className="rounded border border-slate-200 px-1 py-0.5 text-xs"
+          className="rounded border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 px-1 py-0.5 text-xs"
         >
           <option value="MONTHLY">Оклад</option>
           <option value="HOURLY">Почасовая</option>
@@ -383,7 +383,7 @@ function SalaryRow({
           onChange={(e) => setRate(e.target.value)}
           disabled={!canManage}
           type="number"
-          className="w-24 rounded border border-slate-200 px-1 py-0.5 text-right text-xs"
+          className="w-24 rounded border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 px-1 py-0.5 text-right text-xs"
         />
         {canManage && (
           <button
