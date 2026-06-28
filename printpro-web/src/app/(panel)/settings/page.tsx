@@ -76,6 +76,28 @@ export default function SettingsPage() {
     }
   }
 
+  async function testEmail() {
+    if (!s.smtpUser) {
+      setMsg('Сначала укажите логин (email) SMTP');
+      return;
+    }
+    setMsg('Сохраняю и отправляю тестовое письмо…');
+    try {
+      await api.put('/settings', { companyId: cid, values: s });
+      const res = await api.post('/notifications/email/test', {
+        companyId: cid,
+        to: s.smtpTestTo || s.smtpUser,
+      });
+      setMsg(
+        res.ok
+          ? `✓ Тестовое письмо отправлено на ${s.smtpTestTo || s.smtpUser}`
+          : 'Не отправлено: ' + (res.message ?? 'проверьте настройки SMTP'),
+      );
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
   if (loading) return <p className="text-slate-400">Загрузка…</p>;
 
   return (
@@ -182,6 +204,73 @@ export default function SettingsPage() {
             className="mt-3 rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
           >
             Сохранить и проверить
+          </button>
+        </div>
+
+        {/* Email (SMTP) */}
+        <div className="rounded-2xl bg-white p-5 shadow-sm">
+          <h2 className="mb-1 font-semibold text-slate-700">Email-уведомления</h2>
+          <p className="mb-4 text-xs text-slate-400">
+            Gmail: включите 2-этапную аутентификацию и создайте «пароль приложения»
+            (myaccount.google.com/apppasswords). Хост <b>smtp.gmail.com</b>, порт{' '}
+            <b>587</b>, логин — ваш email, пароль — 16-значный пароль приложения.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="SMTP-хост">
+              <input
+                value={s.smtpHost ?? ''}
+                onChange={(e) => set('smtpHost', e.target.value)}
+                placeholder="smtp.gmail.com"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </Field>
+            <Field label="Порт">
+              <input
+                value={s.smtpPort ?? ''}
+                onChange={(e) => set('smtpPort', e.target.value)}
+                placeholder="587"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </Field>
+            <Field label="Логин (email)">
+              <input
+                value={s.smtpUser ?? ''}
+                onChange={(e) => set('smtpUser', e.target.value)}
+                placeholder="you@gmail.com"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </Field>
+            <Field label="Пароль приложения">
+              <input
+                value={s.smtpPass ?? ''}
+                onChange={(e) => set('smtpPass', e.target.value)}
+                type="password"
+                placeholder="16 символов"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </Field>
+            <Field label="Отправитель (необяз.)">
+              <input
+                value={s.smtpFrom ?? ''}
+                onChange={(e) => set('smtpFrom', e.target.value)}
+                placeholder="PrintPro <you@gmail.com>"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </Field>
+            <Field label="Кому отправить тест">
+              <input
+                value={s.smtpTestTo ?? ''}
+                onChange={(e) => set('smtpTestTo', e.target.value)}
+                placeholder="по умолчанию — себе"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </Field>
+          </div>
+          <button
+            onClick={testEmail}
+            className="mt-3 rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            Сохранить и отправить тест
           </button>
         </div>
 

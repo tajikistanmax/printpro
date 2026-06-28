@@ -19,6 +19,7 @@ import { docNumber } from '../common/doc-number';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { AddPaymentDto, QuickSaleDto } from './dto/order-actions.dto';
 import { PromocodesService } from '../promocodes/promocodes.service';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class OrdersService {
@@ -27,6 +28,7 @@ export class OrdersService {
     private readonly clients: ClientsService,
     private readonly telegram: TelegramService,
     private readonly promocodes: PromocodesService,
+    private readonly email: EmailService,
   ) {}
 
   // ---------- Создание заказа ----------
@@ -478,12 +480,29 @@ export class OrdersService {
       }),
     ]);
 
-    // Уведомление в Telegram о готовности заказа
+    // Уведомление о готовности заказа: Telegram + email клиенту
     if (status === OrderStatus.READY) {
       void this.telegram.send(
         order.companyId,
         `✅ Заказ №${order.orderNumber} готов к выдаче`,
       );
+      if (order.clientId) {
+        void this.prisma.client
+          .findUnique({
+            where: { id: order.clientId },
+            select: { email: true, fullName: true },
+          })
+          .then((client) => {
+            if (client?.email) {
+              void this.email.send(
+                order.companyId,
+                client.email,
+                `Заказ №${order.orderNumber} готов`,
+                `Здравствуйте${client.fullName ? ', ' + client.fullName : ''}!\n\nВаш заказ №${order.orderNumber} готов к выдаче.\n\nСпасибо, что выбрали нас!`,
+              );
+            }
+          });
+      }
     }
 
     return this.findOne(orderId);

@@ -30,6 +30,7 @@ import { BackupModule } from './backup/backup.module';
 import { SearchModule } from './search/search.module';
 import { PromocodesModule } from './promocodes/promocodes.module';
 import { ComplaintsModule } from './complaints/complaints.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { ComplaintsModule } from './complaints/complaints.module';
     SearchModule, // глобальный поиск
     PromocodesModule, // промокоды
     ComplaintsModule, // рекламации (жалобы)
+    EmailModule, // email-уведомления (SMTP)
   ],
   controllers: [AppController],
   providers: [AppService],
