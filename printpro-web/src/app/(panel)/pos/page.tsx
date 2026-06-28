@@ -41,6 +41,13 @@ export default function PosPage() {
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState('');
   const [receipt, setReceipt] = useState<any | null>(null);
+  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [orderStats, setOrderStats] = useState({
+    active: 0,
+    inWork: 0,
+    ready: 0,
+    overdue: 0,
+  });
 
   useEffect(() => {
     api.get(`/services?companyId=${cid}`).then(setServices).catch(() => {});
@@ -62,12 +69,41 @@ export default function PosPage() {
       .get(`/settings/ui?companyId=${cid}`)
       .then((ui) => ui?.posLayout && setLayout(ui.posLayout))
       .catch(() => {});
+    // Недавние заказы + статистика (для богатых оформлений). Требует orders.view —
+    // если права нет, просто останутся пустыми.
+    api
+      .get(`/orders?companyId=${cid}&page=1&pageSize=50`)
+      .then((res) => {
+        const list: any[] = res?.items ?? [];
+        setRecentOrders(list.slice(0, 4));
+        const now = Date.now();
+        const active = list.filter(
+          (o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED',
+        );
+        const inWorkSet = [
+          'IN_PROGRESS',
+          'IN_DESIGN',
+          'DESIGN_APPROVAL',
+          'DESIGN_APPROVED',
+          'AWAITING_DESIGN',
+          'REWORK',
+        ];
+        setOrderStats({
+          active: active.length,
+          inWork: active.filter((o) => inWorkSet.includes(o.status)).length,
+          ready: active.filter((o) => o.status === 'READY').length,
+          overdue: active.filter(
+            (o) => o.deadline && new Date(o.deadline).getTime() < now,
+          ).length,
+        });
+      })
+      .catch(() => {});
   }, [cid]);
 
   const catalog = tab === 'SERVICE' ? services : products;
   const cats = tab === 'SERVICE' ? serviceCats : productCats;
-  const priceOf = (item: any) =>
-    Number(tab === 'SERVICE' ? item.basePrice : item.salePrice) || 0;
+  const priceOf = (item: any, type: 'SERVICE' | 'PRODUCT') =>
+    Number(type === 'SERVICE' ? item.basePrice : item.salePrice) || 0;
 
   const filtered = useMemo(
     () =>
@@ -84,10 +120,10 @@ export default function PosPage() {
     setCatFilter('ALL');
   }
 
-  function addItem(item: any) {
-    const itemType = tab;
+  function addItem(item: any, type: 'SERVICE' | 'PRODUCT') {
+    const itemType = type;
     const id = item.id;
-    const unitPrice = priceOf(item);
+    const unitPrice = priceOf(item, type);
     const key = `${itemType}:${id}`;
     setCart((prev) => {
       const ex = prev.find((p) => p.key === key);
@@ -153,9 +189,10 @@ export default function PosPage() {
   );
   const splitLeft = Number((total - splitSum).toFixed(2));
 
-  async function pay() {
+  async function pay(overrideMethod?: string) {
     if (cart.length === 0) return;
     setMsg('');
+    const useMethod = overrideMethod ?? method;
 
     let payments: { method: string; amount: number }[] | undefined;
     if (split) {
@@ -178,7 +215,7 @@ export default function PosPage() {
         discount: disc || undefined,
         promoCode: promoCode.trim() || undefined,
         useBonus: Number(useBonus) > 0 ? Number(useBonus) : undefined,
-        method: split ? undefined : method,
+        method: split ? undefined : useMethod,
         payments,
         items: cart.map((c) => ({
           itemType: c.itemType,
@@ -195,7 +232,7 @@ export default function PosPage() {
           ? payments!
               .map((p) => `${METHODS.find((m) => m.k === p.method)?.l} ${p.amount}`)
               .join(', ')
-          : METHODS.find((m) => m.k === method)?.l,
+          : METHODS.find((m) => m.k === useMethod)?.l,
         _date: new Date().toLocaleString('ru-RU'),
       });
       setCart([]);
@@ -212,9 +249,29 @@ export default function PosPage() {
     }
   }
 
+  const payWith = (m: string) => {
+    void pay(m);
+  };
+
+  function clearCart() {
+    setCart([]);
+    setDiscount('');
+    setPromoCode('');
+    setPromoDiscount(0);
+    setPromoMsg('');
+    setUseBonus('');
+    setPhone('');
+    setSplit(false);
+    setSplitAmounts({});
+  }
+
   // Собираем контекст для «скина»
   const ctx: PosCtx = {
     money,
+    services,
+    products,
+    serviceCats,
+    productCats,
     tab,
     switchTab,
     search,
@@ -223,14 +280,17 @@ export default function PosPage() {
     catFilter,
     setCatFilter,
     filtered,
+    catalogAll: catalog,
     priceOf,
     addItem,
     cart,
     setQty,
+    clearCart,
     cartCount,
     subtotal,
     discount,
     setDiscount,
+    disc,
     promoCode,
     setPromoCode,
     promoDiscount,
@@ -252,8 +312,13 @@ export default function PosPage() {
     setSplitAmounts,
     splitSum,
     splitLeft,
-    pay,
+    pay: () => {
+      void pay();
+    },
+    payWith,
     msg,
+    recentOrders,
+    orderStats,
   };
 
   const Skin = SKINS[layout] ?? SKINS[DEFAULT_POS_LAYOUT];
