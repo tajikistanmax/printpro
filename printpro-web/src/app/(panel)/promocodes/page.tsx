@@ -17,6 +17,7 @@ import {
   Badge,
   EmptyState,
 } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 export default function PromocodesPage() {
   const cid = DEFAULT_COMPANY_ID;
@@ -174,7 +175,7 @@ export default function PromocodesPage() {
                     className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                     onClick={() => remove(p.id)}
                   >
-                    ✕
+                    <NavIcon name="close" className="h-4 w-4" />
                   </Button>
                 )}
               </Card>

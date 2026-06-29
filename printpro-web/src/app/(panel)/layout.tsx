@@ -232,7 +232,11 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
           className="mx-2.5 mb-2.5 hidden items-center justify-center rounded-lg border border-slate-200 bg-slate-50 py-1.5 text-xs font-semibold text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 lg:flex dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
           title={railCollapsed ? 'Развернуть меню' : 'Свернуть меню'}
         >
-          {railCollapsed ? '▶' : '◀ Свернуть'}
+          {railCollapsed ? (
+            <NavIcon name="arrowLeft" className="h-4 w-4 rotate-180" />
+          ) : (
+            <span className="inline-flex items-center gap-1.5"><NavIcon name="arrowLeft" className="h-4 w-4" />Свернуть</span>
+          )}
         </button>
       </aside>
 
@@ -243,10 +247,10 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
           <div className="flex min-w-0 items-center gap-3">
             <button
               onClick={() => setMobileOpen(true)}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-xl text-slate-600 transition hover:bg-slate-100 lg:hidden dark:text-slate-300 dark:hover:bg-slate-800"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 lg:hidden dark:text-slate-300 dark:hover:bg-slate-800"
               aria-label="Меню"
             >
-              ☰
+              <NavIcon name="menu" className="h-5 w-5" />
             </button>
             <GlobalSearch />
           </div>
@@ -256,7 +260,8 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
             <NotificationBell />
           </div>
         </header>
-        <div className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-8">{children}</div>
+        {/* Контент во всю ширину рабочей области (раньше был max-w-6xl по центру) */}
+        <div className="w-full px-4 pb-10 pt-6 sm:px-6 xl:px-8">{children}</div>
       </main>
     </div>
   );

@@ -13,6 +13,7 @@ import {
   CreateReceiptDto,
   CreateSupplierDto,
   UpdateSupplierDto,
+  PaySupplierDebtDto,
 } from './dto/purchasing.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -40,6 +41,12 @@ export class PurchasingController {
   @RequirePermissions('stock.manage')
   updateSupplier(@Param('id') id: string, @Body() dto: UpdateSupplierDto) {
     return this.purchasing.updateSupplier(id, dto);
+  }
+
+  @Post('suppliers/:id/pay-debt')
+  @RequirePermissions('stock.manage')
+  paySupplierDebt(@Param('id') id: string, @Body() dto: PaySupplierDebtDto) {
+    return this.purchasing.paySupplierDebt(id, dto);
   }
 
   // ----- Приёмка -----

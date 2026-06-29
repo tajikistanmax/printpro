@@ -45,7 +45,15 @@ export default function PosPage() {
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState('');
   const [receipt, setReceipt] = useState<any | null>(null);
+  // Ключ идемпотентности: один на «корзину», новый — после успешной продажи.
+  // Защищает от двойного списания при двойном клике / обрыве сети.
+  const [saleKey, setSaleKey] = useState<string>(() =>
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `pos-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+  );
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [held, setHeld] = useState<any[]>([]);
   const [orderStats, setOrderStats] = useState({
     active: 0,
     inWork: 0,
@@ -260,6 +268,7 @@ export default function PosPage() {
         useBonus: Number(useBonus) > 0 ? Number(useBonus) : undefined,
         method: split ? undefined : useMethod,
         payments,
+        idempotencyKey: saleKey,
         items: cart.map((c) => ({
           itemType: c.itemType,
           serviceId: c.itemType === 'SERVICE' ? c.id : undefined,
@@ -287,6 +296,12 @@ export default function PosPage() {
       setPhone('');
       setSplit(false);
       setSplitAmounts({});
+      // Новый ключ — следующая продажа получит свой
+      setSaleKey(
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `pos-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+      );
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
     }
@@ -306,6 +321,46 @@ export default function PosPage() {
     setPhone('');
     setSplit(false);
     setSplitAmounts({});
+  }
+
+  // ---- Отложенные чеки ----
+  function loadHeld() {
+    api.get(`/orders/held?companyId=${cid}`).then(setHeld).catch(() => {});
+  }
+  useEffect(() => {
+    loadHeld();
+  }, [cid]);
+
+  async function hold() {
+    if (cart.length === 0) return;
+    try {
+      await api.post('/orders/held', {
+        companyId: cid,
+        branchId: branchId || undefined,
+        label: phone || `${cartCount} поз.`,
+        total,
+        items: cart,
+      });
+      clearCart();
+      loadHeld();
+    } catch (e: any) {
+      setMsg('Ошибка: ' + e.message);
+    }
+  }
+
+  async function resumeHeld(h: any) {
+    setCart(Array.isArray(h.items) ? h.items : []);
+    try {
+      await api.del(`/orders/held/${h.id}`);
+    } catch {}
+    loadHeld();
+  }
+
+  async function deleteHeld(id: string) {
+    try {
+      await api.del(`/orders/held/${id}`);
+    } catch {}
+    loadHeld();
   }
 
   // Собираем контекст для «скина»
@@ -362,6 +417,9 @@ export default function PosPage() {
     msg,
     recentOrders,
     orderStats,
+    hold: () => {
+      void hold();
+    },
   };
 
   const Skin = SKINS[layout] ?? SKINS[DEFAULT_POS_LAYOUT];
@@ -369,17 +427,59 @@ export default function PosPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-800">Касса — продажа</h1>
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-[22px] w-[22px]">
+              <rect x="2" y="4" width="20" height="14" rx="2" />
+              <path d="M2 8h20M7 18v3M17 18v3M6 21h12" />
+            </svg>
+          </span>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Касса — продажа</h1>
+        </div>
         {displayOn && (
           <button
             onClick={openCustomerDisplay}
             title="Открыть второй экран для покупателя"
-            className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
-            🖥 Второй экран
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <rect x="3" y="4" width="18" height="12" rx="2" />
+              <path d="M8 20h8M12 16v4" />
+            </svg>
+            Второй экран
           </button>
         )}
       </div>
+
+      {/* Отложенные чеки — нажми, чтобы вернуть корзину */}
+      {held.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+            Отложенные чеки:
+          </span>
+          {held.map((h) => (
+            <span
+              key={h.id}
+              className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs shadow-sm dark:border-amber-500/30 dark:bg-slate-800"
+            >
+              <button
+                onClick={() => resumeHeld(h)}
+                className="font-medium text-slate-700 transition hover:text-indigo-600 dark:text-slate-200"
+                title="Вернуть в корзину"
+              >
+                {h.label || 'Чек'} · {money(Number(h.total))}
+              </button>
+              <button
+                onClick={() => deleteHeld(h.id)}
+                className="text-rose-400 transition hover:text-rose-600"
+                title="Удалить"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <Skin ctx={ctx} />
 
@@ -439,9 +539,13 @@ export default function PosPage() {
             <div className="no-print mt-5 flex gap-2">
               <button
                 onClick={() => window.print()}
-                className="flex-1 rounded-lg bg-indigo-600 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 py-2 text-sm font-medium text-white hover:bg-indigo-700"
               >
-                🖨 Печать
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                  <path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" />
+                  <rect x="7" y="14" width="10" height="7" rx="1" />
+                </svg>
+                Печать
               </button>
               <button
                 onClick={() => setReceipt(null)}

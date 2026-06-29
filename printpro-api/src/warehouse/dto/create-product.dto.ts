@@ -8,6 +8,7 @@ export class CreateProductDto {
   @IsOptional() @IsString() unitId?: string;
 
   @IsOptional() @IsNumber() salePrice?: number;
+  @IsOptional() @IsNumber() @Min(0) purchasePrice?: number; // закупочная цена / себестоимость
 
   // Порог оповещения: если остаток <= minStock — система предупредит
   @IsOptional() @IsNumber() @Min(0) minStock?: number;

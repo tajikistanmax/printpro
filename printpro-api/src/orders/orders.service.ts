@@ -17,7 +17,12 @@ import { ClientsService } from '../clients/clients.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { docNumber } from '../common/doc-number';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { AddPaymentDto, QuickSaleDto } from './dto/order-actions.dto';
+import {
+  AddPaymentDto,
+  QuickSaleDto,
+  HoldSaleDto,
+  CreateReturnDto,
+} from './dto/order-actions.dto';
 import { PromocodesService } from '../promocodes/promocodes.service';
 import { EmailService } from '../email/email.service';
 
@@ -71,11 +76,30 @@ export class OrdersService {
         )
       : new Map<string, number>();
 
+    // Себестоимость товаров — из закупочной цены, если не передана
+    const productIds = dto.items
+      .filter((it) => it.productId)
+      .map((it) => it.productId!);
+    const productCosts = productIds.length
+      ? new Map(
+          (
+            await this.prisma.product.findMany({
+              where: { id: { in: productIds } },
+              select: { id: true, purchasePrice: true },
+            })
+          ).map((p) => [p.id, Number(p.purchasePrice)]),
+        )
+      : new Map<string, number>();
+
     // Считаем суммы и себестоимость по позициям
     const items = dto.items.map((it) => {
       const unitCost =
         it.unitCost ??
-        (it.serviceId ? serviceCosts.get(it.serviceId) ?? 0 : 0);
+        (it.serviceId
+          ? serviceCosts.get(it.serviceId) ?? 0
+          : it.productId
+            ? productCosts.get(it.productId) ?? 0
+            : 0);
       return {
         ...it,
         unitCost,
@@ -154,6 +178,7 @@ export class OrdersService {
               ? new Date(Date.now() + leadDays * 86400000)
               : undefined,
           note: dto.note,
+          idempotencyKey: dto.idempotencyKey,
           total,
           paid: 0,
           balanceDue: total,
@@ -218,6 +243,8 @@ export class OrdersService {
                 branchId: dto.branchId,
                 type: StockMovementType.OUT,
                 quantity: it.quantity,
+                beforeQty: available,
+                afterQty: Number((available - it.quantity).toFixed(3)),
                 reason: `Продажа по заказу №${orderNumber}`,
                 orderId: order.id,
               },
@@ -296,16 +323,37 @@ export class OrdersService {
   // ---------- Быстрая продажа (POS) ----------
   // Создаёт заказ-продажу, сразу оплачивает и помечает выданным.
   async quickSale(dto: QuickSaleDto, userId?: string) {
-    const order = await this.create({
-      companyId: dto.companyId,
-      branchId: dto.branchId,
-      orderType: OrderType.SALE,
-      clientPhone: dto.clientPhone,
-      clientName: dto.clientName,
-      createdById: userId,
-      decrementStock: true,
-      items: dto.items,
-    });
+    // Идемпотентность: повтор той же продажи (двойной клик / обрыв сети) не создаёт дубль.
+    if (dto.idempotencyKey) {
+      const existing = await this.prisma.order.findUnique({
+        where: { idempotencyKey: dto.idempotencyKey },
+      });
+      if (existing) return this.findOne(existing.id);
+    }
+
+    let order: Awaited<ReturnType<typeof this.create>>;
+    try {
+      order = await this.create({
+        companyId: dto.companyId,
+        branchId: dto.branchId,
+        orderType: OrderType.SALE,
+        clientPhone: dto.clientPhone,
+        clientName: dto.clientName,
+        createdById: userId,
+        decrementStock: true,
+        idempotencyKey: dto.idempotencyKey,
+        items: dto.items,
+      });
+    } catch (e: any) {
+      // Гонка: параллельный запрос с тем же ключом уже создал заказ
+      if (e?.code === 'P2002' && dto.idempotencyKey) {
+        const ex = await this.prisma.order.findUnique({
+          where: { idempotencyKey: dto.idempotencyKey },
+        });
+        if (ex) return this.findOne(ex.id);
+      }
+      throw e;
+    }
 
     // Скидка (абсолютная) — уменьшаем итог
     let total = Number(order.total);
@@ -389,6 +437,32 @@ export class OrdersService {
     return this.findOne(order.id);
   }
 
+  // ---------- Отложенные чеки (POS) ----------
+  holdSale(dto: HoldSaleDto, userId?: string) {
+    return this.prisma.heldSale.create({
+      data: {
+        companyId: dto.companyId,
+        branchId: dto.branchId,
+        userId,
+        label: dto.label,
+        note: dto.note,
+        total: dto.total ?? 0,
+        items: dto.items ?? [],
+      },
+    });
+  }
+
+  listHeld(companyId: string) {
+    return this.prisma.heldSale.findMany({
+      where: { companyId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  deleteHeld(id: string) {
+    return this.prisma.heldSale.delete({ where: { id } });
+  }
+
   // ---------- Возврат заказа ----------
   // Отменяет заказ, возвращает деньги из кассы и возвращает товар на склад.
   async refund(orderId: string) {
@@ -420,6 +494,12 @@ export class OrdersService {
       if (order.branchId) {
         for (const it of order.items) {
           if (it.itemType === ItemType.PRODUCT && it.productId) {
+            const cur = await tx.stock.findUnique({
+              where: {
+                productId_branchId: { productId: it.productId, branchId: order.branchId },
+              },
+            });
+            const before = cur ? Number(cur.quantity) : 0;
             await tx.stock.upsert({
               where: {
                 productId_branchId: {
@@ -441,6 +521,8 @@ export class OrdersService {
                 branchId: order.branchId,
                 type: StockMovementType.IN,
                 quantity: it.quantity,
+                beforeQty: before,
+                afterQty: Number((before + Number(it.quantity)).toFixed(3)),
                 reason: `Возврат по заказу №${order.orderNumber}`,
                 orderId: order.id,
               },
@@ -456,6 +538,126 @@ export class OrdersService {
       });
 
       return this.loadFull(tx, orderId);
+    });
+  }
+
+  // ---------- Частичный возврат по чеку ----------
+  // Возвращает выбранные позиции (товары — обратно на склад), деньги — из кассы,
+  // фиксирует документ возврата и корректирует оплату заказа.
+  async createReturn(orderId: string, dto: CreateReturnDto, userId?: string) {
+    if (!dto.items?.length) {
+      throw new BadRequestException('Выберите позиции для возврата');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { items: true },
+      });
+      if (!order) throw new NotFoundException('Заказ не найден');
+
+      let amount = 0;
+      const returned: any[] = [];
+
+      for (const ri of dto.items) {
+        const oi = order.items.find((x) => x.id === ri.orderItemId);
+        if (!oi) continue;
+        const qty = Math.min(Number(ri.quantity), Number(oi.quantity));
+        if (qty <= 0) continue;
+        const lineAmount = Number((qty * Number(oi.unitPrice)).toFixed(2));
+        amount += lineAmount;
+        returned.push({
+          orderItemId: oi.id,
+          description: oi.description,
+          productId: oi.productId,
+          serviceId: oi.serviceId,
+          quantity: qty,
+          unitPrice: Number(oi.unitPrice),
+          lineAmount,
+        });
+
+        // Товар — возвращаем на склад (приход RETURN с аудитом до/после)
+        if (oi.itemType === ItemType.PRODUCT && oi.productId && order.branchId) {
+          const cur = await tx.stock.findUnique({
+            where: {
+              productId_branchId: { productId: oi.productId, branchId: order.branchId },
+            },
+          });
+          const before = cur ? Number(cur.quantity) : 0;
+          await tx.stock.upsert({
+            where: {
+              productId_branchId: { productId: oi.productId, branchId: order.branchId },
+            },
+            create: { productId: oi.productId, branchId: order.branchId, quantity: qty },
+            update: { quantity: { increment: qty } },
+          });
+          await tx.stockMovement.create({
+            data: {
+              companyId: order.companyId,
+              productId: oi.productId,
+              branchId: order.branchId,
+              type: StockMovementType.RETURN,
+              quantity: qty,
+              beforeQty: before,
+              afterQty: Number((before + qty).toFixed(3)),
+              reason: `Возврат по заказу №${order.orderNumber}`,
+              orderId: order.id,
+            },
+          });
+        }
+      }
+
+      amount = Number(amount.toFixed(2));
+      if (amount <= 0) {
+        throw new BadRequestException('Нечего возвращать');
+      }
+
+      // Деньги обратно — расход из кассы
+      await tx.cashMovement.create({
+        data: {
+          companyId: order.companyId,
+          type: 'OUT',
+          amount,
+          category: 'Возвраты',
+          reason: `Возврат по заказу №${order.orderNumber}`,
+        },
+      });
+
+      // Документ возврата
+      const count = await tx.return.count({ where: { companyId: order.companyId } });
+      const ret = await tx.return.create({
+        data: {
+          companyId: order.companyId,
+          orderId,
+          branchId: order.branchId,
+          clientId: order.clientId,
+          number: docNumber('VOZ', count + 1),
+          reason: dto.reason,
+          amount,
+          method: dto.method,
+          items: returned,
+          userId,
+        },
+      });
+
+      // Корректируем оплату заказа (вернули часть денег)
+      const newPaid = Number(Math.max(0, Number(order.paid) - amount).toFixed(2));
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          paid: newPaid,
+          balanceDue: Number((Number(order.total) - newPaid).toFixed(2)),
+        },
+      });
+
+      return ret;
+    });
+  }
+
+  listReturns(companyId: string) {
+    return this.prisma.return.findMany({
+      where: { companyId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
     });
   }
 

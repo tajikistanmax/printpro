@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -14,6 +15,8 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import {
   AddPaymentDto,
   QuickSaleDto,
+  HoldSaleDto,
+  CreateReturnDto,
   UpdateStatusDto,
 } from './dto/order-actions.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -38,6 +41,43 @@ export class OrdersController {
   @RequirePermissions('cash.operate')
   quickSale(@Body() dto: QuickSaleDto, @CurrentUser() user: { sub: string }) {
     return this.orders.quickSale(dto, user.sub);
+  }
+
+  // Отложенные чеки (POS) — объявлены ДО :id-маршрутов, чтобы 'held' не попал в :id
+  @Post('held')
+  @RequirePermissions('cash.operate')
+  hold(@Body() dto: HoldSaleDto, @CurrentUser() user: { sub: string }) {
+    return this.orders.holdSale(dto, user.sub);
+  }
+
+  @Get('held')
+  @RequirePermissions('cash.operate')
+  listHeld(@Query('companyId') companyId: string) {
+    return this.orders.listHeld(companyId);
+  }
+
+  @Delete('held/:id')
+  @RequirePermissions('cash.operate')
+  deleteHeld(@Param('id') id: string) {
+    return this.orders.deleteHeld(id);
+  }
+
+  // Список возвратов (до :id-маршрутов)
+  @Get('returns')
+  @RequirePermissions('orders.view')
+  listReturns(@Query('companyId') companyId: string) {
+    return this.orders.listReturns(companyId);
+  }
+
+  // Частичный возврат по заказу
+  @Post(':id/return')
+  @RequirePermissions('cash.operate')
+  createReturn(
+    @Param('id') id: string,
+    @Body() dto: CreateReturnDto,
+    @CurrentUser() user: { sub: string },
+  ) {
+    return this.orders.createReturn(id, dto, user.sub);
   }
 
   // Возврат заказа

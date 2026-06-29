@@ -19,6 +19,7 @@ import {
   EmptyState,
   Tone,
 } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 interface Line {
   itemType: 'SERVICE' | 'PRODUCT';
@@ -235,9 +236,9 @@ export default function QuotesPage() {
                   <button
                     type="button"
                     onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}
-                    className="px-1 text-rose-500"
+                    className="inline-flex px-1 text-rose-500"
                   >
-                    ✕
+                    <NavIcon name="close" className="h-4 w-4" />
                   </button>
                 </div>
               ))}

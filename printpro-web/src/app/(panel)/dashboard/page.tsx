@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, ReactNode } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
+import NavIcon from '@/lib/NavIcons';
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(n) + ' c.';
@@ -12,13 +13,13 @@ function money(n: number) {
 
 const ORDER_STATUS_LABELS: Record<string, { label: string; color: string }> = {
   ACCEPTED:         { label: 'Принят',         color: 'bg-slate-400' },
-  AWAITING_DESIGN:  { label: 'Ждёт макет',     color: 'bg-purple-400' },
-  IN_DESIGN:        { label: 'Дизайн',          color: 'bg-violet-500' },
+  AWAITING_DESIGN:  { label: 'Ждёт макет',     color: 'bg-slate-500' },
+  IN_DESIGN:        { label: 'Дизайн',          color: 'bg-slate-600' },
   DESIGN_APPROVAL:  { label: 'Согласование',    color: 'bg-indigo-400' },
-  DESIGN_APPROVED:  { label: 'Согл. готово',    color: 'bg-blue-400' },
-  IN_PROGRESS:      { label: 'В производстве',  color: 'bg-sky-500' },
-  READY:            { label: 'Готов',           color: 'bg-emerald-500' },
-  DELIVERED:        { label: 'Выдан',           color: 'bg-green-400' },
+  DESIGN_APPROVED:  { label: 'Согл. готово',    color: 'bg-indigo-500' },
+  IN_PROGRESS:      { label: 'В производстве',  color: 'bg-indigo-700' },
+  READY:            { label: 'Готов',           color: 'bg-emerald-600' },
+  DELIVERED:        { label: 'Выдан',           color: 'bg-slate-300' },
   REWORK:           { label: 'Переделка',       color: 'bg-amber-500' },
   CANCELLED:        { label: 'Отменён',         color: 'bg-rose-400' },
 };
@@ -26,11 +27,11 @@ const ORDER_STATUS_LABELS: Record<string, { label: string; color: string }> = {
 function Trend({ now, prev }: { now: number; prev: number }) {
   if (!prev) return null;
   const diff = ((now - prev) / prev) * 100;
-  if (Math.abs(diff) < 1) return <span className="text-xs text-slate-400">≈ без изм.</span>;
+  if (Math.abs(diff) < 1) return <span className="text-xs text-slate-400">≈ без изменений</span>;
   const up = diff > 0;
   return (
-    <span className={`text-xs font-medium ${up ? 'text-emerald-500' : 'text-rose-500'}`}>
-      {up ? '↑' : '↓'} {Math.abs(diff).toFixed(0)}% vs вчера
+    <span className={`text-xs font-medium ${up ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+      {up ? '+' : '−'}{Math.abs(diff).toFixed(0)}% к вчера
     </span>
   );
 }
@@ -83,126 +84,105 @@ export default function DashboardPage() {
     return d < 2 * 24 * 3600 * 1000;
   });
 
-  // Разбивка заказов по статусам (только активные)
   const statusCounts: Record<string, number> = {};
   active.forEach((o) => { statusCounts[o.status] = (statusCounts[o.status] ?? 0) + 1; });
   const totalActive = active.length || 1;
 
-  const actions = [
-    { href: '/orders/new', label: 'Новый заказ',    icon: '➕', color: 'from-indigo-500 to-indigo-600', perm: 'orders.manage' },
-    { href: '/pos',        label: 'Касса',          icon: '💳', color: 'from-emerald-500 to-emerald-600', perm: 'cash.operate' },
-    { href: '/production', label: 'Производство',   icon: '🏭', color: 'from-sky-500 to-sky-600', perm: 'production.view' },
-    { href: '/warehouse',  label: 'Склад',          icon: '📦', color: 'from-amber-500 to-amber-600', perm: 'stock.view' },
-    { href: '/clients',    label: 'Клиенты',        icon: '🧑', color: 'from-violet-500 to-violet-600', perm: 'clients.view' },
-    { href: '/reports',    label: 'Отчёты',         icon: '📊', color: 'from-rose-500 to-rose-600', perm: 'reports.view' },
-  ].filter((a) => !a.perm || can(a.perm));
+  const ALL_ACTIONS: { href: string; label: string; icon: string; perm: string | null; primary?: boolean }[] = [
+    { href: '/orders/new', label: 'Новый заказ',  icon: 'plus',       perm: 'orders.manage', primary: true },
+    { href: '/pos',        label: 'Касса',         icon: 'pos',        perm: 'cash.operate' },
+    { href: '/production', label: 'Производство',  icon: 'production', perm: 'production.view' },
+    { href: '/warehouse',  label: 'Склад',         icon: 'warehouse',  perm: 'stock.view' },
+    { href: '/clients',    label: 'Клиенты',       icon: 'clients',    perm: 'clients.view' },
+    { href: '/reports',    label: 'Отчёты',        icon: 'reports',    perm: 'reports.view' },
+  ];
+  const actions = ALL_ACTIONS.filter((a) => !a.perm || can(a.perm));
 
   return (
     <div>
-      {/* Приветствие */}
-      <div className="mb-6 flex items-center justify-between">
+      {/* Шапка */}
+      <div className="mb-7 flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-5 dark:border-slate-700/60">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-            Здравствуйте, {user?.fullName} 👋
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Панель управления</div>
+          <h1 className="mt-1 text-[26px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+            {user?.fullName}
           </h1>
-          <p className="mt-0.5 text-slate-500 dark:text-slate-400">Обзор работы типографии</p>
         </div>
         {openComplaints.length > 0 && (
-          <Link href="/complaints"
-            className="flex items-center gap-2 rounded-xl bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 dark:bg-rose-900/20 dark:text-rose-300">
-            ⚠ Рекламации: {openComplaints.length}
+          <Link
+            href="/complaints"
+            className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3.5 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+          >
+            <NavIcon name="alert" className="h-4 w-4" />
+            Рекламации в работе: {openComplaints.length}
           </Link>
         )}
       </div>
 
       {/* Быстрые действия */}
-      <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
         {actions.map((a) => (
-          <Link key={a.href} href={a.href}
-            className={`flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-gradient-to-br ${a.color} px-3 py-4 text-center text-white shadow-sm transition hover:opacity-90 hover:shadow-md`}>
-            <span className="text-2xl">{a.icon}</span>
-            <span className="text-xs font-semibold">{a.label}</span>
+          <Link
+            key={a.href}
+            href={a.href}
+            className={
+              a.primary
+                ? 'group flex items-center gap-3 rounded-lg bg-slate-900 px-4 py-3.5 text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
+                : 'group flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3.5 text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700/60 dark:text-slate-200 dark:hover:bg-slate-800/60'
+            }
+          >
+            <span
+              className={
+                a.primary
+                  ? 'flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white/15'
+                  : 'flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+              }
+            >
+              <NavIcon name={a.icon} className="h-[18px] w-[18px]" />
+            </span>
+            <span className="text-sm font-medium">{a.label}</span>
           </Link>
         ))}
       </div>
 
-      {/* KPI карточки */}
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard
-          icon="💰"
-          label="Выручка сегодня"
-          value={today ? money(today.collected) : '—'}
-          sub={<Trend now={today?.collected ?? 0} prev={yesterday?.collected ?? 0} />}
-          tint="emerald"
-        />
-        <KpiCard
-          icon="🏭"
-          label="В производстве"
-          value={inWork.length}
-          sub={<span className="text-xs text-slate-400">заказов</span>}
-          tint="sky"
-        />
-        <KpiCard
-          icon="✅"
-          label="Готово к выдаче"
-          value={ready.length}
-          sub={ready.length > 0
-            ? <span className="text-xs font-semibold text-emerald-500">Можно выдавать!</span>
-            : <span className="text-xs text-slate-400">нет готовых</span>
-          }
-          tint="indigo"
-          highlight={ready.length > 0}
-        />
-        <KpiCard
-          icon="⚠️"
-          label="Долги"
-          value={money(totalDebt)}
-          sub={<span className="text-xs text-slate-400">{debts.length} заказов</span>}
-          tint="rose"
-        />
+      {/* KPI */}
+      <div className="mb-8 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 lg:grid-cols-4 dark:border-slate-700/60 dark:bg-slate-700/60">
+        <Kpi icon="cash" label="Выручка сегодня" value={today ? money(today.collected) : '—'} sub={<Trend now={today?.collected ?? 0} prev={yesterday?.collected ?? 0} />} />
+        <Kpi icon="production" label="В производстве" value={String(inWork.length)} sub="заказов в работе" />
+        <Kpi icon="check" label="Готово к выдаче" value={String(ready.length)} accent={ready.length > 0} sub={ready.length > 0 ? 'можно выдавать' : 'нет готовых'} />
+        <Kpi icon="alert" label="Долги" value={money(totalDebt)} sub={`${debts.length} заказов`} />
       </div>
 
       {/* Разбивка по статусам */}
       {active.length > 0 && (
-        <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold text-slate-700 dark:text-slate-200">
-              Заказы по статусам
-            </h2>
-            <span className="text-sm text-slate-400">активных: {active.length}</span>
-          </div>
-          {/* Полосовая диаграмма */}
-          <div className="mb-3 flex h-3 overflow-hidden rounded-full">
+        <Section title="Заказы по статусам" right={<span className="text-sm text-slate-400">активных: {active.length}</span>} className="mb-6">
+          <div className="mb-3 flex h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
             {Object.entries(statusCounts).map(([status, cnt]) => {
               const pct = (cnt / totalActive) * 100;
               const col = ORDER_STATUS_LABELS[status]?.color ?? 'bg-slate-300';
               return (
-                <div key={status} className={`${col} transition-all`}
-                  style={{ width: `${pct}%` }}
-                  title={`${ORDER_STATUS_LABELS[status]?.label ?? status}: ${cnt}`} />
+                <div key={status} className={col} style={{ width: `${pct}%` }} title={`${ORDER_STATUS_LABELS[status]?.label ?? status}: ${cnt}`} />
               );
             })}
           </div>
-          {/* Легенда */}
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <div className="flex flex-wrap gap-x-5 gap-y-1.5">
             {Object.entries(statusCounts).map(([status, cnt]) => {
               const { label, color } = ORDER_STATUS_LABELS[status] ?? { label: status, color: 'bg-slate-300' };
               return (
                 <span key={status} className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-                  <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${color}`} />
-                  {label}: <span className="font-semibold">{cnt}</span>
+                  <span className={`inline-block h-2 w-2 shrink-0 rounded-sm ${color}`} />
+                  {label} · <span className="font-semibold tabular-nums">{cnt}</span>
                 </span>
               );
             })}
           </div>
-        </div>
+        </Section>
       )}
 
       {/* График выручки */}
       {can('reports.view') && daily.length > 0 && (
-        <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
-          <h2 className="mb-4 font-semibold text-slate-700 dark:text-slate-200">Выручка за 14 дней</h2>
-          <div className="flex h-36 items-end gap-1">
+        <Section title="Выручка за 14 дней" className="mb-6">
+          <div className="flex h-40 items-end gap-1.5">
             {daily.map((d, i) => {
               const isToday = i === daily.length - 1;
               const h = Math.max(2, (d.amount / maxDaily) * 100);
@@ -210,29 +190,26 @@ export default function DashboardPage() {
                 <div key={d.date} className="group flex h-full flex-1 flex-col items-center justify-end">
                   <div className="flex w-full flex-1 items-end">
                     <div
-                      className={`w-full rounded-t transition group-hover:opacity-80 ${isToday ? 'bg-emerald-500' : 'bg-indigo-400 dark:bg-indigo-500'}`}
+                      className={`w-full rounded-sm transition group-hover:opacity-80 ${isToday ? 'bg-indigo-700 dark:bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600'}`}
                       style={{ height: `${h}%` }}
                       title={`${d.date}: ${money(d.amount)}`}
                     />
                   </div>
-                  <span className="mt-1 text-[9px] text-slate-400 dark:text-slate-500">
-                    {d.date.slice(8, 10)}
-                  </span>
+                  <span className="mt-1.5 text-[9px] tabular-nums text-slate-400">{d.date.slice(8, 10)}</span>
                 </div>
               );
             })}
           </div>
-          <div className="mt-2 flex items-center gap-3 text-xs text-slate-400">
-            <span className="flex items-center gap-1"><span className="h-2 w-3 rounded-sm bg-indigo-400 dark:bg-indigo-500"/>&nbsp;дни</span>
-            <span className="flex items-center gap-1"><span className="h-2 w-3 rounded-sm bg-emerald-500"/>&nbsp;сегодня</span>
+          <div className="mt-3 flex items-center gap-4 text-xs text-slate-400">
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-slate-300 dark:bg-slate-600" /> по дням</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-indigo-700 dark:bg-indigo-500" /> сегодня</span>
           </div>
-        </div>
+        </Section>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Готовые к выдаче */}
         {ready.length > 0 && (
-          <Panel title="✅ Готово — нужно выдать" accent="emerald">
+          <Panel title="Готово — нужно выдать" icon="check">
             {ready.slice(0, 5).map((o) => (
               <Link key={o.id} href="/orders" className="block">
                 <Row>
@@ -240,25 +217,20 @@ export default function DashboardPage() {
                     №{o.orderNumber}
                     {o.client && <span className="ml-1.5 font-normal text-slate-500"> · {o.client.fullName ?? o.client.phone}</span>}
                   </span>
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                    Готов
-                  </span>
+                  <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">Готов</span>
                 </Row>
               </Link>
             ))}
           </Panel>
         )}
 
-        {/* Срочные заказы */}
-        <Panel title="🔥 Дедлайн скоро">
+        <Panel title="Дедлайн скоро" icon="clock">
           {soon.length === 0 ? (
-            <Empty text="Срочных нет" />
+            <Empty text="Срочных заказов нет" />
           ) : (
             soon.slice(0, 5).map((o) => (
               <Row key={o.id}>
-                <span className="text-slate-700 dark:text-slate-200">
-                  №{o.orderNumber} · {o.client?.fullName ?? o.client?.phone ?? '—'}
-                </span>
+                <span className="text-slate-700 dark:text-slate-200">№{o.orderNumber} · {o.client?.fullName ?? o.client?.phone ?? '—'}</span>
                 <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">
                   {new Date(o.deadline).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
                 </span>
@@ -267,31 +239,27 @@ export default function DashboardPage() {
           )}
         </Panel>
 
-        {/* Долги */}
-        <Panel title="Должники">
+        <Panel title="Должники" icon="cash">
           {debts.length === 0 ? (
             <Empty text="Долгов нет" />
           ) : (
             debts.slice(0, 5).map((d) => (
               <Row key={d.orderId}>
-                <span className="text-slate-700 dark:text-slate-200">
-                  №{d.orderNumber} · {d.client}
-                </span>
-                <span className="font-semibold text-rose-600 dark:text-rose-400">{money(d.debt)}</span>
+                <span className="text-slate-700 dark:text-slate-200">№{d.orderNumber} · {d.client}</span>
+                <span className="font-semibold tabular-nums text-rose-600 dark:text-rose-400">{money(d.debt)}</span>
               </Row>
             ))
           )}
         </Panel>
 
-        {/* Склад */}
-        <Panel title="📦 Заканчивается на складе">
+        <Panel title="Заканчивается на складе" icon="warehouse">
           {low.length === 0 ? (
             <Empty text="Запасы в норме" />
           ) : (
             low.map((l, i) => (
               <Row key={i}>
                 <span className="text-slate-700 dark:text-slate-200">{l.productName}</span>
-                <span className="font-semibold text-amber-600 dark:text-amber-400">
+                <span className="font-semibold tabular-nums text-amber-700 dark:text-amber-400">
                   {l.quantity} {l.unit}
                   <span className="ml-1 text-xs font-normal text-slate-400">(≤{l.minStock})</span>
                 </span>
@@ -300,32 +268,24 @@ export default function DashboardPage() {
           )}
         </Panel>
 
-        {/* Задачи */}
         {openTasks.length > 0 && (
-          <Panel title="📋 Открытые задачи">
+          <Panel title="Открытые задачи" icon="tasks">
             {openTasks.slice(0, 5).map((t) => (
               <Row key={t.id}>
                 <span className="text-slate-700 dark:text-slate-200">{t.title}</span>
-                <span className="text-xs text-slate-400 dark:text-slate-500">
-                  {t.assignedUser?.fullName ?? '—'}
-                </span>
+                <span className="text-xs text-slate-400">{t.assignedUser?.fullName ?? '—'}</span>
               </Row>
             ))}
           </Panel>
         )}
 
-        {/* Рекламации */}
         {openComplaints.length > 0 && (
-          <Panel title="⚠ Рекламации в работе" accent="rose">
+          <Panel title="Рекламации в работе" icon="complaints">
             {openComplaints.slice(0, 5).map((c) => (
               <Link key={c.id} href="/complaints" className="block">
                 <Row>
                   <span className="text-slate-700 dark:text-slate-200">{c.title}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    c.status === 'OPEN'
-                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                      : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
-                  }`}>
+                  <span className="rounded border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500 dark:border-slate-700 dark:text-slate-400">
                     {c.status === 'OPEN' ? 'Открыта' : 'В работе'}
                   </span>
                 </Row>
@@ -338,70 +298,71 @@ export default function DashboardPage() {
   );
 }
 
-function KpiCard({
-  icon, label, value, sub, tint, highlight,
+/* ===== Строгие компоненты ===== */
+
+function Kpi({
+  icon, label, value, sub, accent,
 }: {
   icon: string;
   label: string;
-  value: string | number;
-  sub?: React.ReactNode;
-  tint: 'emerald' | 'sky' | 'indigo' | 'rose';
-  highlight?: boolean;
+  value: string;
+  sub?: ReactNode;
+  accent?: boolean;
 }) {
-  const tints: Record<string, string> = {
-    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400',
-    sky:     'bg-sky-50 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400',
-    indigo:  'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400',
-    rose:    'bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400',
-  };
   return (
-    <div className={`flex items-center gap-4 rounded-2xl bg-white p-5 shadow-sm transition hover:shadow-md dark:bg-slate-900 ${
-      highlight ? 'ring-2 ring-emerald-400' : ''
-    }`}>
-      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-xl ${tints[tint]}`}>
-        {icon}
-      </span>
-      <div className="min-w-0">
-        <div className="truncate text-xl font-bold text-slate-800 dark:text-slate-100">{value}</div>
-        <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
-        {sub && <div className="mt-0.5">{sub}</div>}
+    <div className="relative bg-white p-5 dark:bg-slate-900">
+      {accent && <span className="absolute inset-y-0 left-0 w-0.5 bg-indigo-700 dark:bg-indigo-500" />}
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">{label}</span>
+        <NavIcon name={icon} className="h-4 w-4 text-slate-300 dark:text-slate-600" />
       </div>
+      <div className="text-2xl font-semibold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">{value}</div>
+      {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
     </div>
   );
 }
 
-function Panel({
-  title, children, accent,
+function Section({
+  title, right, children, className = '',
 }: {
   title: string;
-  children: React.ReactNode;
-  accent?: 'emerald' | 'rose';
+  right?: ReactNode;
+  children: ReactNode;
+  className?: string;
 }) {
-  const borders: Record<string, string> = {
-    emerald: 'border-l-4 border-emerald-400',
-    rose:    'border-l-4 border-rose-400',
-  };
   return (
-    <div className={`rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900 ${accent ? borders[accent] : ''}`}>
-      <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">{title}</h2>
-      <div className="space-y-1">{children}</div>
+    <div className={`rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700/60 dark:bg-slate-900 ${className}`}>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-300">{title}</h2>
+        {right}
+      </div>
+      {children}
     </div>
   );
 }
 
-function Row({ children }: { children: React.ReactNode }) {
+function Panel({ title, icon, children }: { title: string; icon: string; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between border-b border-slate-100 py-2 text-sm last:border-0 dark:border-slate-700">
+    <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700/60 dark:bg-slate-900">
+      <div className="mb-3 flex items-center gap-2.5 border-b border-slate-100 pb-3 dark:border-slate-700/60">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+          <NavIcon name={icon} className="h-4 w-4" />
+        </span>
+        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</h2>
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function Row({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between border-b border-slate-100 py-2.5 text-sm last:border-0 dark:border-slate-700/60">
       {children}
     </div>
   );
 }
 
 function Empty({ text }: { text: string }) {
-  return (
-    <div className="flex flex-col items-center gap-1 py-5 text-center text-sm text-slate-400 dark:text-slate-500">
-      <span className="text-2xl opacity-40">✓</span>
-      {text}
-    </div>
-  );
+  return <div className="py-6 text-center text-sm text-slate-400">{text}</div>;
 }

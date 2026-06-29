@@ -18,6 +18,7 @@ import {
   EmptyState,
   Tone,
 } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   ACTIVE: { label: 'Работает', tone: 'emerald' },
@@ -219,10 +220,10 @@ export default function EquipmentPage() {
                     </Select>
                     <button
                       onClick={() => remove(e.id)}
-                      className="rounded px-2 py-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                      className="inline-flex rounded px-2 py-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                       title="Удалить"
                     >
-                      ✕
+                      <NavIcon name="close" className="h-4 w-4" />
                     </button>
                   </div>
                 )}

@@ -17,6 +17,7 @@ import {
   Badge,
   Tone,
 } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 // Этапы производства по порядку
 const STAGES: { key: string; label: string; color: string; tone: Tone }[] = [
@@ -248,14 +249,14 @@ export default function ProductionPage() {
                           'без клиента'}
                       </div>
                       <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-400 dark:text-slate-500">
-                        {j.assignedUser && <span>👤 {j.assignedUser.fullName}</span>}
+                        {j.assignedUser && <span className="inline-flex items-center gap-1"><NavIcon name="user" className="h-3.5 w-3.5" />{j.assignedUser.fullName}</span>}
                         {(j.equipment?.name || j.printer) && (
-                          <span>🖨 {j.equipment?.name ?? j.printer}</span>
+                          <span className="inline-flex items-center gap-1"><NavIcon name="print" className="h-3.5 w-3.5" />{j.equipment?.name ?? j.printer}</span>
                         )}
                       </div>
                       {j.status === 'REWORK' && j.defectReason && (
-                        <div className="mt-1 rounded bg-rose-100 dark:bg-rose-900/30 px-2 py-1 text-xs text-rose-700 dark:text-rose-300">
-                          ⚠ {j.defectReason}
+                        <div className="mt-1 flex items-center gap-1 rounded bg-rose-100 dark:bg-rose-900/30 px-2 py-1 text-xs text-rose-700 dark:text-rose-300">
+                          <NavIcon name="alert" className="h-3.5 w-3.5 shrink-0" /> {j.defectReason}
                         </div>
                       )}
                       {j.resultPhotoUrl && (
@@ -292,7 +293,7 @@ export default function ProductionPage() {
                               size="sm"
                               onClick={() => setStatus(j.id, 'PAUSED')}
                             >
-                              ⏸ Пауза
+                              <NavIcon name="pause" className="h-4 w-4" />Пауза
                             </Button>
                           )}
                         {j.status === 'PAUSED' && (
@@ -301,7 +302,7 @@ export default function ProductionPage() {
                             size="sm"
                             onClick={() => setStatus(j.id, 'PRINTING')}
                           >
-                            ▶ Продолжить
+                            <NavIcon name="play" className="h-4 w-4" />Продолжить
                           </Button>
                         )}
                         {j.status === 'REWORK' && (
@@ -314,8 +315,8 @@ export default function ProductionPage() {
                           </Button>
                         )}
                         {/* Фото результата */}
-                        <label className="cursor-pointer rounded-lg border border-slate-200 dark:border-slate-600 px-2 py-1 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700">
-                          📷 Фото
+                        <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-600 px-2 py-1 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700">
+                          <NavIcon name="camera" className="h-3.5 w-3.5" />Фото
                           <input
                             type="file"
                             accept="image/*"

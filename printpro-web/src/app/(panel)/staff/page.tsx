@@ -20,6 +20,7 @@ import {
   Badge,
   EmptyState,
 } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 export default function StaffPage() {
   const cid = DEFAULT_COMPANY_ID;
@@ -200,7 +201,7 @@ function UsersTab({ cid }: { cid: string }) {
                             onClick={() => resetPassword(u)}
                             title="Сбросить пароль"
                           >
-                            🔑 Пароль
+                            <NavIcon name="key" className="h-4 w-4" />Пароль
                           </Button>
                           <button
                             onClick={() => toggle(u)}

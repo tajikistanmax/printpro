@@ -6,3 +6,7 @@
 **/.env.*
 **/uploads
 *.log
+
+# Runtime dev logs
+**/.apilog.txt
+**/.weblog.txt

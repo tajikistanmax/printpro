@@ -41,88 +41,6 @@ type Section =
   | 'features'
   | 'backup';
 
-// Разделы-карточки на «хабе». Часть открывает форму на этой же странице,
-// часть ведёт на уже существующие страницы платформы.
-const CATEGORIES: {
-  icon: string;
-  title: string;
-  subtitle: string;
-  items: string[];
-  section?: Section;
-  href?: string;
-}[] = [
-  {
-    icon: 'staff',
-    title: 'Профиль компании',
-    subtitle: 'Контакты, реквизиты, логотип',
-    items: ['Основная информация', 'Контакты', 'Реквизиты', 'Логотип'],
-    section: 'profile',
-  },
-  {
-    icon: 'warehouse',
-    title: 'Филиалы',
-    subtitle: 'Точки обслуживания и склады',
-    items: ['Список филиалов', 'Адреса и телефоны', 'Активность'],
-    section: 'branches',
-  },
-  {
-    icon: 'clients',
-    title: 'Пользователи и роли',
-    subtitle: 'Доступ сотрудников',
-    items: ['Пользователи', 'Роли и права'],
-    href: '/staff',
-  },
-  {
-    icon: 'orders',
-    title: 'Настройки заказов',
-    subtitle: 'Нумерация и сроки',
-    items: ['Префикс номера', 'Срок по умолчанию'],
-    section: 'orders',
-  },
-  {
-    icon: 'services',
-    title: 'Цены и услуги',
-    subtitle: 'Прайс-лист и себестоимость',
-    items: ['Услуги и цены', 'Категории'],
-    href: '/services',
-  },
-  {
-    icon: 'complaints',
-    title: 'Уведомления',
-    subtitle: 'Email, Telegram, в системе',
-    items: ['Email-уведомления', 'Telegram', 'В системе'],
-    section: 'notifications',
-  },
-  {
-    icon: 'pos',
-    title: 'Оформление кассы',
-    subtitle: 'Вид экрана продажи',
-    items: ['Макет страницы «Касса»'],
-    section: 'pos',
-  },
-  {
-    icon: 'settings',
-    title: 'Функции системы',
-    subtitle: 'Скрыть лишние разделы',
-    items: ['Включение/отключение разделов'],
-    section: 'features',
-  },
-  {
-    icon: 'reports',
-    title: 'Резервная копия',
-    subtitle: 'Экспорт всех данных',
-    items: ['Скачать копию (JSON)'],
-    section: 'backup',
-  },
-  {
-    icon: 'audit',
-    title: 'Журнал системы',
-    subtitle: 'История действий',
-    items: ['Все действия сотрудников'],
-    href: '/audit',
-  },
-];
-
 function fmtUptime(sec: number) {
   const d = Math.floor(sec / 86400);
   const h = Math.floor((sec % 86400) / 3600);
@@ -138,7 +56,7 @@ export default function SettingsPage() {
   const [s, setS] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(true);
-  const [section, setSection] = useState<Section>(null);
+  const [section, setSection] = useState<Section>('profile');
   const [sys, setSys] = useState<any>(null);
 
   // Филиалы
@@ -294,60 +212,37 @@ export default function SettingsPage() {
   if (loading)
     return <p className="text-slate-400 dark:text-slate-500">Загрузка…</p>;
 
-  // ====================== ДЕТАЛЬНЫЙ РАЗДЕЛ ======================
-  if (section) {
-    const titles: Record<string, string> = {
-      profile: 'Профиль компании',
-      branches: 'Филиалы',
-      orders: 'Настройки заказов',
-      pos: 'Оформление кассы',
-      notifications: 'Уведомления',
-      features: 'Функции системы',
-      backup: 'Резервная копия',
-    };
-    const savableSections = ['profile', 'orders', 'pos', 'notifications', 'features'];
-    return (
-      <div className="max-w-3xl">
-        <button
-          onClick={() => { setSection(null); setMsg(''); }}
-          className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-indigo-600 dark:text-slate-400"
-        >
-          ← Все настройки
-        </button>
-        <PageHeader icon="settings" title={titles[section]} />
+  // ====================== МАКЕТ: МЕНЮ + ДЕТАЛЬ + ПРАВАЯ КОЛОНКА ======================
+  const titles: Record<string, string> = {
+    profile: 'Компания и профиль',
+    branches: 'Филиалы и склады',
+    orders: 'Заказы',
+    pos: 'Касса и оплата',
+    notifications: 'Уведомления',
+    features: 'Функции системы',
+  };
+  const subtitles: Record<string, string> = {
+    profile: 'Реквизиты, контакты, логотип и общие параметры',
+    branches: 'Точки обслуживания и склады',
+    orders: 'Нумерация и сроки заказов',
+    pos: 'Оформление экрана продажи',
+    notifications: 'Email, Telegram и системные уведомления',
+    features: 'Включение и отключение разделов',
+  };
+  const savableSections = ['profile', 'orders', 'pos', 'notifications', 'features'];
 
-        {section === 'profile' && <ProfileSection s={s} set={set} onLogoFile={onLogoFile} />}
-        {section === 'branches' && (
-          <BranchesSection
-            branches={branches}
-            bName={bName} setBName={setBName}
-            bAddr={bAddr} setBAddr={setBAddr}
-            bPhone={bPhone} setBPhone={setBPhone}
-            addBranch={addBranch}
-            editBId={editBId} editB={editB} setEditB={setEditB}
-            openEditB={openEditB} saveEditB={saveEditB} cancelEditB={() => setEditBId(null)}
-            toggleBranch={toggleBranch}
-          />
-        )}
-        {section === 'orders' && <OrdersSection s={s} set={set} />}
-        {section === 'pos' && <PosSection s={s} set={set} />}
-        {section === 'notifications' && (
-          <NotificationsSection s={s} set={set} testTelegram={testTelegram} testEmail={testEmail} />
-        )}
-        {section === 'features' && <FeaturesSection s={s} set={set} />}
-        {section === 'backup' && <BackupSection downloadBackup={downloadBackup} />}
+  const NAV: { key?: Section; href?: string; icon: string; title: string; tone: string }[] = [
+    { key: 'profile',       icon: 'staff',      title: 'Компания и профиль',  tone: 'indigo' },
+    { key: 'branches',      icon: 'warehouse',  title: 'Филиалы и склады',    tone: 'sky' },
+    { href: '/staff',       icon: 'clients',    title: 'Пользователи и роли', tone: 'violet' },
+    { key: 'orders',        icon: 'orders',     title: 'Заказы',              tone: 'amber' },
+    { href: '/services',    icon: 'services',   title: 'Цены и услуги',       tone: 'emerald' },
+    { key: 'notifications', icon: 'complaints', title: 'Уведомления',         tone: 'rose' },
+    { key: 'pos',           icon: 'pos',        title: 'Касса и оплата',      tone: 'sky' },
+    { key: 'features',      icon: 'settings',   title: 'Функции системы',     tone: 'indigo' },
+    { href: '/audit',       icon: 'audit',      title: 'Журнал системы',      tone: 'slate' },
+  ];
 
-        {savableSections.includes(section) && (
-          <div className="mt-6 flex items-center gap-3">
-            <Button onClick={save} className="px-6 py-2.5">Сохранить</Button>
-            {msg && <span className="text-sm text-slate-600 dark:text-slate-300">{msg}</span>}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ====================== ХАБ ======================
   return (
     <div>
       <PageHeader
@@ -356,162 +251,195 @@ export default function SettingsPage() {
         subtitle="Управление системой и конфигурацией приложения"
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        {/* Основные настройки — карточки-разделы */}
-        <div>
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">
-            Основные настройки
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {CATEGORIES.map((c) => (
-              <CategoryCard
-                key={c.title}
-                {...c}
-                onClick={() =>
-                  c.section ? setSection(c.section) : c.href && router.push(c.href)
-                }
-              />
-            ))}
+      <div className="grid gap-6 lg:grid-cols-[260px_1fr] xl:grid-cols-[260px_1fr_300px]">
+        {/* ---- Левое меню категорий ---- */}
+        <nav className="space-y-1.5 lg:sticky lg:top-4 lg:self-start">
+          {NAV.map((n) => {
+            const active = !!n.key && n.key === section;
+            const inner = (
+              <>
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${TONE_TILE[n.tone]}`}>
+                  <NavIcon name={n.icon} className="h-[18px] w-[18px]" />
+                </span>
+                <span className="flex-1 truncate text-sm font-medium">{n.title}</span>
+                <NavIcon name="arrowLeft" className="h-4 w-4 shrink-0 rotate-180 text-slate-300" />
+              </>
+            );
+            const cls = `flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+              active
+                ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300'
+                : 'border-transparent text-slate-700 hover:bg-white hover:shadow-sm dark:text-slate-200 dark:hover:bg-slate-800'
+            }`;
+            return (
+              <button
+                key={n.title}
+                onClick={() => (n.href ? router.push(n.href) : (setSection(n.key!), setMsg('')))}
+                className={cls}
+              >
+                {inner}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* ---- Деталь выбранной категории ---- */}
+        <div className="min-w-0">
+          <div className="mb-5">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+              {section ? titles[section] : ''}
+            </h2>
+            {section && subtitles[section] && (
+              <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{subtitles[section]}</p>
+            )}
           </div>
+
+          {section === 'profile' && (
+            <div className="space-y-6">
+              <ProfileSection s={s} set={set} onLogoFile={onLogoFile} />
+              <Card>
+                <SectionTitle>Общие параметры</SectionTitle>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Язык системы">
+                    <Select value={s.language ?? 'ru'} onChange={(e) => set('language', e.target.value)}>
+                      {LANGUAGES.map((l) => <option key={l.k} value={l.k}>{l.l}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Часовой пояс">
+                    <Input value={s.timezone ?? ''} onChange={(e) => set('timezone', e.target.value)} placeholder="(UTC +05:00) Душанбе" />
+                  </Field>
+                  <Field label="Формат даты">
+                    <Select value={s.dateFormat ?? 'DD.MM.YYYY'} onChange={(e) => set('dateFormat', e.target.value)}>
+                      {DATE_FORMATS.map((d) => <option key={d.k} value={d.k}>{d.l}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Валюта">
+                    <Select value={s.currency ?? 'TJS'} onChange={(e) => set('currency', e.target.value)}>
+                      {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </Select>
+                  </Field>
+                </div>
+              </Card>
+            </div>
+          )}
+          {section === 'branches' && (
+            <BranchesSection
+              branches={branches}
+              bName={bName} setBName={setBName}
+              bAddr={bAddr} setBAddr={setBAddr}
+              bPhone={bPhone} setBPhone={setBPhone}
+              addBranch={addBranch}
+              editBId={editBId} editB={editB} setEditB={setEditB}
+              openEditB={openEditB} saveEditB={saveEditB} cancelEditB={() => setEditBId(null)}
+              toggleBranch={toggleBranch}
+            />
+          )}
+          {section === 'orders' && <OrdersSection s={s} set={set} />}
+          {section === 'pos' && <PosSection s={s} set={set} />}
+          {section === 'notifications' && (
+            <NotificationsSection s={s} set={set} testTelegram={testTelegram} testEmail={testEmail} />
+          )}
+          {section === 'features' && <FeaturesSection s={s} set={set} />}
+
+          {section && savableSections.includes(section) && (
+            <div className="mt-6 flex items-center gap-3">
+              <Button onClick={save} className="px-6 py-2.5"><NavIcon name="check" className="h-4 w-4" />Сохранить изменения</Button>
+              {msg && <span className="text-sm text-slate-600 dark:text-slate-300">{msg}</span>}
+            </div>
+          )}
         </div>
 
-        {/* Системные настройки — правый столбец */}
-        <div className="space-y-6">
-          <h2 className="-mb-2 text-sm font-bold uppercase tracking-wide text-slate-400">
-            Системные настройки
-          </h2>
-
-          <Card>
-            <SectionTitle>Общие настройки</SectionTitle>
-            <div className="space-y-3">
-              <Field label="Язык системы">
-                <Select value={s.language ?? 'ru'} onChange={(e) => set('language', e.target.value)}>
-                  {LANGUAGES.map((l) => <option key={l.k} value={l.k}>{l.l}</option>)}
-                </Select>
-              </Field>
-              <Field label="Часовой пояс">
-                <Input
-                  value={s.timezone ?? ''}
-                  onChange={(e) => set('timezone', e.target.value)}
-                  placeholder="(UTC +05:00) Душанбе"
-                />
-              </Field>
-              <Field label="Формат даты">
-                <Select value={s.dateFormat ?? 'DD.MM.YYYY'} onChange={(e) => set('dateFormat', e.target.value)}>
-                  {DATE_FORMATS.map((d) => <option key={d.k} value={d.k}>{d.l}</option>)}
-                </Select>
-              </Field>
-              <Field label="Валюта">
-                <Select value={s.currency ?? 'TJS'} onChange={(e) => set('currency', e.target.value)}>
-                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </Select>
-              </Field>
+        {/* ---- Правая колонка ---- */}
+        <div className="space-y-6 xl:sticky xl:top-4 xl:self-start">
+          {/* Быстрые действия */}
+          <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm dark:border-slate-700/60 dark:bg-slate-900">
+            <h3 className="mb-3 px-1 text-sm font-bold text-slate-800 dark:text-slate-100">Быстрые действия</h3>
+            <div className="space-y-1">
+              <QuickAction icon="download" tone="emerald" title="Экспорт данных" sub="Выгрузить всё в JSON" onClick={downloadBackup} />
+              <QuickAction icon="clients" tone="violet" title="Пользователи и роли" sub="Доступ сотрудников" onClick={() => router.push('/staff')} />
+              <QuickAction icon="audit" tone="sky" title="Журнал системы" sub="История действий" onClick={() => router.push('/audit')} />
             </div>
-            <div className="mt-4 flex items-center gap-3">
-              <Button onClick={save} size="sm">Сохранить</Button>
-              {msg && <span className="text-xs text-slate-500">{msg}</span>}
-            </div>
-          </Card>
+          </div>
 
-          <Card>
-            <SectionTitle>Резервное копирование</SectionTitle>
-            <p className="-mt-1 mb-3 text-xs text-slate-400 dark:text-slate-500">
-              Скачивает все данные компании одним JSON-файлом. Храните копию в надёжном месте.
+          {/* Информация о системе */}
+          <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm dark:border-slate-700/60 dark:bg-slate-900">
+            <h3 className="mb-3 text-sm font-bold text-slate-800 dark:text-slate-100">Информация о системе</h3>
+            <dl className="space-y-2.5 text-sm">
+              <InfoRow label="Версия системы" value={sys?.appVersion ?? '…'} />
+              <InfoRow label="База данных" value={sys?.dbVersion ?? '…'} />
+              <InfoRow label="Время работы" value={sys ? fmtUptime(sys.uptimeSeconds) : '…'} />
+              <InfoRow label="Платформа" value={sys ? `Node ${sys.nodeVersion}` : '…'} />
+              <div className="flex items-center justify-between pt-1">
+                <dt className="text-slate-500 dark:text-slate-400">Статус</dt>
+                <dd>
+                  <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                    В порядке
+                  </span>
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          {/* Подсказка */}
+          <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-violet-50 p-5 dark:border-indigo-500/20 dark:from-indigo-500/10 dark:to-violet-500/10">
+            <div className="mb-1.5 flex items-center gap-2 font-semibold text-indigo-700 dark:text-indigo-300">
+              <NavIcon name="alert" className="h-4 w-4" />Подсказка
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Изменения в настройках могут потребовать перезагрузки системы для корректного применения.
             </p>
-            <Button variant="ghost" onClick={downloadBackup} className="w-full">
-              ⬇ Скачать резервную копию
-            </Button>
-          </Card>
-        </div>
-      </div>
-
-      {/* Информация о системе */}
-      <div className="mt-8">
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">
-          Информация о системе
-        </h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          <InfoCard icon="settings" tone="indigo" label="Версия приложения" value={sys?.appVersion ?? '…'} sub="Backend API" />
-          <InfoCard icon="warehouse" tone="emerald" label="База данных" value={sys?.dbVersion ?? '…'} sub="Активна" />
-          <InfoCard icon="audit" tone="sky" label="Время работы" value={sys ? fmtUptime(sys.uptimeSeconds) : '…'} sub="Стабильная работа" />
-          <InfoCard icon="production" tone="violet" label="Платформа" value={sys ? `Node ${sys.nodeVersion}` : '…'} sub={sys?.platform ?? ''} />
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Карточка раздела на хабе                                           */
-/* ------------------------------------------------------------------ */
-function CategoryCard({
-  icon,
-  title,
-  subtitle,
-  items,
-  onClick,
+const TONE_TILE: Record<string, string> = {
+  indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
+  sky: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300',
+  violet: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300',
+  amber: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+  emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
+  rose: 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300',
+  slate: 'bg-slate-100 text-slate-600 dark:bg-slate-700/50 dark:text-slate-300',
+};
+
+function QuickAction({
+  icon, tone, title, sub, onClick,
 }: {
   icon: string;
+  tone: string;
   title: string;
-  subtitle: string;
-  items: string[];
+  sub: string;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className="group flex h-full flex-col rounded-2xl border border-slate-200/70 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-slate-700/60"
+      className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800"
     >
-      <div className="flex items-start gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
-          <NavIcon name={icon} className="h-[22px] w-[22px]" />
-        </span>
-        <div className="min-w-0">
-          <div className="font-semibold text-slate-800 dark:text-slate-100">{title}</div>
-          <div className="text-xs text-slate-500 dark:text-slate-400">{subtitle}</div>
-        </div>
-      </div>
-      <ul className="mt-3 flex-1 space-y-1.5">
-        {items.map((i) => (
-          <li key={i} className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-[9px] text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300">✓</span>
-            {i}
-          </li>
-        ))}
-      </ul>
-      <div className="mt-3 flex justify-end text-lg text-slate-300 transition group-hover:text-indigo-500">→</div>
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${TONE_TILE[tone]}`}>
+        <NavIcon name={icon} className="h-[18px] w-[18px]" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">{title}</span>
+        <span className="block truncate text-xs text-slate-400">{sub}</span>
+      </span>
+      <NavIcon name="arrowLeft" className="h-4 w-4 shrink-0 rotate-180 text-slate-300" />
     </button>
   );
 }
 
-function InfoCard({
-  icon, tone, label, value, sub,
-}: {
-  icon: string;
-  tone: 'indigo' | 'emerald' | 'sky' | 'violet';
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  const tones: Record<string, string> = {
-    indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
-    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
-    sky: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300',
-    violet: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300',
-  };
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm dark:border-slate-700/60">
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}>
-        <NavIcon name={icon} className="h-5 w-5" />
-      </span>
-      <div className="min-w-0">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</div>
-        <div className="truncate font-bold text-slate-800 dark:text-slate-100">{value}</div>
-        {sub && <div className="truncate text-xs text-slate-400">{sub}</div>}
-      </div>
+    <div className="flex items-center justify-between">
+      <dt className="text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd className="font-medium tabular-nums text-slate-800 dark:text-slate-100">{value}</dd>
     </div>
   );
 }
+
+/* (старые карточки-разделы заменены на меню категорий выше) */
 
 /* ------------------------------------------------------------------ */
 /*  Разделы                                                            */
@@ -656,7 +584,7 @@ function BranchesSection({
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => openEditB(b)}>✎</Button>
+                    <Button size="sm" variant="ghost" onClick={() => openEditB(b)}><NavIcon name="edit" className="h-4 w-4" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => toggleBranch(b)}>
                       {b.isActive ? 'Отключить' : 'Включить'}
                     </Button>
@@ -831,7 +759,7 @@ function BackupSection({ downloadBackup }: { downloadBackup: () => void }) {
         Скачивает все данные компании (заказы, клиенты, склад, финансы и т.д.) одним JSON-файлом. Храните копию в надёжном месте.
       </p>
       <Button variant="ghost" onClick={downloadBackup} className="font-medium">
-        ⬇ Скачать резервную копию (JSON)
+        <NavIcon name="download" className="h-4 w-4" />Скачать резервную копию (JSON)
       </Button>
     </Card>
   );

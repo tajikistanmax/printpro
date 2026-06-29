@@ -19,6 +19,19 @@ export class AddPaymentDto {
   @IsOptional() @IsString() shiftId?: string;
 }
 
+// Возврат по чеку/заказу (частичный): какие позиции и сколько вернуть
+export class ReturnItemDto {
+  @IsString() orderItemId: string;
+  @IsNumber() @Min(0.001) quantity: number;
+}
+
+export class CreateReturnDto {
+  @IsOptional() @IsString() reason?: string;
+  @IsOptional() @IsEnum(PaymentMethod) method?: PaymentMethod;
+  @IsArray() @ValidateNested({ each: true }) @Type(() => ReturnItemDto)
+  items: ReturnItemDto[];
+}
+
 // Сменить статус заказа
 export class UpdateStatusDto {
   @IsEnum(OrderStatus) status: OrderStatus;
@@ -31,10 +44,22 @@ export class PaymentPartDto {
   @IsNumber() @Min(0.01) amount: number;
 }
 
+// Отложенный чек (held): сохранить корзину, чтобы вернуться позже
+export class HoldSaleDto {
+  @IsString() companyId: string;
+  @IsOptional() @IsString() branchId?: string;
+  @IsOptional() @IsString() label?: string;
+  @IsOptional() @IsString() note?: string;
+  @IsOptional() @IsNumber() total?: number;
+  items: any; // снимок корзины (JSON)
+}
+
 // Быстрая продажа (POS): создать заказ + сразу оплатить + выдать
 export class QuickSaleDto {
   @IsString() companyId: string;
   @IsOptional() @IsString() branchId?: string;
+  // Ключ идемпотентности (POS присылает uuid на каждую попытку оплаты)
+  @IsOptional() @IsString() idempotencyKey?: string;
   @IsOptional() @IsString() clientPhone?: string;
   @IsOptional() @IsString() clientName?: string;
   @IsOptional() @IsNumber() @Min(0) discount?: number; // скидка, абсолютная

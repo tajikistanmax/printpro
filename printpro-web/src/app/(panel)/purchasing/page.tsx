@@ -16,8 +16,16 @@ import {
   Input,
   Select,
   Button,
+  Badge,
   EmptyState,
 } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
+
+const RECEIPT_STATUS: Record<string, { label: string; tone: 'emerald' | 'amber' | 'rose' }> = {
+  PAID: { label: 'Оплачено', tone: 'emerald' },
+  PARTIAL: { label: 'Частично', tone: 'amber' },
+  DEBT: { label: 'В долг', tone: 'rose' },
+};
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(n) + ' c.';
@@ -42,12 +50,14 @@ export default function PurchasingPage() {
   // Новый поставщик
   const [sName, setSName] = useState('');
   const [sPhone, setSPhone] = useState('');
+  const [sInn, setSInn] = useState('');
   const [sMsg, setSMsg] = useState('');
 
   // Приёмка
   const [supplierId, setSupplierId] = useState('');
   const [branchId, setBranchId] = useState('');
   const [rows, setRows] = useState<Row[]>([{ productId: '', quantity: '', cost: '' }]);
+  const [paidAmount, setPaidAmount] = useState('');
   const [rMsg, setRMsg] = useState('');
 
   function load() {
@@ -76,13 +86,31 @@ export default function PurchasingPage() {
         companyId: cid,
         name: sName,
         phone: sPhone || undefined,
+        inn: sInn || undefined,
       });
       setSName('');
       setSPhone('');
+      setSInn('');
       setSMsg('✓ Поставщик добавлен');
       load();
     } catch (err: any) {
       setSMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  async function payDebt(s: any) {
+    const v = window.prompt(
+      `Оплата долга поставщику «${s.name}». Текущий долг: ${money(Number(s.debt))}.\nСумма оплаты:`,
+      String(Number(s.debt) || ''),
+    );
+    if (v == null) return;
+    const amount = Number(v);
+    if (!amount || amount <= 0) return;
+    try {
+      await api.post(`/purchasing/suppliers/${s.id}/pay-debt`, { amount });
+      load();
+    } catch (err: any) {
+      alert('Ошибка: ' + err.message);
     }
   }
 
@@ -120,9 +148,11 @@ export default function PurchasingPage() {
         companyId: cid,
         branchId,
         supplierId: supplierId || undefined,
+        paidAmount: paidAmount !== '' ? Number(paidAmount) : undefined,
         items,
       });
       setRows([{ productId: '', quantity: '', cost: '' }]);
+      setPaidAmount('');
       setRMsg('✓ Приёмка проведена, склад пополнен');
       load();
     } catch (err: any) {
@@ -137,16 +167,21 @@ export default function PurchasingPage() {
     );
   }
 
-  const receiptsValue = receipts.reduce((s, r) => s + receiptSum(r), 0);
+  const receiptsValue = receipts.reduce(
+    (s, r) => s + (r.total != null ? Number(r.total) : receiptSum(r)),
+    0,
+  );
+  const supplierDebt = suppliers.reduce((s, x) => s + Number(x.debt || 0), 0);
 
   return (
     <div>
       <PageHeader icon="purchasing" title="Закупки" subtitle="Поставщики, приёмка товара и история закупок" />
 
-      <StatGrid cols={3}>
+      <StatGrid cols={4}>
         <StatCard icon="purchasing" tone="indigo" label="Поставщиков" value={suppliers.length} highlight />
         <StatCard icon="reports" tone="sky" label="Приёмок" value={receipts.length} />
         <StatCard icon="cash" tone="emerald" label="Сумма закупок" value={money(receiptsValue)} sub="по всем приёмкам" />
+        <StatCard icon="alert" tone="rose" label="Долг поставщикам" value={money(supplierDebt)} sub={supplierDebt > 0 ? 'нужно оплатить' : 'нет долгов'} />
       </StatGrid>
 
       <div className="mb-6 grid gap-6 lg:grid-cols-3">
@@ -168,6 +203,12 @@ export default function PurchasingPage() {
                   placeholder="Телефон"
                   className="flex-1"
                 />
+                <Input
+                  value={sInn}
+                  onChange={(e) => setSInn(e.target.value)}
+                  placeholder="ИНН"
+                  className="w-28"
+                />
                 <Button type="submit" className="shrink-0">+</Button>
               </div>
               {sMsg && <p className="text-xs text-slate-500 dark:text-slate-400">{sMsg}</p>}
@@ -180,10 +221,24 @@ export default function PurchasingPage() {
               suppliers.map((s) => (
                 <div
                   key={s.id}
-                  className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 py-1.5 text-sm last:border-0"
+                  className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 py-1.5 text-sm last:border-0"
                 >
-                  <span className="text-slate-700 dark:text-slate-200">{s.name}</span>
-                  <span className="text-slate-400 dark:text-slate-500">{s.phone}</span>
+                  <div className="min-w-0">
+                    <div className="truncate text-slate-700 dark:text-slate-200">{s.name}</div>
+                    {Number(s.debt) > 0 && (
+                      <div className="text-xs font-medium text-rose-600 dark:text-rose-400">
+                        долг {money(Number(s.debt))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="text-slate-400 dark:text-slate-500">{s.phone}</span>
+                    {canManage && Number(s.debt) > 0 && (
+                      <Button size="sm" variant="ghost" onClick={() => payDebt(s)}>
+                        Оплатить
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))
             )}
@@ -252,9 +307,9 @@ export default function PurchasingPage() {
                     <button
                       type="button"
                       onClick={() => removeRow(i)}
-                      className="px-2 text-slate-400 dark:text-slate-500 hover:text-rose-600"
+                      className="inline-flex px-2 text-slate-400 dark:text-slate-500 hover:text-rose-600"
                     >
-                      ✕
+                      <NavIcon name="close" className="h-4 w-4" />
                     </button>
                   </div>
                 ))}
@@ -275,6 +330,19 @@ export default function PurchasingPage() {
                   </span>
                 </span>
               </div>
+
+              <Field label="Оплачено поставщику сейчас">
+                <Input
+                  value={paidAmount}
+                  onChange={(e) => setPaidAmount(e.target.value)}
+                  type="number"
+                  step="0.01"
+                  placeholder={`пусто = оплачено полностью (${receiptTotal.toFixed(2)})`}
+                />
+              </Field>
+              <p className="-mt-1 text-xs text-slate-400">
+                Меньше суммы закупки — остаток уйдёт в долг поставщику.
+              </p>
 
               <Button type="submit" variant="emerald" className="w-full">Принять на склад</Button>
               {rMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{rMsg}</p>}
@@ -301,6 +369,7 @@ export default function PurchasingPage() {
                   <th>Филиал</th>
                   <th className="text-right">Позиций</th>
                   <th className="text-right">Сумма</th>
+                  <th>Оплата</th>
                 </tr>
               </thead>
               <tbody>
@@ -320,7 +389,16 @@ export default function PurchasingPage() {
                       {r.items.length}
                     </td>
                     <td className="text-right font-medium text-slate-800 dark:text-slate-100">
-                      {money(receiptSum(r))}
+                      {money(r.total != null ? Number(r.total) : receiptSum(r))}
+                    </td>
+                    <td>
+                      {r.paymentStatus && RECEIPT_STATUS[r.paymentStatus] ? (
+                        <Badge tone={RECEIPT_STATUS[r.paymentStatus].tone}>
+                          {RECEIPT_STATUS[r.paymentStatus].label}
+                        </Badge>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

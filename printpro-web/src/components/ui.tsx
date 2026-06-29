@@ -390,7 +390,7 @@ export function SearchInput({
   className?: string;
 }) {
   return (
-    <div className={`relative min-w-[220px] flex-1 ${className}`}>
+    <div className={`relative min-w-[220px] max-w-md flex-1 ${className}`}>
       <svg
         className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
         viewBox="0 0 24 24"
@@ -417,8 +417,18 @@ export function SearchInput({
 /*  Формы                                                              */
 /* ------------------------------------------------------------------ */
 
-const FIELD_CLS =
-  'w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm transition focus:border-indigo-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
+const FIELD_BASE =
+  'rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm transition focus:border-indigo-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
+
+/**
+ * Класс поля. Ширину `w-full` подставляем по умолчанию, но только если
+ * вызывающий код не задал свою ширину (w-auto, w-44, w-1/2 …) — иначе
+ * базовый w-full перебивал бы её и компактные фильтры растягивались.
+ */
+function fieldCls(className: string) {
+  const hasWidth = /(?:^|\s)w-/.test(className);
+  return `${hasWidth ? '' : 'w-full '}${FIELD_BASE} ${className}`.trim();
+}
 
 export function Field({
   label,
@@ -445,7 +455,7 @@ export function Input({
   className = '',
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={`${FIELD_CLS} ${className}`} {...props} />;
+  return <input className={fieldCls(className)} {...props} />;
 }
 
 export function Select({
@@ -454,7 +464,7 @@ export function Select({
   ...props
 }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={`${FIELD_CLS} ${className}`} {...props}>
+    <select className={fieldCls(className)} {...props}>
       {children}
     </select>
   );

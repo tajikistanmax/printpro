@@ -20,6 +20,7 @@ import {
   EmptyState,
   Tone,
 } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   OPEN:      { label: 'Открыта',          tone: 'amber' },
@@ -34,8 +35,8 @@ type BtnVariant = 'primary' | 'ghost' | 'danger' | 'emerald' | 'sky' | 'amber';
 const NEXT_ACTIONS: Record<string, { to: string; label: string; variant: BtnVariant }[]> = {
   OPEN:      [{ to: 'IN_REVIEW', label: 'Взять в работу', variant: 'sky' }],
   IN_REVIEW: [
-    { to: 'RESOLVED', label: '✓ Решена',    variant: 'emerald' },
-    { to: 'REJECTED', label: '✕ Отклонить', variant: 'danger' },
+    { to: 'RESOLVED', label: 'Решена',    variant: 'emerald' },
+    { to: 'REJECTED', label: 'Отклонить', variant: 'danger' },
   ],
   RESOLVED:  [{ to: 'CLOSED', label: 'Закрыть', variant: 'ghost' }],
   REJECTED:  [{ to: 'CLOSED', label: 'Закрыть', variant: 'ghost' }],
@@ -240,12 +241,12 @@ export default function ComplaintsPage() {
                     {/* Мета: клиент / заказ / дата */}
                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
                       {c.client && (
-                        <span>
-                          👤 {c.client.fullName ?? 'Без имени'} · {c.client.phone}
+                        <span className="inline-flex items-center gap-1">
+                          <NavIcon name="user" className="h-3.5 w-3.5" />{c.client.fullName ?? 'Без имени'} · {c.client.phone}
                         </span>
                       )}
                       {c.order && (
-                        <span>📋 Заказ №{c.order.orderNumber}</span>
+                        <span className="inline-flex items-center gap-1"><NavIcon name="clipboard" className="h-3.5 w-3.5" />Заказ №{c.order.orderNumber}</span>
                       )}
                       <span>
                         {new Date(c.createdAt).toLocaleString('ru-RU', {

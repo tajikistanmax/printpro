@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import NavIcon from '@/lib/NavIcons';
 
 const URGENCY: Record<string, string> = {
   NORMAL: 'Обычная',
@@ -65,14 +66,14 @@ function TechCard() {
     <div>
       {/* Панель действий — не печатается */}
       <div className="no-print mb-4 flex items-center justify-between">
-        <Link href="/orders" className="text-sm text-slate-500 hover:text-slate-700">
-          ← к заказам
+        <Link href="/orders" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700">
+          <NavIcon name="arrowLeft" className="h-4 w-4" />к заказам
         </Link>
         <button
           onClick={() => window.print()}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
         >
-          🖨 Печать тех-карты
+          <NavIcon name="print" className="h-4 w-4" />Печать тех-карты
         </button>
       </div>
 

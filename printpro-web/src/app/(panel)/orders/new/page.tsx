@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
+import NavIcon from '@/lib/NavIcons';
 
 interface Line {
   itemType: 'SERVICE' | 'PRODUCT';
@@ -153,8 +154,8 @@ export default function NewOrderPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Новый заказ</h1>
-        <Link href="/orders" className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
-          ← к списку
+        <Link href="/orders" className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+          <NavIcon name="arrowLeft" className="h-4 w-4" />к списку
         </Link>
       </div>
 
@@ -430,9 +431,9 @@ export default function NewOrderPage() {
                     <button
                       type="button"
                       onClick={() => removeLine(i)}
-                      className="rounded px-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                      className="inline-flex items-center rounded px-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                     >
-                      ✕
+                      <NavIcon name="close" className="h-4 w-4" />
                     </button>
                   </div>
                 ))}

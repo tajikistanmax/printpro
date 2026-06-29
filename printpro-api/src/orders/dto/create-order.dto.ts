@@ -65,6 +65,9 @@ export class CreateOrderDto {
   @IsOptional() @IsString() deadline?: string; // ISO дата
   @IsOptional() @IsString() note?: string;
 
+  // Ключ идемпотентности — защита от двойного создания заказа/продажи
+  @IsOptional() @IsString() idempotencyKey?: string;
+
   // Списывать ли товары со склада (для продажи — да)
   @IsOptional() @IsBoolean() decrementStock?: boolean;
 

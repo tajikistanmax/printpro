@@ -17,6 +17,7 @@ export class ProductsService {
         categoryId: dto.categoryId,
         unitId: dto.unitId,
         salePrice: dto.salePrice ?? 0,
+        purchasePrice: dto.purchasePrice ?? 0,
         minStock: dto.minStock ?? 0,
         barcode: dto.barcode,
         sku: dto.sku,
@@ -30,7 +31,7 @@ export class ProductsService {
 
   findAllProducts(companyId: string) {
     return this.prisma.product.findMany({
-      where: { companyId },
+      where: { companyId, deletedAt: null },
       include: {
         category: true,
         unit: true,
@@ -122,6 +123,7 @@ export class ProductsService {
         categoryId: dto.categoryId ?? null,
         unitId: dto.unitId ?? null,
         salePrice: dto.salePrice,
+        purchasePrice: dto.purchasePrice,
         minStock: dto.minStock,
         barcode: dto.barcode,
         sku: dto.sku,
@@ -135,7 +137,11 @@ export class ProductsService {
 
   async removeProduct(id: string) {
     await this.prisma.product.findUniqueOrThrow({ where: { id } });
-    return this.prisma.product.delete({ where: { id } });
+    // Мягкое удаление: сохраняем историю продаж/движений, но убираем из каталога
+    return this.prisma.product.update({
+      where: { id },
+      data: { deletedAt: new Date(), isActive: false },
+    });
   }
 
   // ---------- Единицы измерения ----------

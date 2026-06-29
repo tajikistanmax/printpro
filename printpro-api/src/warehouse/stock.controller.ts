@@ -3,10 +3,23 @@ import { StockService } from './stock.service';
 import { ReceiveStockDto } from './dto/receive-stock.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { TransferStockDto, RecountStockDto } from './dto/transfer-stock.dto';
+import { WriteOffDto } from './dto/write-off.dto';
 
 @Controller('stock')
 export class StockController {
   constructor(private readonly stock: StockService) {}
+
+  // POST /api/stock/write-off — списание (бой/брак/порча)
+  @Post('write-off')
+  writeOff(@Body() dto: WriteOffDto) {
+    return this.stock.writeOff(dto);
+  }
+
+  // GET /api/stock/write-offs?companyId=... — журнал списаний
+  @Get('write-offs')
+  listWriteOffs(@Query('companyId') companyId: string) {
+    return this.stock.listWriteOffs(companyId);
+  }
 
   // POST /api/stock/receive — приём товара (приход)
   @Post('receive')

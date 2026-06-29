@@ -22,6 +22,7 @@ import {
   EmptyState,
 } from '@/components/ui';
 import type { Tone } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 const PRICING_LABELS: Record<string, string> = {
   FIXED: 'Фиксированная',
@@ -342,7 +343,7 @@ export default function ServicesPage() {
                   <span className="text-xs text-slate-400">шт</span>
                   <Input value={t.price} onChange={(e) => updTier(t._k, 'price', e.target.value)} type="number" placeholder="цена" className="w-24" />
                   <span className="text-xs text-slate-400">c./шт</span>
-                  <button onClick={() => rmTier(t._k)} className="text-rose-400 hover:text-rose-600">✕</button>
+                  <button onClick={() => rmTier(t._k)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
                 </div>
               ))}
             </div>
@@ -361,7 +362,7 @@ export default function ServicesPage() {
                 <div key={sz._k} className="flex items-center gap-2">
                   <Input value={sz.label} onChange={(e) => updSize(sz._k, 'label', e.target.value)} placeholder="напр. A4, 10x15" className="flex-1" />
                   <Input value={sz.price} onChange={(e) => updSize(sz._k, 'price', e.target.value)} type="number" placeholder="цена c." className="w-28" />
-                  <button onClick={() => rmSize(sz._k)} className="text-rose-400 hover:text-rose-600">✕</button>
+                  <button onClick={() => rmSize(sz._k)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
                 </div>
               ))}
             </div>
@@ -381,7 +382,7 @@ export default function ServicesPage() {
                 <span className="text-xs text-slate-400">+</span>
                 <Input value={o.priceModifier} onChange={(e) => updOpt(o._k, 'priceModifier', e.target.value)} type="number" placeholder="0" className="w-24" />
                 <span className="text-xs text-slate-400">c.</span>
-                <button onClick={() => rmOpt(o._k)} className="text-rose-400 hover:text-rose-600">✕</button>
+                <button onClick={() => rmOpt(o._k)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
               </div>
             ))}
           </div>
@@ -398,7 +399,7 @@ export default function ServicesPage() {
                 {s.materials.map((m: any) => (
                   <span key={m.id} className="flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 text-xs text-slate-700 shadow-sm dark:bg-slate-700 dark:text-slate-200">
                     {m.product?.name} — {Number(m.qtyPerUnit)} {m.product?.unit?.shortName ?? ''}
-                    <button onClick={() => removeMaterial(m.id)} className="text-rose-400 hover:text-rose-600">✕</button>
+                    <button onClick={() => removeMaterial(m.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
                   </span>
                 ))}
               </div>
@@ -497,7 +498,7 @@ export default function ServicesPage() {
                 {categories.map((c) => (
                   <span key={c.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                     {c.name}
-                    <button onClick={() => removeCategory(c.id)} className="text-rose-400 hover:text-rose-600">✕</button>
+                    <button onClick={() => removeCategory(c.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
                   </span>
                 ))}
                 {categories.length === 0 && <span className="text-sm text-slate-400">Категорий нет</span>}
@@ -524,8 +525,8 @@ export default function ServicesPage() {
           </Select>
           <span className="text-sm text-slate-400">Найдено: {filtered.length}</span>
           <div className="ml-auto flex gap-1 rounded-lg border border-slate-200 p-0.5 dark:border-slate-700">
-            <button onClick={() => setView('table')} className={`rounded-md px-3 py-1 text-sm font-medium transition ${view === 'table' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>▦ Таблица</button>
-            <button onClick={() => setView('cards')} className={`rounded-md px-3 py-1 text-sm font-medium transition ${view === 'cards' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>▤ Карточки</button>
+            <button onClick={() => setView('table')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition ${view === 'table' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><NavIcon name="reports" className="h-4 w-4" />Таблица</button>
+            <button onClick={() => setView('cards')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition ${view === 'cards' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><NavIcon name="services" className="h-4 w-4" />Карточки</button>
           </div>
         </Toolbar>
 
@@ -571,8 +572,8 @@ export default function ServicesPage() {
                       {canManage && (
                         <td className="text-right">
                           <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => (editId === s.id ? setEditId(null) : openEdit(s))}>✎</Button>
-                            <Button variant="ghost" size="sm" className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => deleteService(s.id)}>✕</Button>
+                            <Button variant="ghost" size="sm" onClick={() => (editId === s.id ? setEditId(null) : openEdit(s))}><NavIcon name="edit" className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="sm" className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => deleteService(s.id)}><NavIcon name="close" className="h-4 w-4" /></Button>
                           </div>
                         </td>
                       )}
@@ -621,7 +622,7 @@ export default function ServicesPage() {
                     )}
                     {canManage && editId !== s.id && (
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(s)}>✎ Изменить</Button>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(s)}><NavIcon name="edit" className="h-4 w-4" />Изменить</Button>
                         <Button variant="danger" size="sm" onClick={() => deleteService(s.id)}>Удалить</Button>
                       </div>
                     )}
@@ -662,8 +663,8 @@ export default function ServicesPage() {
                     {s.materials?.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {s.materials.map((m: any) => (
-                          <span key={m.id} className="rounded-lg bg-white px-2.5 py-1 text-xs text-slate-600 shadow-sm dark:bg-slate-700 dark:text-slate-200">
-                            📦 {m.product?.name} — {Number(m.qtyPerUnit)} {m.product?.unit?.shortName ?? ''}
+                          <span key={m.id} className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-xs text-slate-600 shadow-sm dark:bg-slate-700 dark:text-slate-200">
+                            <NavIcon name="warehouse" className="h-3.5 w-3.5" />{m.product?.name} — {Number(m.qtyPerUnit)} {m.product?.unit?.shortName ?? ''}
                           </span>
                         ))}
                       </div>

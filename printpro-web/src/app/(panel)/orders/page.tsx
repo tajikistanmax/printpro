@@ -22,6 +22,7 @@ import {
   EmptyState,
 } from '@/components/ui';
 import type { Tone } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(Math.round(Number(n) || 0)) + ' c.';
@@ -161,6 +162,8 @@ export default function OrdersPage() {
   const [bulkStatus, setBulkStatus] = useState('');
 
   const [selected, setSelected] = useState<any | null>(null);
+  const [returnMode, setReturnMode] = useState(false);
+  const [returnQty, setReturnQty] = useState<Record<string, string>>({});
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('CASH');
   const [msg, setMsg] = useState('');
@@ -338,6 +341,36 @@ export default function OrdersPage() {
     }
   }
 
+  // Частичный возврат выбранных позиций
+  const returnTotal = (selected?.items ?? []).reduce((s: number, it: any) => {
+    const q = Math.min(Number(returnQty[it.id]) || 0, Number(it.quantity));
+    return s + q * Number(it.unitPrice);
+  }, 0);
+
+  async function doReturn() {
+    if (!selected) return;
+    const items = (selected.items ?? [])
+      .map((it: any) => ({ orderItemId: it.id, quantity: Number(returnQty[it.id]) || 0 }))
+      .filter((x: any) => x.quantity > 0);
+    if (items.length === 0) {
+      setMsg('Укажите количество для возврата');
+      return;
+    }
+    setMsg('');
+    try {
+      const ret = await api.post(`/orders/${selected.id}/return`, { reason: 'Возврат', method: 'CASH', items });
+      setMsg(`✓ Возврат ${ret.number} на ${ret.amount} c. оформлен`);
+      setReturnMode(false);
+      setReturnQty({});
+      const full = await api.get(`/orders/${selected.id}`);
+      setSelected(full);
+      load();
+      loadStats();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
   const allChecked = orders.length > 0 && selectedIds.size === orders.length;
 
   return (
@@ -348,7 +381,7 @@ export default function OrdersPage() {
         subtitle={`Всего заказов: ${stats?.total ?? total}`}
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={exportCSV}>⬇ Экспорт</Button>
+            <Button variant="ghost" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт</Button>
             {canManage && (
               <Link href="/orders/new">
                 <Button>+ Создать заказ</Button>
@@ -389,7 +422,7 @@ export default function OrdersPage() {
             variant={showFilters || activeFilters > 1 ? 'primary' : 'ghost'}
             onClick={() => setShowFilters((v) => !v)}
           >
-            ⛃ Фильтры{activeFilters > 0 ? ` (${activeFilters})` : ''}
+            <NavIcon name="filter" className="h-4 w-4" />Фильтры{activeFilters > 0 ? ` (${activeFilters})` : ''}
           </Button>
         </Toolbar>
 
@@ -427,7 +460,7 @@ export default function OrdersPage() {
                 {STATUS_FLOW.map((st) => <option key={st} value={st}>{STATUS_LABELS[st]}</option>)}
               </Select>
             )}
-            <Button variant="ghost" size="sm" onClick={exportCSV}>⬇ Экспорт выбранных</Button>
+            <Button variant="ghost" size="sm" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт выбранных</Button>
             <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Снять выбор</Button>
           </div>
         )}
@@ -492,8 +525,8 @@ export default function OrdersPage() {
                       </td>
                       <td className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => openOrder(o.id)} title="Открыть">👁</Button>
-                          <Link href={`/order-card?id=${o.id}`}><Button variant="ghost" size="sm" title="Тех-карта">🖨</Button></Link>
+                          <Button variant="ghost" size="sm" onClick={() => openOrder(o.id)} title="Открыть"><NavIcon name="eye" className="h-4 w-4" /></Button>
+                          <Link href={`/order-card?id=${o.id}`}><Button variant="ghost" size="sm" title="Тех-карта"><NavIcon name="print" className="h-4 w-4" /></Button></Link>
                         </div>
                       </td>
                     </tr>
@@ -546,7 +579,7 @@ export default function OrdersPage() {
           <div className="relative z-10 h-full w-full max-w-md overflow-y-auto border-l border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Заказ №{selected.orderNumber}</h2>
-              <button onClick={() => setSelected(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">✕</button>
+              <button onClick={() => setSelected(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
             <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -557,8 +590,13 @@ export default function OrdersPage() {
               ) : (
                 <Badge tone={STATUS_TONES[selected.status] ?? 'slate'}>{STATUS_LABELS[selected.status]}</Badge>
               )}
-              {canManage && <Button variant="ghost" size="sm" onClick={reorder}>↻ Повторить</Button>}
-              <Link href={`/order-card?id=${selected.id}`}><Button variant="ghost" size="sm">🖨 Тех-карта</Button></Link>
+              {canManage && <Button variant="ghost" size="sm" onClick={reorder}><NavIcon name="refresh" className="h-4 w-4" />Повторить</Button>}
+              <Link href={`/order-card?id=${selected.id}`}><Button variant="ghost" size="sm"><NavIcon name="print" className="h-4 w-4" />Тех-карта</Button></Link>
+              {can('cash.operate') && Number(selected.paid) > 0 && selected.status !== 'CANCELLED' && (
+                <Button variant="ghost" size="sm" className="text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => { setReturnMode((v) => !v); setReturnQty({}); }}>
+                  <NavIcon name="arrowLeft" className="h-4 w-4" />Возврат
+                </Button>
+              )}
             </div>
 
             <div className="mb-3 text-sm text-slate-600 dark:text-slate-300">
@@ -582,12 +620,36 @@ export default function OrdersPage() {
 
             <div className="mb-3 space-y-1">
               {selected.items?.map((it: any) => (
-                <div key={it.id} className="flex justify-between border-b border-slate-100 py-1.5 text-sm dark:border-slate-700/60">
-                  <span>{it.description || it.service?.name || it.product?.name || 'Позиция'} × {it.quantity}</span>
-                  <span className="text-slate-500">{it.lineTotal} c.</span>
+                <div key={it.id} className="flex items-center justify-between gap-2 border-b border-slate-100 py-1.5 text-sm dark:border-slate-700/60">
+                  <span className="min-w-0 flex-1 truncate">{it.description || it.service?.name || it.product?.name || 'Позиция'} × {it.quantity}</span>
+                  {returnMode ? (
+                    <input
+                      type="number"
+                      min="0"
+                      max={Number(it.quantity)}
+                      value={returnQty[it.id] ?? ''}
+                      onChange={(e) => setReturnQty((q) => ({ ...q, [it.id]: e.target.value }))}
+                      placeholder="верн."
+                      className="w-16 shrink-0 rounded border border-slate-300 px-2 py-0.5 text-right text-xs dark:border-slate-600 dark:bg-slate-800"
+                    />
+                  ) : (
+                    <span className="shrink-0 text-slate-500">{it.lineTotal} c.</span>
+                  )}
                 </div>
               ))}
             </div>
+
+            {returnMode && (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+                <span className="text-sm text-amber-700 dark:text-amber-300">
+                  К возврату: <b className="tabular-nums">{returnTotal.toFixed(2)} c.</b>
+                </span>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => { setReturnMode(false); setReturnQty({}); }}>Отмена</Button>
+                  <Button variant="danger" size="sm" onClick={doReturn} disabled={returnTotal <= 0}>Оформить возврат</Button>
+                </div>
+              </div>
+            )}
 
             {selected.statusHistory?.length > 0 && (
               <details className="mb-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/50">
@@ -608,8 +670,8 @@ export default function OrdersPage() {
                 <div className="mb-1 text-xs font-medium text-slate-500">Файлы клиента</div>
                 <div className="flex flex-wrap gap-2">
                   {selected.files.map((f: any) => (
-                    <a key={f.id} href={`${SERVER_ORIGIN}${f.fileUrl}`} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-indigo-50 px-3 py-1.5 text-sm text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-300">
-                      📎 {f.fileName ?? 'файл'}
+                    <a key={f.id} href={`${SERVER_ORIGIN}${f.fileUrl}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-sm text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-300">
+                      <NavIcon name="paperclip" className="h-3.5 w-3.5 shrink-0" />{f.fileName ?? 'файл'}
                     </a>
                   ))}
                 </div>
@@ -627,8 +689,8 @@ export default function OrdersPage() {
               <div className="mb-4">
                 <div className="mb-1.5 text-xs font-medium text-slate-500">Сообщить клиенту, что заказ готов</div>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="emerald" size="sm" onClick={() => notifyClient(selected, 'whatsapp')}><span>📲</span> WhatsApp</Button>
-                  <Button variant="sky" size="sm" onClick={() => notifyClient(selected, 'telegram')}><span>✈️</span> Telegram</Button>
+                  <Button variant="emerald" size="sm" onClick={() => notifyClient(selected, 'whatsapp')}><NavIcon name="phone" className="h-4 w-4" />WhatsApp</Button>
+                  <Button variant="sky" size="sm" onClick={() => notifyClient(selected, 'telegram')}><NavIcon name="message" className="h-4 w-4" />Telegram</Button>
                 </div>
               </div>
             )}

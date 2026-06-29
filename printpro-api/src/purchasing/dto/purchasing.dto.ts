@@ -13,12 +13,20 @@ export class CreateSupplierDto {
   @IsString() companyId: string;
   @IsString() name: string;
   @IsOptional() @IsString() phone?: string;
+  @IsOptional() @IsString() inn?: string;
   @IsOptional() @IsString() note?: string;
 }
 
 export class UpdateSupplierDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() phone?: string;
+  @IsOptional() @IsString() inn?: string;
+  @IsOptional() @IsString() note?: string;
+}
+
+// Оплата долга поставщику
+export class PaySupplierDebtDto {
+  @IsNumber() @Min(0.01) amount: number;
   @IsOptional() @IsString() note?: string;
 }
 
@@ -35,6 +43,8 @@ export class CreateReceiptDto {
   @IsString() branchId: string;
   @IsOptional() @IsString() supplierId?: string;
   @IsOptional() @IsString() note?: string;
+  // Сколько сразу оплатили поставщику. Если не указано — считаем оплаченным полностью.
+  @IsOptional() @IsNumber() @Min(0) paidAmount?: number;
 
   @IsArray()
   @ValidateNested({ each: true })

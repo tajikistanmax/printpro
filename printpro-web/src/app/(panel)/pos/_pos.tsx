@@ -83,6 +83,8 @@ export interface PosCtx {
   // для богатых оформлений
   recentOrders: any[];
   orderStats: OrderStats;
+  // отложить текущий чек (held)
+  hold: () => void;
 }
 
 // ===== Мелкие хелперы оформления =====
@@ -104,6 +106,88 @@ function initial(name: string) {
   const t = (name || '').trim();
   return t ? t[0].toUpperCase() : '?';
 }
+
+// ===== Спокойные тинты плиток (вместо радужных градиентов) =====
+const SOFT_TILES = [
+  'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
+  'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300',
+  'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300',
+  'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
+  'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+  'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300',
+];
+function softTile(seed: string) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return SOFT_TILES[h % SOFT_TILES.length];
+}
+
+/** Квадратная плитка-«миниатюра» с инициалом — спокойный тинт по имени. */
+function Thumb({
+  name,
+  className = 'h-11 w-11 rounded-lg text-sm',
+}: {
+  name: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`flex shrink-0 items-center justify-center font-bold ${softTile(name)} ${className}`}
+    >
+      {initial(name)}
+    </div>
+  );
+}
+
+// ===== Иконки (инлайн SVG, единый stroke 1.75 — стиль NavIcons) =====
+type PIcon = { className?: string };
+function svg(children: React.ReactNode) {
+  return function Icon({ className = 'h-[18px] w-[18px]' }: PIcon) {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.75}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={className}
+        aria-hidden="true"
+      >
+        {children}
+      </svg>
+    );
+  };
+}
+const IcoReceipt = svg(<>
+  <path d="M5 3v18l2-1.2L9 21l2-1.2L13 21l2-1.2L17 21l2 0V3l-2 1.2L15 3l-2 1.2L11 3 9 4.2 7 3Z" />
+  <path d="M8 8h8M8 12h8M8 16h5" />
+</>);
+const IcoTrash = svg(<>
+  <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7" />
+  <path d="M10 11v6M14 11v6" />
+</>);
+const IcoPercent = svg(<>
+  <path d="M19 5 5 19" /><circle cx="7" cy="7" r="2.2" /><circle cx="17" cy="17" r="2.2" />
+</>);
+const IcoUser = svg(<><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>);
+const IcoComment = svg(<><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.5A8 8 0 1 1 21 12Z" /></>);
+const IcoPause = svg(<><path d="M9 5v14M15 5v14" /></>);
+const IcoSearch = svg(<><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>);
+const IcoGrid = svg(<>
+  <rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" />
+  <rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" />
+</>);
+const IcoList = svg(<><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></>);
+const IcoBarcode = svg(<>
+  <path d="M3 5v14M7 5v14M11 5v10M11 18v1M15 5v14M19 5v9M19 17v2" />
+</>);
+const IcoPlus = svg(<><path d="M12 5v14M5 12h14" /></>);
+const IcoStar = (props: PIcon) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={props.className ?? 'h-4 w-4'} aria-hidden="true">
+    <path d="m12 3 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9 6.8 19.2l1-5.8-4.3-4.1 5.9-.9Z" />
+  </svg>
+);
 
 function Row({
   label,
@@ -156,13 +240,17 @@ function CatRow({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-sm transition ${
-        active ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-white'
+      className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-sm font-medium transition ${
+        active
+          ? 'bg-indigo-600 text-white shadow-sm'
+          : 'text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-800'
       }`}
     >
       <span className="truncate">{label}</span>
       <span
-        className={`ml-2 text-xs ${active ? 'text-white/80' : 'text-slate-400'}`}
+        className={`ml-2 rounded-full px-1.5 text-xs ${
+          active ? 'bg-white/20 text-white' : 'bg-slate-200/70 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
+        }`}
       >
         {count}
       </span>
@@ -173,18 +261,29 @@ function CatRow({
 function ActionTile({
   icon,
   label,
+  tone = 'indigo',
   onClick,
 }: {
-  icon: string;
+  icon: React.ReactNode;
   label: string;
+  tone?: string;
   onClick: () => void;
 }) {
+  const tones: Record<string, string> = {
+    indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
+    violet: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300',
+    sky: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300',
+    amber: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+    rose: 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300',
+  };
   return (
     <button
       onClick={onClick}
-      className="flex flex-col items-center gap-1.5 rounded-2xl bg-white py-4 text-sm text-slate-600 shadow-sm transition hover:shadow-md"
+      className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200/70 bg-white py-4 text-sm font-medium text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700/60 dark:text-slate-300"
     >
-      <span className="text-xl">{icon}</span>
+      <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${tones[tone] ?? tones.indigo}`}>
+        {icon}
+      </span>
       {label}
     </button>
   );
@@ -194,34 +293,30 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
   const c = ctx;
   const [showPromo, setShowPromo] = useState(false);
   return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm xl:sticky xl:top-4 xl:self-start">
+    <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm xl:sticky xl:top-4 xl:self-start dark:border-slate-700/60">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800">Текущий заказ</h2>
+        <h2 className="font-semibold text-slate-800 dark:text-slate-100">Текущий заказ</h2>
         <span className="text-sm text-slate-400">{c.cartCount} поз.</span>
       </div>
 
       {c.cart.length === 0 ? (
         <div className="py-12 text-center">
-          <div className="mb-2 text-3xl">🧾</div>
+          <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800">
+            <IcoReceipt className="h-6 w-6" />
+          </span>
           <p className="text-sm text-slate-400">Добавьте товары и услуги</p>
         </div>
       ) : (
         <div className="mb-4 max-h-[44vh] space-y-3 overflow-auto pr-1">
           {c.cart.map((item) => (
             <div key={item.key} className="flex gap-3">
-              <div
-                className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${tileGrad(
-                  item.name,
-                )} text-sm font-bold text-white/90`}
-              >
-                {initial(item.name)}
-              </div>
+              <Thumb name={item.name} />
               <div className="flex-1">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="text-sm font-medium text-slate-800">
+                  <div className="text-sm font-medium text-slate-800 dark:text-slate-200">
                     {item.name}
                   </div>
-                  <div className="whitespace-nowrap text-sm font-semibold text-slate-800">
+                  <div className="whitespace-nowrap text-sm font-semibold text-slate-800 dark:text-slate-100">
                     {c.money(item.unitPrice * item.quantity)}
                   </div>
                 </div>
@@ -229,26 +324,27 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => c.setQty(item.key, item.quantity - 1)}
-                      className="h-6 w-6 rounded bg-slate-100 text-slate-600"
+                      className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
                     >
                       −
                     </button>
-                    <span className="w-6 text-center text-sm">
+                    <span className="w-6 text-center text-sm font-medium tabular-nums">
                       {item.quantity}
                     </span>
                     <button
                       onClick={() => c.setQty(item.key, item.quantity + 1)}
-                      className="h-6 w-6 rounded bg-slate-100 text-slate-600"
+                      className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
                     >
                       +
                     </button>
                   </div>
                   <button
                     onClick={() => c.setQty(item.key, 0)}
-                    className="text-slate-300 transition hover:text-rose-500"
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 transition hover:bg-rose-50 hover:text-rose-500 dark:text-slate-500 dark:hover:bg-rose-500/10"
                     title="Убрать"
+                    aria-label="Убрать позицию"
                   >
-                    🗑
+                    <IcoTrash className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -257,8 +353,8 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
         </div>
       )}
 
-      <button className="mb-4 w-full rounded-xl border-2 border-dashed border-slate-200 py-2.5 text-sm text-indigo-600 transition hover:bg-indigo-50">
-        ＋ Добавить примечание к заказу
+      <button className="mb-4 flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-200 py-2.5 text-sm font-medium text-indigo-600 transition hover:bg-indigo-50 dark:border-slate-700 dark:hover:bg-indigo-500/10">
+        <IcoPlus className="h-4 w-4" /> Добавить примечание к заказу
       </button>
 
       <div className="space-y-2 border-t border-slate-100 pt-3 text-sm">
@@ -420,63 +516,61 @@ const SkinShop: FC<{ ctx: PosCtx }> = ({ ctx }) => {
 
             <div>
               <div className="mb-3 flex items-center justify-between">
-                <span className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-500">
-                  ▢ Сканировать штрихкод
+                <span className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-500 dark:border-slate-700">
+                  <IcoBarcode className="h-4 w-4" /> Сканировать штрихкод
                 </span>
-                <div className="flex gap-1 rounded-lg border border-slate-200 p-0.5">
+                <div className="flex gap-1 rounded-lg border border-slate-200 p-0.5 dark:border-slate-700">
                   <button
                     onClick={() => setView('grid')}
-                    className={`rounded px-2 py-1 text-sm ${
+                    aria-label="Сетка"
+                    className={`flex h-7 w-7 items-center justify-center rounded transition ${
                       view === 'grid'
                         ? 'bg-indigo-600 text-white'
-                        : 'text-slate-500'
+                        : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
                     }`}
                   >
-                    ▦
+                    <IcoGrid className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setView('list')}
-                    className={`rounded px-2 py-1 text-sm ${
+                    aria-label="Список"
+                    className={`flex h-7 w-7 items-center justify-center rounded transition ${
                       view === 'list'
                         ? 'bg-indigo-600 text-white'
-                        : 'text-slate-500'
+                        : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
                     }`}
                   >
-                    ≣
+                    <IcoList className="h-4 w-4" />
                   </button>
                 </div>
               </div>
 
               {view === 'grid' ? (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                   {shown.map((it) => (
                     <button
                       key={`${it._type}:${it.id}`}
                       onClick={() => c.addItem(it, it._type)}
-                      className="group overflow-hidden rounded-xl border border-slate-200 bg-white text-left transition hover:border-indigo-300 hover:shadow-md"
+                      className="group overflow-hidden rounded-xl border border-slate-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-slate-700/60"
                     >
-                      <div
-                        className={`relative flex h-24 items-center justify-center bg-gradient-to-br ${tileGrad(
-                          it.name,
-                        )} text-2xl font-bold text-white/90`}
-                      >
-                        {initial(it.name)}
-                        <span className="absolute right-2 top-2 text-amber-300">
-                          ★
+                      <div className="relative flex h-24 items-center justify-center">
+                        <Thumb name={it.name} className="h-full w-full rounded-none text-3xl" />
+                        <span className="absolute right-2 top-2 text-amber-400">
+                          <IcoStar className="h-4 w-4" />
                         </span>
                       </div>
                       <div className="p-3">
-                        <div className="line-clamp-1 text-sm font-medium text-slate-800">
+                        <div className="line-clamp-1 text-sm font-medium text-slate-800 dark:text-slate-200">
                           {it.name}
                         </div>
-                        <div className="mt-1 text-sm text-slate-500">
+                        <div className="mt-1 text-sm font-semibold text-indigo-600 dark:text-indigo-400">
                           от {c.money(c.priceOf(it, it._type))}
                         </div>
                       </div>
                     </button>
                   ))}
-                  <div className="flex min-h-[140px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 p-3 text-center text-slate-400">
-                    <div className="text-2xl">＋</div>
+                  <div className="flex min-h-[140px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 p-3 text-center text-slate-400 dark:border-slate-700">
+                    <IcoPlus className="h-6 w-6" />
                     <div className="mt-1 text-sm font-medium">Быстрый товар</div>
                     <div className="text-xs">Добавить без карточки</div>
                   </div>
@@ -531,7 +625,8 @@ const SkinShop: FC<{ ctx: PosCtx }> = ({ ctx }) => {
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
           <ActionTile
-            icon="％"
+            icon={<IcoPercent className="h-5 w-5" />}
+            tone="violet"
             label="Скидка"
             onClick={() => {
               const v = window.prompt('Скидка, сум:', c.discount);
@@ -539,16 +634,17 @@ const SkinShop: FC<{ ctx: PosCtx }> = ({ ctx }) => {
             }}
           />
           <ActionTile
-            icon="👤"
+            icon={<IcoUser className="h-5 w-5" />}
+            tone="indigo"
             label="Клиент"
             onClick={() => {
               const v = window.prompt('Телефон клиента:', c.phone);
               if (v !== null) c.setPhone(v);
             }}
           />
-          <ActionTile icon="💬" label="Комментарий" onClick={() => {}} />
-          <ActionTile icon="⏸" label="Отложить" onClick={() => {}} />
-          <ActionTile icon="🗑" label="Очистить" onClick={c.clearCart} />
+          <ActionTile icon={<IcoComment className="h-5 w-5" />} tone="sky" label="Комментарий" onClick={() => {}} />
+          <ActionTile icon={<IcoPause className="h-5 w-5" />} tone="amber" label="Отложить" onClick={c.hold} />
+          <ActionTile icon={<IcoTrash className="h-5 w-5" />} tone="rose" label="Очистить" onClick={c.clearCart} />
         </div>
       </div>
 
@@ -617,7 +713,7 @@ function OrderPanelPro({ ctx }: { ctx: PosCtx }) {
 
       {c.cart.length === 0 ? (
         <div className="py-12 text-center">
-          <div className="mb-2 text-3xl">🧾</div>
+          <div className="mb-2 flex justify-center text-slate-300"><IcoReceipt className="h-9 w-9" /></div>
           <p className="text-sm text-slate-400">Добавьте услуги или материалы</p>
         </div>
       ) : (
@@ -767,7 +863,7 @@ function OrderPanelPro({ ctx }: { ctx: PosCtx }) {
       )}
 
       <div className="mt-2 grid grid-cols-2 gap-2">
-        <button className="flex items-center justify-center gap-1 rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-500 transition hover:bg-slate-50">
+        <button onClick={c.hold} className="flex items-center justify-center gap-1 rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-500 transition hover:bg-slate-50">
           Отложить <span className="text-xs">F5</span>
         </button>
         <button
@@ -919,7 +1015,7 @@ const SkinClassic: FC<{ ctx: PosCtx }> = ({ ctx }) => {
 
         <div className="relative mb-3">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-            🔍
+            <IcoSearch className="h-4 w-4" />
           </span>
           <input
             value={c.search}
@@ -1023,7 +1119,7 @@ function OrderPanelMarket({ ctx }: { ctx: PosCtx }) {
 
       {c.cart.length === 0 ? (
         <div className="py-12 text-center">
-          <div className="mb-2 text-3xl">🧾</div>
+          <div className="mb-2 flex justify-center text-slate-300"><IcoReceipt className="h-9 w-9" /></div>
           <p className="text-sm text-slate-400">Добавьте услуги или материалы</p>
         </div>
       ) : (
@@ -1196,7 +1292,7 @@ function OrderPanelMarket({ ctx }: { ctx: PosCtx }) {
       )}
 
       <div className="mt-2 grid grid-cols-2 gap-2">
-        <button className="flex items-center justify-center gap-1 rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-500 transition hover:bg-slate-50">
+        <button onClick={c.hold} className="flex items-center justify-center gap-1 rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-500 transition hover:bg-slate-50">
           Отложить <span className="text-xs">F5</span>
         </button>
         <button

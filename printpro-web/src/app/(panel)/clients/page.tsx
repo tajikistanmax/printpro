@@ -21,6 +21,7 @@ import {
   EmptyState,
 } from '@/components/ui';
 import type { Tone } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(Math.round(Number(n) || 0)) + ' c.';
@@ -244,7 +245,7 @@ export default function ClientsPage() {
         subtitle="Управляйте клиентской базой и историей взаимодействий"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={exportCSV}>⬇ Экспорт</Button>
+            <Button variant="ghost" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт</Button>
             {canManage && (
               <Button
                 variant={showCreateForm ? 'ghost' : 'primary'}
@@ -305,7 +306,7 @@ export default function ClientsPage() {
         {selectedIds.size > 0 && (
           <div className="flex flex-wrap items-center gap-3 border-b border-indigo-100 bg-indigo-50 px-4 py-2.5 text-sm dark:border-indigo-500/30 dark:bg-indigo-500/10">
             <span className="font-medium text-indigo-700 dark:text-indigo-300">Выбрано: {selectedIds.size}</span>
-            <Button variant="ghost" size="sm" onClick={exportCSV}>⬇ Экспорт выбранных</Button>
+            <Button variant="ghost" size="sm" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт выбранных</Button>
             <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Снять выбор</Button>
           </div>
         )}
@@ -352,7 +353,7 @@ export default function ClientsPage() {
                     <td>{c.inactive ? <Badge tone="slate">Неактивный</Badge> : <Badge tone="emerald">Активный</Badge>}</td>
                     <td className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openClient(c.id)} title="Открыть">👁</Button>
+                        <Button variant="ghost" size="sm" onClick={() => openClient(c.id)} title="Открыть"><NavIcon name="eye" className="h-4 w-4" /></Button>
                       </div>
                     </td>
                   </tr>
@@ -403,7 +404,7 @@ export default function ClientsPage() {
                   </div>
                 </div>
               </div>
-              <button onClick={() => setSelected(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">✕</button>
+              <button onClick={() => setSelected(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
             {showEditForm ? (
@@ -433,16 +434,16 @@ export default function ClientsPage() {
               <>
                 {canManage && (
                   <div className="mb-3">
-                    <Button variant="ghost" size="sm" onClick={openEdit}>✎ Изменить</Button>
+                    <Button variant="ghost" size="sm" onClick={openEdit}><NavIcon name="edit" className="h-4 w-4" />Изменить</Button>
                   </div>
                 )}
                 <div className="mb-4 space-y-1 text-sm text-slate-600 dark:text-slate-300">
-                  <div>📞 {selected.phone}</div>
-                  {selected.email && <div>✉ {selected.email}</div>}
-                  {selected.address && <div>📍 {selected.address}</div>}
+                  <div className="flex items-center gap-1.5"><NavIcon name="phone" className="h-3.5 w-3.5 text-slate-400" />{selected.phone}</div>
+                  {selected.email && <div className="flex items-center gap-1.5"><NavIcon name="mail" className="h-3.5 w-3.5 text-slate-400" />{selected.email}</div>}
+                  {selected.address && <div className="flex items-center gap-1.5"><NavIcon name="pin" className="h-3.5 w-3.5 text-slate-400" />{selected.address}</div>}
                   {selected.inn && <div>ИНН: {selected.inn}</div>}
                   {Number(selected.discount) > 0 && <div className="text-emerald-600">Скидка: {selected.discount}%</div>}
-                  {Number(selected.bonusPoints) > 0 && <div className="text-violet-600">🎁 Бонусы: {Number(selected.bonusPoints).toFixed(0)}</div>}
+                  {Number(selected.bonusPoints) > 0 && <div className="flex items-center gap-1.5 text-violet-600"><NavIcon name="gift" className="h-3.5 w-3.5" />Бонусы: {Number(selected.bonusPoints).toFixed(0)}</div>}
                   {Number(selected.creditLimit) > 0 && (
                     <div>
                       Кредитный лимит: {selected.creditLimit} c.
@@ -453,7 +454,7 @@ export default function ClientsPage() {
                       )}
                     </div>
                   )}
-                  {selected.note && <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500 dark:bg-slate-800">💬 {selected.note}</div>}
+                  {selected.note && <div className="flex items-start gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-slate-500 dark:bg-slate-800"><NavIcon name="message" className="mt-0.5 h-3.5 w-3.5 shrink-0" />{selected.note}</div>}
                 </div>
 
                 <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -486,8 +487,8 @@ export default function ClientsPage() {
                 <div className="mt-4 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Файлы</h3>
                   {canManage && (
-                    <label className="cursor-pointer rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300">
-                      {uploading ? 'Загрузка…' : '📎 Загрузить'}
+                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300">
+                      {uploading ? 'Загрузка…' : <><NavIcon name="paperclip" className="h-3.5 w-3.5" />Загрузить</>}
                       <input type="file" onChange={uploadFile} disabled={uploading} className="hidden" />
                     </label>
                   )}
@@ -499,8 +500,8 @@ export default function ClientsPage() {
                   <div className="mt-1 space-y-1">
                     {selected.files.map((f: any) => (
                       <div key={f.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-sm dark:bg-slate-800">
-                        <a href={`${SERVER_ORIGIN}${f.fileUrl}`} target="_blank" rel="noopener noreferrer" className="truncate text-indigo-600 hover:underline">📎 {f.fileName ?? 'файл'}</a>
-                        {canManage && <button onClick={() => removeFile(f.id)} className="ml-2 text-rose-400 hover:text-rose-600">✕</button>}
+                        <a href={`${SERVER_ORIGIN}${f.fileUrl}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 truncate text-indigo-600 hover:underline"><NavIcon name="paperclip" className="h-3.5 w-3.5 shrink-0" />{f.fileName ?? 'файл'}</a>
+                        {canManage && <button onClick={() => removeFile(f.id)} className="ml-2 inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>}
                       </div>
                     ))}
                   </div>

@@ -23,15 +23,17 @@ import {
   EmptyState,
 } from '@/components/ui';
 import type { Tone } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 const MOV_LABEL: Record<string, string> = {
-  IN: 'Приход', OUT: 'Расход', WRITE_OFF: 'Списание', ADJUST: 'Корректировка',
+  IN: 'Приход', OUT: 'Расход', WRITE_OFF: 'Списание', ADJUST: 'Корректировка', RETURN: 'Возврат',
 };
 const MOV_COLOR: Record<string, string> = {
   IN: 'text-emerald-600 dark:text-emerald-400',
   OUT: 'text-rose-600 dark:text-rose-400',
   WRITE_OFF: 'text-amber-600 dark:text-amber-400',
   ADJUST: 'text-sky-600 dark:text-sky-400',
+  RETURN: 'text-emerald-600 dark:text-emerald-400',
 };
 
 function money(n: number) {
@@ -88,6 +90,7 @@ export default function WarehousePage() {
   const [pUnit, setPUnit] = useState('');
   const [pCat, setPCat] = useState('');
   const [pPrice, setPPrice] = useState('');
+  const [pPurchase, setPPurchase] = useState('');
   const [pMin, setPMin] = useState('');
   const [pSku, setPSku] = useState('');
   const [pBarcode, setPBarcode] = useState('');
@@ -118,6 +121,13 @@ export default function WarehousePage() {
   const [rBranch, setRBranch] = useState('');
   const [rQty, setRQty] = useState('');
   const [rMsg, setRMsg] = useState('');
+
+  // Списание (бой/брак/порча)
+  const [woProduct, setWoProduct] = useState('');
+  const [woBranch, setWoBranch] = useState('');
+  const [woQty, setWoQty] = useState('');
+  const [woReason, setWoReason] = useState('');
+  const [woMsg, setWoMsg] = useState('');
 
   function load() {
     setLoading(true);
@@ -186,13 +196,14 @@ export default function WarehousePage() {
         categoryId: pCat || undefined,
         unitId: pUnit || undefined,
         salePrice: pPrice ? Number(pPrice) : 0,
+        purchasePrice: pPurchase ? Number(pPurchase) : 0,
         minStock: pMin ? Number(pMin) : 0,
         sku: pSku || undefined,
         barcode: pBarcode || undefined,
         size: pSize || undefined,
         weight: pWeight || undefined,
       });
-      setPName(''); setPPrice(''); setPMin(''); setPSku(''); setPBarcode(''); setPSize(''); setPWeight('');
+      setPName(''); setPPrice(''); setPPurchase(''); setPMin(''); setPSku(''); setPBarcode(''); setPSize(''); setPWeight('');
       setPMsg('✓ Товар добавлен'); load();
     } catch (err: any) { setPMsg('Ошибка: ' + err.message); }
   }
@@ -202,7 +213,7 @@ export default function WarehousePage() {
     setEditPId(p.id); setEditPMsg('');
     setEditP({
       name: p.name, categoryId: p.categoryId ?? '', unitId: p.unitId ?? '',
-      salePrice: String(Number(p.salePrice) || ''), minStock: String(Number(p.minStock) || ''),
+      salePrice: String(Number(p.salePrice) || ''), purchasePrice: String(Number(p.purchasePrice) || ''), minStock: String(Number(p.minStock) || ''),
       sku: p.sku ?? '', barcode: p.barcode ?? '', size: p.size ?? '', weight: p.weight ?? '',
       isActive: p.isActive ?? true,
     });
@@ -215,6 +226,7 @@ export default function WarehousePage() {
         categoryId: editP.categoryId || undefined,
         unitId: editP.unitId || undefined,
         salePrice: editP.salePrice ? Number(editP.salePrice) : 0,
+        purchasePrice: editP.purchasePrice ? Number(editP.purchasePrice) : 0,
         minStock: editP.minStock ? Number(editP.minStock) : 0,
         sku: editP.sku || undefined,
         barcode: editP.barcode || undefined,
@@ -254,6 +266,14 @@ export default function WarehousePage() {
       const res = await api.post('/stock/recount', { companyId: cid, productId: rProduct || products[0]?.id, branchId: rBranch || branches[0]?.id, countedQuantity: Number(rQty) });
       setRQty(''); setRMsg(`✓ Учтено (расхождение: ${res.diff})`); load();
     } catch (err: any) { setRMsg('Ошибка: ' + err.message); }
+  }
+  async function writeOff(e: React.FormEvent) {
+    e.preventDefault(); setWoMsg('');
+    try {
+      const r = await api.post('/stock/write-off', { companyId: cid, productId: woProduct || products[0]?.id, branchId: woBranch || branches[0]?.id, quantity: Number(woQty), reason: woReason || undefined });
+      setWoQty(''); setWoReason(''); setWoMsg(`✓ Списано (себестоимость ${money(Number(r.cost))})`);
+      load(); if (tab === 'moves') loadMovements();
+    } catch (err: any) { setWoMsg('Ошибка: ' + err.message); }
   }
 
   // ---- панель материала ----
@@ -321,7 +341,7 @@ export default function WarehousePage() {
         subtitle="Управляйте материалами, остатками и движением"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={exportCSV}>⬇ Экспорт</Button>
+            <Button variant="ghost" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт</Button>
             {canProducts && <Button onClick={() => setTab('ref')}>+ Новый материал</Button>}
           </div>
         }
@@ -394,7 +414,7 @@ export default function WarehousePage() {
                         <tr key={p.id} className="cursor-pointer" onClick={() => openMaterial(p.id)}>
                           <td>
                             <div className="flex items-center gap-3">
-                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400 dark:bg-slate-800">📦</span>
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400 dark:bg-slate-800"><NavIcon name="warehouse" className="h-5 w-5" /></span>
                               <span>
                                 <span className="block font-medium text-slate-700 hover:text-indigo-600 dark:text-slate-200">{p.name}</span>
                                 {(p.size || p.sku) && <span className="block text-xs text-slate-400">{p.size || `арт. ${p.sku}`}</span>}
@@ -421,7 +441,7 @@ export default function WarehousePage() {
 
       {/* ============ ОПЕРАЦИИ ============ */}
       {tab === 'ops' && canManage && (
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
           <Card>
             <SectionTitle>Приём материала (приход)</SectionTitle>
             <form onSubmit={receive} className="space-y-3">
@@ -462,6 +482,21 @@ export default function WarehousePage() {
               {rMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{rMsg}</p>}
             </form>
           </Card>
+
+          <Card>
+            <SectionTitle>Списание (бой/брак/порча)</SectionTitle>
+            <form onSubmit={writeOff} className="space-y-3">
+              <Field label="Материал"><Select value={woProduct} onChange={(e) => setWoProduct(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Склад"><Select value={woBranch} onChange={(e) => setWoBranch(e.target.value)}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
+                <Field label="Количество"><Input value={woQty} onChange={(e) => setWoQty(e.target.value)} type="number" step="0.001" placeholder="0" required /></Field>
+              </div>
+              <Field label="Причина"><Input value={woReason} onChange={(e) => setWoReason(e.target.value)} placeholder="напр. повреждение" /></Field>
+              <Button type="submit" variant="danger" className="w-full">Списать</Button>
+              {woMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{woMsg}</p>}
+            </form>
+            <p className="mt-2 text-xs text-slate-400">Себестоимость спишется из закупочной цены товара.</p>
+          </Card>
         </div>
       )}
 
@@ -473,7 +508,7 @@ export default function WarehousePage() {
           ) : (
             <div className="pp-table-scroll">
               <table className="pp-table">
-                <thead><tr><th>Дата</th><th>Материал</th><th>Тип</th><th className="text-right">Кол-во</th><th>Причина</th><th>Сотрудник</th></tr></thead>
+                <thead><tr><th>Дата</th><th>Материал</th><th>Тип</th><th className="text-right">Кол-во</th><th className="text-right">Было</th><th className="text-right">Стало</th><th>Причина</th><th>Сотрудник</th></tr></thead>
                 <tbody>
                   {movements.map((m) => (
                     <tr key={m.id}>
@@ -481,6 +516,8 @@ export default function WarehousePage() {
                       <td className="font-medium text-slate-700 dark:text-slate-200">{m.product?.name}</td>
                       <td className={`font-medium ${MOV_COLOR[m.type] ?? 'text-slate-600'}`}>{MOV_LABEL[m.type] ?? m.type}</td>
                       <td className="text-right font-semibold text-slate-700 dark:text-slate-200">{Number(m.quantity)} {m.product?.unit?.shortName ?? ''}</td>
+                      <td className="text-right tabular-nums text-slate-400">{m.beforeQty != null ? Number(m.beforeQty) : '—'}</td>
+                      <td className="text-right tabular-nums font-medium text-slate-600 dark:text-slate-300">{m.afterQty != null ? Number(m.afterQty) : '—'}</td>
                       <td className="text-slate-500 dark:text-slate-400">{m.reason ?? '—'}</td>
                       <td className="text-slate-500 dark:text-slate-400">{m.user?.fullName ?? '—'}</td>
                     </tr>
@@ -503,9 +540,10 @@ export default function WarehousePage() {
                 <option value="">— без категории —</option>
                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
+              <Select value={pUnit} onChange={(e) => setPUnit(e.target.value)}><option value="">ед. изм.</option>{units.map((u) => <option key={u.id} value={u.id}>{u.shortName}</option>)}</Select>
               <div className="grid grid-cols-3 gap-2">
-                <Select value={pUnit} onChange={(e) => setPUnit(e.target.value)}><option value="">ед. изм.</option>{units.map((u) => <option key={u.id} value={u.id}>{u.shortName}</option>)}</Select>
-                <Input value={pPrice} onChange={(e) => setPPrice(e.target.value)} type="number" placeholder="Цена" />
+                <Input value={pPrice} onChange={(e) => setPPrice(e.target.value)} type="number" placeholder="Цена продажи" />
+                <Input value={pPurchase} onChange={(e) => setPPurchase(e.target.value)} type="number" placeholder="Закупочная" title="Себестоимость — для отчёта прибыли" />
                 <Input value={pMin} onChange={(e) => setPMin(e.target.value)} type="number" placeholder="Мин. остаток" title="Оповещение когда меньше" />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -523,7 +561,7 @@ export default function WarehousePage() {
               <div className="flex flex-wrap items-center gap-2">
                 {categories.map((c) => (
                   <span key={c.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                    {c.name}<button type="button" onClick={() => removeCategory(c.id)} className="text-rose-400 hover:text-rose-600">✕</button>
+                    {c.name}<button type="button" onClick={() => removeCategory(c.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
                   </span>
                 ))}
                 {categories.length === 0 && <span className="text-xs text-slate-400">Нет категорий.</span>}
@@ -542,7 +580,7 @@ export default function WarehousePage() {
                 <span key={u.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-sm dark:bg-slate-800">
                   <span className="font-medium text-slate-700 dark:text-slate-200">{u.shortName}</span>
                   <span className="text-slate-400">({u.name})</span>
-                  <button onClick={() => removeUnit(u.id)} className="text-rose-400 hover:text-rose-600">✕</button>
+                  <button onClick={() => removeUnit(u.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
                 </span>
               ))}
               {units.length === 0 && <span className="text-sm text-slate-400">Нет единиц. Добавьте: шт, м², рул и т.д.</span>}
@@ -564,7 +602,7 @@ export default function WarehousePage() {
           <div className="relative z-10 h-full w-full max-w-md overflow-y-auto border-l border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Информация о материале</h2>
-              <button onClick={() => { setMaterial(null); setEditPId(null); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">✕</button>
+              <button onClick={() => { setMaterial(null); setEditPId(null); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
             {editPId === material.id ? (
@@ -574,7 +612,8 @@ export default function WarehousePage() {
                   <div className="grid grid-cols-2 gap-2">
                     <Field label="Категория"><Select value={editP.categoryId} onChange={(e) => setEditP((f: any) => ({ ...f, categoryId: e.target.value }))}><option value="">— нет —</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
                     <Field label="Ед."><Select value={editP.unitId} onChange={(e) => setEditP((f: any) => ({ ...f, unitId: e.target.value }))}><option value="">—</option>{units.map((u) => <option key={u.id} value={u.id}>{u.shortName}</option>)}</Select></Field>
-                    <Field label="Цена"><Input type="number" value={editP.salePrice} onChange={(e) => setEditP((f: any) => ({ ...f, salePrice: e.target.value }))} /></Field>
+                    <Field label="Цена продажи"><Input type="number" value={editP.salePrice} onChange={(e) => setEditP((f: any) => ({ ...f, salePrice: e.target.value }))} /></Field>
+                    <Field label="Закупочная (себест.)"><Input type="number" value={editP.purchasePrice} onChange={(e) => setEditP((f: any) => ({ ...f, purchasePrice: e.target.value }))} /></Field>
                     <Field label="Мин. остаток"><Input type="number" value={editP.minStock} onChange={(e) => setEditP((f: any) => ({ ...f, minStock: e.target.value }))} /></Field>
                     <Field label="Артикул"><Input value={editP.sku} onChange={(e) => setEditP((f: any) => ({ ...f, sku: e.target.value }))} /></Field>
                     <Field label="Штрихкод"><Input value={editP.barcode} onChange={(e) => setEditP((f: any) => ({ ...f, barcode: e.target.value }))} /></Field>
@@ -591,7 +630,7 @@ export default function WarehousePage() {
             ) : (
               <>
                 <div className="mb-3 flex items-start gap-3">
-                  <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-2xl text-slate-400 dark:bg-slate-800">📦</span>
+                  <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-800"><NavIcon name="warehouse" className="h-7 w-7" /></span>
                   <div className="min-w-0">
                     <div className="font-semibold text-slate-800 dark:text-slate-100">{material.name}</div>
                     <div className="mt-1 flex flex-wrap gap-1.5">
@@ -649,11 +688,11 @@ export default function WarehousePage() {
                     <SectionTitle>Быстрые действия</SectionTitle>
                     <div className="mb-4 grid grid-cols-2 gap-2">
                       <Button variant="ghost" size="sm" onClick={() => quickAction('receive')}>＋ Поступление</Button>
-                      <Button variant="ghost" size="sm" onClick={() => quickAction('transfer')}>↔ Перемещение</Button>
-                      <Button variant="ghost" size="sm" onClick={() => quickAction('recount')}>✓ Инвентаризация</Button>
-                      <Button variant="ghost" size="sm" onClick={() => printLabel(material)}>🏷 Печать этикетки</Button>
-                      <Button variant="ghost" size="sm" onClick={exportCSV}>⬇ Экспорт в Excel</Button>
-                      {canProducts && <Button variant="ghost" size="sm" onClick={() => openEditP(material)}>✎ Изменить</Button>}
+                      <Button variant="ghost" size="sm" onClick={() => quickAction('transfer')}><NavIcon name="refresh" className="h-4 w-4" />Перемещение</Button>
+                      <Button variant="ghost" size="sm" onClick={() => quickAction('recount')}><NavIcon name="check" className="h-4 w-4" />Инвентаризация</Button>
+                      <Button variant="ghost" size="sm" onClick={() => printLabel(material)}><NavIcon name="print" className="h-4 w-4" />Печать этикетки</Button>
+                      <Button variant="ghost" size="sm" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт в Excel</Button>
+                      {canProducts && <Button variant="ghost" size="sm" onClick={() => openEditP(material)}><NavIcon name="edit" className="h-4 w-4" />Изменить</Button>}
                     </div>
                   </>
                 )}

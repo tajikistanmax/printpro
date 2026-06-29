@@ -17,6 +17,7 @@ import {
   Badge,
   EmptyState,
 } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 const METHOD_LABELS: Record<string, string> = {
   CASH: 'Наличные',
@@ -117,7 +118,7 @@ export default function CashPage() {
         <PageHeader icon="cash" title="Касса" subtitle="Смена закрыта" />
         <Card>
           <div className="mb-4 flex items-center gap-3 text-slate-600 dark:text-slate-300">
-            <span className="text-3xl">🔒</span>
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-800"><NavIcon name="lock" className="h-6 w-6" /></span>
             <div>
               <div className="font-semibold text-slate-800 dark:text-slate-100">Смена закрыта</div>
               <div className="text-sm text-slate-500 dark:text-slate-400">
@@ -168,7 +169,7 @@ export default function CashPage() {
         subtitle={`Смена ${shift.number ? `${shift.number} · ` : ''}открыта · ${shift.user}`}
         actions={
           <>
-            <Button variant="ghost" onClick={() => setShowX(true)}>🖨 X-отчёт</Button>
+            <Button variant="ghost" onClick={() => setShowX(true)}><NavIcon name="print" className="h-4 w-4" />X-отчёт</Button>
             <Badge tone="emerald">
               ● Смена {shift.number ? `${shift.number} · ` : ''}открыта · {shift.user}
             </Badge>
@@ -219,7 +220,7 @@ export default function CashPage() {
               </div>
             </div>
             <div className="no-print mt-5 flex gap-2">
-              <Button onClick={() => window.print()} className="flex-1">🖨 Печать</Button>
+              <Button onClick={() => window.print()} className="flex-1"><NavIcon name="print" className="h-4 w-4" />Печать</Button>
               <Button variant="ghost" onClick={() => setShowX(false)} className="flex-1">Закрыть</Button>
             </div>
           </div>

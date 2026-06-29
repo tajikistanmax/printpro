@@ -15,6 +15,7 @@ import {
   Badge,
   EmptyState,
 } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(Math.round(n || 0)) + ' c.';
@@ -98,7 +99,7 @@ export default function ReportsPage() {
               active={period}
               onChange={setPeriod}
             />
-            <Button variant="ghost" onClick={() => window.print()}>🖨 PDF</Button>
+            <Button variant="ghost" onClick={() => window.print()}><NavIcon name="print" className="h-4 w-4" />PDF</Button>
           </div>
         }
       />
@@ -168,7 +169,7 @@ export default function ReportsPage() {
                       )
                     }
                   >
-                    ⬇ CSV
+                    <NavIcon name="download" className="h-4 w-4" />CSV
                   </Button>
                 )}
                 {debts && (
@@ -212,7 +213,7 @@ export default function ReportsPage() {
                   )
                 }
               >
-                ⬇ Экспорт CSV
+                <NavIcon name="download" className="h-4 w-4" />Экспорт CSV
               </Button>
             )
           }
@@ -263,7 +264,7 @@ export default function ReportsPage() {
                   )
                 }
               >
-                ⬇ Экспорт CSV
+                <NavIcon name="download" className="h-4 w-4" />Экспорт CSV
               </Button>
             )
           }
@@ -357,7 +358,7 @@ export default function ReportsPage() {
                   )
                 }
               >
-                ⬇ CSV
+                <NavIcon name="download" className="h-4 w-4" />CSV
               </Button>
             }
           >
@@ -413,7 +414,7 @@ export default function ReportsPage() {
                   )
                 }
               >
-                ⬇ CSV
+                <NavIcon name="download" className="h-4 w-4" />CSV
               </Button>
             )
           }

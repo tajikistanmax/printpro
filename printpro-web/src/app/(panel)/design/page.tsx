@@ -22,6 +22,7 @@ import {
   EmptyState,
 } from '@/components/ui';
 import type { Tone } from '@/components/ui';
+import NavIcon from '@/lib/NavIcons';
 
 const STATUS_LABELS: Record<string, string> = {
   TODO: 'Нужно создать',
@@ -299,7 +300,7 @@ export default function DesignPage() {
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={`${SERVER_ORIGIN}${p.fileUrl}`} alt="" className="h-full w-full object-cover" />
                             ) : (
-                              <span className="text-slate-300">🖼</span>
+                              <NavIcon name="image" className="h-5 w-5 text-slate-300" />
                             )}
                           </span>
                           <span>
@@ -336,7 +337,7 @@ export default function DesignPage() {
                 <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Заказ №{selected.order?.orderNumber}</h2>
                 <Badge tone={STATUS_TONES[selected.status] ?? 'slate'}>{STATUS_LABELS[selected.status]}</Badge>
               </div>
-              <button onClick={() => setSelected(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">✕</button>
+              <button onClick={() => setSelected(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
             <div className="mb-1 text-base font-semibold text-slate-800 dark:text-slate-100">{selected.title ?? 'Макет'}</div>
@@ -345,10 +346,10 @@ export default function DesignPage() {
             {selected.fileUrl && (
               <div className="mb-3 flex gap-2">
                 <a href={`${SERVER_ORIGIN}${selected.fileUrl}`} target="_blank" rel="noopener noreferrer" className="flex-1">
-                  <Button variant="ghost" className="w-full">🔍 Открыть макет</Button>
+                  <Button variant="ghost" className="w-full"><NavIcon name="eye" className="h-4 w-4" />Открыть макет</Button>
                 </a>
                 <a href={`${SERVER_ORIGIN}${selected.fileUrl}`} download className="flex-1">
-                  <Button variant="ghost" className="w-full">⬇ Скачать</Button>
+                  <Button variant="ghost" className="w-full"><NavIcon name="download" className="h-4 w-4" />Скачать</Button>
                 </a>
               </div>
             )}
@@ -381,7 +382,7 @@ export default function DesignPage() {
                   {(MOVES[selected.status] ?? []).map((m) => (
                     <Button key={m.to} variant={m.variant} size="sm" onClick={() => setStatus(selected.id, m.to)}>{m.label}</Button>
                   ))}
-                  <Button variant="ghost" size="sm" onClick={() => pickFile(selected.id)}>📎 Загрузить версию</Button>
+                  <Button variant="ghost" size="sm" onClick={() => pickFile(selected.id)}><NavIcon name="paperclip" className="h-4 w-4" />Загрузить версию</Button>
                   <Button variant="ghost" size="sm" className="text-rose-500" onClick={() => remove(selected.id)}>Удалить</Button>
                 </div>
               </>
