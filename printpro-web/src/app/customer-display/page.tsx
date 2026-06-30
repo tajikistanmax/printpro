@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { subscribeDisplay, type DisplayState } from '@/lib/customer-display';
+import { fileUrl } from '@/lib/api';
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(n) + ' c.';
@@ -188,6 +189,33 @@ export default function CustomerDisplayPage() {
             </svg>
             Спасибо за покупку!
           </div>
+        </div>
+      )}
+
+      {state.type === 'pay-qr' && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-5 px-8 text-center">
+          <div className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-400">
+            Оплата переводом
+          </div>
+          {state.qr ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={fileUrl(state.qr)}
+              alt="QR для перевода"
+              className="h-72 w-72 rounded-2xl bg-white p-3 shadow-lg"
+            />
+          ) : (
+            <div className="rounded-2xl border-2 border-dashed border-slate-300 p-12 text-slate-400">
+              QR не настроен
+            </div>
+          )}
+          <div className="text-2xl font-bold text-slate-700">Отсканируйте и переведите</div>
+          <div className="bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-7xl font-black tracking-tight text-transparent">
+            {money(state.total)}
+          </div>
+          {state.requisite && (
+            <div className="font-mono text-2xl text-slate-500">{state.requisite}</div>
+          )}
         </div>
       )}
     </div>

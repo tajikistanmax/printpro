@@ -33,6 +33,14 @@ export type DisplayState =
       total: number;
       method: string;
       change?: number;
+    }
+  | {
+      // Экран оплаты переводом: показываем клиенту QR для сканирования
+      type: 'pay-qr';
+      shopName?: string;
+      total: number;
+      qr?: string; // путь /uploads/... (резолвится через fileUrl на дисплее)
+      requisite?: string;
     };
 
 function channel(): BroadcastChannel | null {

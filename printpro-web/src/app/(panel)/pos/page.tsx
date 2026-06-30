@@ -55,6 +55,7 @@ export default function PosPage() {
   const [promoMsg, setPromoMsg] = useState('');
   const [useBonus, setUseBonus] = useState('');
   const [phone, setPhone] = useState('');
+  const [clientName, setClientName] = useState('');
   const [method, setMethod] = useState('CASH');
   const [split, setSplit] = useState(false);
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
@@ -215,6 +216,15 @@ export default function PosPage() {
     if (!displayOn) return;
     if (cart.length === 0) {
       sendDisplay({ type: 'welcome', shopName });
+    } else if (method === 'TRANSFER') {
+      // Оплата переводом — показываем клиенту QR для сканирования
+      sendDisplay({
+        type: 'pay-qr',
+        shopName,
+        total,
+        qr: transferPay.qr,
+        requisite: transferPay.requisite,
+      });
     } else {
       sendDisplay({
         type: 'cart',
@@ -230,7 +240,7 @@ export default function PosPage() {
         total,
       });
     }
-  }, [cart, subtotal, total, totalDiscount, shopName, receipt, displayOn, vfdCfg, cartCount]);
+  }, [cart, subtotal, total, totalDiscount, shopName, receipt, displayOn, vfdCfg, cartCount, method, transferPay]);
 
   // После оплаты показываем итог/«спасибо» на дисплее
   useEffect(() => {
@@ -374,6 +384,7 @@ export default function PosPage() {
         companyId: cid,
         branchId: branchId || undefined,
         clientPhone: phone || undefined,
+        clientName: clientName || undefined,
         discount: disc || undefined,
         promoCode: promoCode.trim() || undefined,
         useBonus: Number(useBonus) > 0 ? Number(useBonus) : undefined,
@@ -407,6 +418,7 @@ export default function PosPage() {
       setPromoMsg('');
       setUseBonus('');
       setPhone('');
+    setClientName('');
       setSplit(false);
       setSplitAmounts({});
       setCashReceived('');
@@ -434,6 +446,7 @@ export default function PosPage() {
     setPromoMsg('');
     setUseBonus('');
     setPhone('');
+    setClientName('');
     setSplit(false);
     setSplitAmounts({});
     setCashReceived('');
@@ -518,6 +531,8 @@ export default function PosPage() {
     total,
     phone,
     setPhone,
+    clientName,
+    setClientName,
     method,
     setMethod,
     methods: METHODS,

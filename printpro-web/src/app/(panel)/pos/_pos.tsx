@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction, FC } from 'react';
-import { fileUrl } from '@/lib/api';
+import { api, fileUrl } from '@/lib/api';
+import { DEFAULT_COMPANY_ID } from '@/lib/config';
 
 // ===== Общий тип данных, который контейнер кассы передаёт в любой «скин» =====
 export interface CartItem {
@@ -69,6 +70,8 @@ export interface PosCtx {
   // оплата
   phone: string;
   setPhone: Dispatch<SetStateAction<string>>;
+  clientName: string;
+  setClientName: Dispatch<SetStateAction<string>>;
   method: string;
   setMethod: Dispatch<SetStateAction<string>>;
   methods: PosMethod[];
@@ -136,14 +139,22 @@ function softTile(seed: string) {
   return SOFT_TILES[h % SOFT_TILES.length];
 }
 
-/** Квадратная плитка-«миниатюра» с инициалом — спокойный тинт по имени. */
+/** Квадратная плитка-«миниатюра»: фото товара, если есть; иначе инициал с тинтом. */
 function Thumb({
   name,
+  src,
   className = 'h-11 w-11 rounded-lg text-sm',
 }: {
   name: string;
+  src?: string | null;
   className?: string;
 }) {
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={fileUrl(src)} alt={name} className={`shrink-0 bg-slate-100 object-cover dark:bg-slate-800 ${className}`} />
+    );
+  }
   return (
     <div
       className={`flex shrink-0 items-center justify-center font-bold ${softTile(name)} ${className}`}
@@ -307,6 +318,36 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
   const c = ctx;
   const [showPromo, setShowPromo] = useState(false);
   const [showNote, setShowNote] = useState(false);
+  const [showCashPay, setShowCashPay] = useState(false);
+
+  // Подсказки сумм «получено» — округление вверх до 100/500/1000
+  const cashSuggest = Array.from(
+    new Set(
+      [
+        Math.ceil(c.total / 100) * 100,
+        Math.ceil(c.total / 500) * 500,
+        Math.ceil(c.total / 1000) * 1000,
+      ].filter((v) => v > c.total),
+    ),
+  ).slice(0, 3);
+
+  // Поиск клиента для оплаты «в долг»
+  const [clientQuery, setClientQuery] = useState('');
+  const [clientResults, setClientResults] = useState<any[]>([]);
+  const [pickedClient, setPickedClient] = useState<any | null>(null);
+  useEffect(() => {
+    if (c.method !== 'DEBT' || clientQuery.trim().length < 2) {
+      setClientResults([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      api
+        .get(`/clients?companyId=${DEFAULT_COMPANY_ID}&search=${encodeURIComponent(clientQuery.trim())}&pageSize=6`)
+        .then((r) => setClientResults(r?.items ?? (Array.isArray(r) ? r : [])))
+        .catch(() => setClientResults([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [clientQuery, c.method]);
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm xl:sticky xl:top-4 xl:self-start dark:border-slate-700/60">
       <div className="mb-4 flex items-center justify-between">
@@ -479,30 +520,11 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
             ))}
         </div>
 
-        {/* Наличные → получено и сдача */}
+        {/* Наличные → ввод суммы и сдача в окне по кнопке «Оплатить» */}
         {c.method === 'CASH' && (
-          <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">Получено</span>
-              <input
-                value={c.cashReceived}
-                onChange={(e) => c.setCashReceived(e.target.value)}
-                type="number"
-                inputMode="decimal"
-                placeholder={String(c.total)}
-                className="w-28 rounded-lg border border-slate-200 px-2 py-1 text-right dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-              />
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">Сдача</span>
-              <span className={`font-semibold ${c.change < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                {c.cashReceived ? c.money(c.change) : '—'}
-              </span>
-            </div>
-            {c.cashReceived && c.change < 0 && (
-              <p className="text-xs text-rose-500">Не хватает {c.money(-c.change)}</p>
-            )}
-          </div>
+          <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
+            Нажмите «Оплатить» — откроется окно для суммы от клиента и расчёта сдачи.
+          </p>
         )}
 
         {/* Смешанная → суммы по способам */}
@@ -529,44 +551,104 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
           </div>
         )}
 
-        {/* В долг */}
+        {/* В долг — выбор клиента, кому даём */}
         {c.method === 'DEBT' && (
-          <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-            Заказ запишется <b>в долг</b> — без оплаты сейчас. Будет виден в заказах и в отчёте по долгам.
-          </p>
-        )}
-
-        {/* Перевод — показываем QR из настроек, если загружен */}
-        {c.method === 'TRANSFER' && (
-          <div className="mt-3 rounded-xl bg-sky-50 p-3 dark:bg-sky-500/10">
-            {c.transferQr ? (
-              <div className="flex flex-col items-center gap-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={fileUrl(c.transferQr)} alt="QR для перевода" className="h-40 w-40 rounded-lg bg-white object-contain p-1" />
-                <div className="text-center text-xs text-sky-700 dark:text-sky-300">
-                  Клиент сканирует QR и переводит {c.money(c.total)}
-                  {c.transferRequisite && (
-                    <div className="mt-1 font-mono text-slate-600 dark:text-slate-300">{c.transferRequisite}</div>
-                  )}
-                </div>
+          <div className="mt-3 space-y-2 rounded-xl bg-amber-50 p-3 dark:bg-amber-500/10">
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              Заказ запишется <b>в долг</b> — укажите клиента, кому даём.
+            </p>
+            {pickedClient ? (
+              <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm dark:bg-slate-800">
+                <span className="font-medium text-slate-700 dark:text-slate-200">
+                  {pickedClient.fullName ?? 'Клиент'} · {pickedClient.phone}
+                </span>
+                <button
+                  onClick={() => { setPickedClient(null); c.setPhone(''); c.setClientName(''); }}
+                  className="text-xs text-rose-500 hover:text-rose-600"
+                >
+                  Сменить
+                </button>
               </div>
             ) : (
-              <p className="text-xs text-sky-700 dark:text-sky-300">
-                {c.transferRequisite
-                  ? <>Перевод на: <b className="font-mono">{c.transferRequisite}</b></>
-                  : 'Клиент переводит на карту / по QR. Загрузите QR в «Настройки → Оплата».'}
-              </p>
+              <>
+                <input
+                  value={clientQuery}
+                  onChange={(e) => setClientQuery(e.target.value)}
+                  placeholder="Поиск клиента по имени или телефону…"
+                  className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 dark:border-amber-500/30 dark:bg-slate-800 dark:text-slate-200"
+                />
+                {clientResults.length > 0 && (
+                  <div className="max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+                    {clientResults.map((cl) => (
+                      <button
+                        key={cl.id}
+                        onClick={() => {
+                          setPickedClient(cl);
+                          c.setPhone(cl.phone);
+                          c.setClientName(cl.fullName ?? '');
+                          setClientResults([]);
+                          setClientQuery('');
+                        }}
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-700/60"
+                      >
+                        <span className="font-medium text-slate-700 dark:text-slate-200">{cl.fullName ?? 'Без имени'}</span>
+                        <span className="text-xs text-slate-400">{cl.phone}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    value={c.phone}
+                    onChange={(e) => c.setPhone(e.target.value)}
+                    placeholder="или новый: телефон"
+                    className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 dark:border-amber-500/30 dark:bg-slate-800 dark:text-slate-200"
+                  />
+                  <input
+                    value={c.clientName}
+                    onChange={(e) => c.setClientName(e.target.value)}
+                    placeholder="имя"
+                    className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 dark:border-amber-500/30 dark:bg-slate-800 dark:text-slate-200"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Перевод — QR показывается на ЭКРАНЕ ПОКУПАТЕЛЯ (второй экран), не в корзине */}
+        {c.method === 'TRANSFER' && (
+          <div className="mt-3 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+            {c.transferQr || c.transferRequisite ? (
+              <>
+                QR для перевода показан на <b>экране покупателя</b> — клиент сканирует и переводит {c.money(c.total)}.
+                {c.transferRequisite && (
+                  <div className="mt-1 font-mono text-slate-600 dark:text-slate-300">{c.transferRequisite}</div>
+                )}
+                <div className="mt-1 text-[11px] text-sky-600/80">
+                  Нет второго экрана? Откройте его кнопкой «Экран покупателя» вверху кассы.
+                </div>
+              </>
+            ) : (
+              'Загрузите QR для перевода в «Настройки → Оплата» — он появится на экране покупателя.'
             )}
           </div>
         )}
       </div>
 
       <button
-        onClick={c.pay}
+        onClick={() => {
+          if (c.method === 'CASH') {
+            c.setCashReceived('');
+            setShowCashPay(true);
+          } else {
+            c.pay();
+          }
+        }}
         disabled={
           c.cart.length === 0 ||
           (c.isMixed && c.splitLeft !== 0) ||
-          (c.method === 'CASH' && !!c.cashReceived && c.change < 0)
+          (c.method === 'DEBT' && !c.phone.trim())
         }
         className="mt-4 flex w-full items-center justify-between rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
       >
@@ -582,6 +664,59 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
         <span className="text-xs text-slate-400">F3</span>
       </button>
       {c.msg && <p className="mt-2 text-sm text-rose-600">{c.msg}</p>}
+
+      {/* ====== Окно оплаты наличными: получено + сдача ====== */}
+      {showCashPay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowCashPay(false)} />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Оплата наличными</h3>
+              <button onClick={() => setShowCashPay(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">✕</button>
+            </div>
+
+            <div className="mb-4 rounded-xl bg-slate-50 p-4 text-center dark:bg-slate-800/50">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">К оплате</div>
+              <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">{c.money(c.total)}</div>
+            </div>
+
+            <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Получено от клиента</label>
+            <input
+              value={c.cashReceived}
+              onChange={(e) => c.setCashReceived(e.target.value)}
+              type="number"
+              inputMode="decimal"
+              autoFocus
+              placeholder={String(c.total)}
+              className="mb-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-right text-2xl font-semibold outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            />
+            <div className="mb-4 flex flex-wrap gap-2">
+              <button type="button" onClick={() => c.setCashReceived(String(c.total))} className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300">Без сдачи</button>
+              {cashSuggest.map((v) => (
+                <button key={v} type="button" onClick={() => c.setCashReceived(String(v))} className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300">{c.money(v)}</button>
+              ))}
+            </div>
+
+            <div className="mb-4 flex items-center justify-between rounded-xl bg-emerald-50 px-4 py-3 dark:bg-emerald-500/10">
+              <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Сдача</span>
+              <span className={`text-2xl font-bold ${c.change < 0 ? 'text-rose-600' : 'text-emerald-700 dark:text-emerald-300'}`}>
+                {c.cashReceived ? c.money(c.change) : '—'}
+              </span>
+            </div>
+            {c.cashReceived && c.change < 0 && (
+              <p className="-mt-2 mb-3 text-sm text-rose-500">Не хватает {c.money(-c.change)}</p>
+            )}
+
+            <button
+              onClick={() => { setShowCashPay(false); c.pay(); }}
+              disabled={!!c.cashReceived && c.change < 0}
+              className="w-full rounded-xl bg-indigo-600 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+            >
+              Подтвердить оплату
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -688,7 +823,7 @@ const SkinShop: FC<{ ctx: PosCtx }> = ({ ctx }) => {
                       className="group overflow-hidden rounded-xl border border-slate-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-slate-700/60"
                     >
                       <div className="relative flex h-24 items-center justify-center">
-                        <Thumb name={it.name} className="h-full w-full rounded-none text-3xl" />
+                        <Thumb name={it.name} src={it.imageUrl} className="h-full w-full rounded-none text-3xl" />
                         <span className="absolute right-2 top-2 text-amber-400">
                           <IcoStar className="h-4 w-4" />
                         </span>
@@ -715,9 +850,10 @@ const SkinShop: FC<{ ctx: PosCtx }> = ({ ctx }) => {
                     <button
                       key={`${it._type}:${it.id}`}
                       onClick={() => c.addItem(it, it._type)}
-                      className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-slate-50"
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50"
                     >
-                      <span className="text-sm font-medium text-slate-800">
+                      <Thumb name={it.name} src={it.imageUrl} className="h-9 w-9 rounded-lg text-xs" />
+                      <span className="flex-1 text-sm font-medium text-slate-800">
                         {it.name}
                       </span>
                       <span className="text-sm text-slate-500">
@@ -1060,11 +1196,16 @@ const SkinPro: FC<{ ctx: PosCtx }> = ({ ctx }) => {
               className="group overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md"
             >
               <div
-                className={`flex h-28 items-center justify-center bg-gradient-to-br ${tileGrad(
+                className={`flex h-28 items-center justify-center overflow-hidden bg-gradient-to-br ${tileGrad(
                   it.name,
                 )} text-3xl font-bold text-white/90`}
               >
-                {initial(it.name)}
+                {it.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={fileUrl(it.imageUrl)} alt={it.name} className="h-full w-full object-cover" />
+                ) : (
+                  initial(it.name)
+                )}
               </div>
               <div className="p-3">
                 <div className="text-sm font-semibold text-slate-800">
