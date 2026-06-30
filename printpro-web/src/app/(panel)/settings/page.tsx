@@ -16,6 +16,7 @@ import {
   readVfdConfig,
 } from '@/lib/vfd-display';
 import NavIcon from '@/lib/NavIcons';
+import ImageUpload from '@/lib/ImageUpload';
 import {
   PageHeader,
   Card,
@@ -645,6 +646,7 @@ function OrdersSection({ s, set }: { s: Record<string, string>; set: (k: string,
 
 function PosSection({ s, set }: { s: Record<string, string>; set: (k: string, v: string) => void }) {
   return (
+    <div className="space-y-6">
     <Card>
       <SectionTitle>Оформление кассы</SectionTitle>
       <p className="-mt-1 mb-4 text-xs text-slate-400 dark:text-slate-500">
@@ -676,6 +678,62 @@ function PosSection({ s, set }: { s: Record<string, string>; set: (k: string, v:
         })}
       </div>
     </Card>
+
+    <Card>
+      <SectionTitle>Оплата</SectionTitle>
+      <p className="-mt-1 mb-4 text-xs text-slate-400 dark:text-slate-500">
+        Настройки способа «Перевод» на кассе: QR-код для клиента и/или интеграция с платёжной системой.
+      </p>
+      <div className="space-y-4">
+        <ImageUpload
+          value={s.payTransferQr}
+          onChange={(url) => set('payTransferQr', url)}
+          label="QR-код для перевода (показывается клиенту на кассе)"
+          size="h-28 w-28"
+        />
+        <Field label="Реквизит / номер карты (под QR)">
+          <Input
+            value={s.payTransferRequisite ?? ''}
+            onChange={(e) => set('payTransferRequisite', e.target.value)}
+            placeholder="напр. 0000 0000 0000 0000"
+          />
+        </Field>
+
+        <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+          <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+            API-интеграция оплаты (необязательно)
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Провайдер">
+              <Input
+                value={s.payApiProvider ?? ''}
+                onChange={(e) => set('payApiProvider', e.target.value)}
+                placeholder="напр. Alif / DC Pay"
+              />
+            </Field>
+            <Field label="API URL">
+              <Input
+                value={s.payApiUrl ?? ''}
+                onChange={(e) => set('payApiUrl', e.target.value)}
+                placeholder="https://..."
+              />
+            </Field>
+            <Field label="API-ключ">
+              <Input
+                value={s.payApiKey ?? ''}
+                onChange={(e) => set('payApiKey', e.target.value)}
+                placeholder="секретный ключ"
+              />
+            </Field>
+          </div>
+          <p className="mt-2 text-xs text-slate-400">
+            Живое подключение к провайдеру включим, когда дашь доступы (URL и ключ).
+            Ключ виден только владельцу и не публикуется на кассу.
+          </p>
+        </div>
+      </div>
+    </Card>
+    </div>
   );
 }
 

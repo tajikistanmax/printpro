@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction, FC } from 'react';
+import { fileUrl } from '@/lib/api';
 
 // ===== Общий тип данных, который контейнер кассы передаёт в любой «скин» =====
 export interface CartItem {
@@ -88,6 +89,8 @@ export interface PosCtx {
   promoEnabled: boolean;
   scan: (code: string) => void;
   scanMsg: string;
+  transferQr: string;
+  transferRequisite: string;
   pay: () => void;
   payWith: (method: string) => void;
   msg: string;
@@ -533,11 +536,28 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
           </p>
         )}
 
-        {/* Перевод */}
+        {/* Перевод — показываем QR из настроек, если загружен */}
         {c.method === 'TRANSFER' && (
-          <p className="mt-3 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
-            Клиент переводит на карту / по QR. QR для перевода настраивается в «Настройки → Оплата».
-          </p>
+          <div className="mt-3 rounded-xl bg-sky-50 p-3 dark:bg-sky-500/10">
+            {c.transferQr ? (
+              <div className="flex flex-col items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={fileUrl(c.transferQr)} alt="QR для перевода" className="h-40 w-40 rounded-lg bg-white object-contain p-1" />
+                <div className="text-center text-xs text-sky-700 dark:text-sky-300">
+                  Клиент сканирует QR и переводит {c.money(c.total)}
+                  {c.transferRequisite && (
+                    <div className="mt-1 font-mono text-slate-600 dark:text-slate-300">{c.transferRequisite}</div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-sky-700 dark:text-sky-300">
+                {c.transferRequisite
+                  ? <>Перевод на: <b className="font-mono">{c.transferRequisite}</b></>
+                  : 'Клиент переводит на карту / по QR. Загрузите QR в «Настройки → Оплата».'}
+              </p>
+            )}
+          </div>
         )}
       </div>
 

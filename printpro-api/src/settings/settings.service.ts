@@ -26,6 +26,9 @@ export class SettingsService {
       'companyAddress',
       'phone',
       'companyInn',
+      // Оплата «Перевод» — QR и реквизит показываются клиенту на кассе (не секреты)
+      'payTransferQr',
+      'payTransferRequisite',
     ];
     const out: Record<string, string> = {};
     for (const k of PUBLIC_KEYS) if (all[k] != null) out[k] = all[k];

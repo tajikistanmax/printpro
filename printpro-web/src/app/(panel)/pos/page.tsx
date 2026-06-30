@@ -45,6 +45,7 @@ export default function PosPage() {
   const [scanMsg, setScanMsg] = useState('');
   const scanRef = useRef<(code: string) => void>(() => {});
   const [shopInfo, setShopInfo] = useState<{ address?: string; phone?: string; inn?: string }>({});
+  const [transferPay, setTransferPay] = useState<{ qr?: string; requisite?: string }>({});
   const [qrUrl, setQrUrl] = useState('');
 
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -105,6 +106,7 @@ export default function PosPage() {
             phone: ui.phone,
             inn: ui.companyInn,
           });
+          setTransferPay({ qr: ui.payTransferQr, requisite: ui.payTransferRequisite });
         }
       })
       .catch(() => {});
@@ -536,6 +538,8 @@ export default function PosPage() {
     promoEnabled: isEnabled('feature.promocodes'),
     scan: (code: string) => scanRef.current(code),
     scanMsg,
+    transferQr: transferPay.qr ?? '',
+    transferRequisite: transferPay.requisite ?? '',
     pay: () => {
       void pay();
     },
