@@ -260,6 +260,54 @@ export class StockService {
     });
   }
 
+  // Массовая инвентаризация: выставить фактические остатки по списку товаров
+  // одного филиала за один заход (атомарно). Возвращает применено/без изменений.
+  async recountBulk(
+    companyId: string,
+    branchId: string,
+    items: Array<{ productId: string; countedQuantity: number }>,
+    userId?: string,
+  ) {
+    if (!branchId) throw new BadRequestException('Не указан филиал');
+    let applied = 0;
+    let unchanged = 0;
+    await this.prisma.$transaction(async (tx) => {
+      for (const it of items) {
+        const counted = Number(it.countedQuantity);
+        if (!Number.isFinite(counted) || counted < 0) continue;
+        const current = await tx.stock.findUnique({
+          where: { productId_branchId: { productId: it.productId, branchId } },
+        });
+        const was = current ? Number(current.quantity) : 0;
+        const diff = Number((counted - was).toFixed(3));
+        if (diff === 0) {
+          unchanged++;
+          continue;
+        }
+        await tx.stock.upsert({
+          where: { productId_branchId: { productId: it.productId, branchId } },
+          create: { productId: it.productId, branchId, quantity: counted },
+          update: { quantity: counted },
+        });
+        await tx.stockMovement.create({
+          data: {
+            companyId,
+            productId: it.productId,
+            branchId,
+            type: StockMovementType.ADJUST,
+            quantity: Math.abs(diff),
+            beforeQty: was,
+            afterQty: counted,
+            reason: `Инвентаризация: было ${was}, стало ${counted}`,
+            userId,
+          },
+        });
+        applied++;
+      }
+    });
+    return { applied, unchanged };
+  }
+
   // История движений склада (последние 200)
   listMovements(companyId: string) {
     return this.prisma.stockMovement.findMany({

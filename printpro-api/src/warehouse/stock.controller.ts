@@ -45,6 +45,25 @@ export class StockController {
     return this.stock.recount(dto);
   }
 
+  // POST /api/stock/recount-bulk — массовая инвентаризация (лист по филиалу)
+  @Post('recount-bulk')
+  recountBulk(
+    @Body()
+    body: {
+      companyId: string;
+      branchId: string;
+      items: Array<{ productId: string; countedQuantity: number }>;
+      userId?: string;
+    },
+  ) {
+    return this.stock.recountBulk(
+      body.companyId,
+      body.branchId,
+      body.items ?? [],
+      body.userId,
+    );
+  }
+
   // GET /api/stock?companyId=... — текущие остатки
   @Get()
   listStock(@Query('companyId') companyId: string) {

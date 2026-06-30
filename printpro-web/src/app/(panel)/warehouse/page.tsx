@@ -81,6 +81,11 @@ export default function WarehousePage() {
   const [importText, setImportText] = useState('');
   const [importResult, setImportResult] = useState('');
   const [importing, setImporting] = useState(false);
+  const [invOpen, setInvOpen] = useState(false);
+  const [invBranch, setInvBranch] = useState('');
+  const [invCounts, setInvCounts] = useState<Record<string, string>>({});
+  const [invBusy, setInvBusy] = useState(false);
+  const [invResult, setInvResult] = useState('');
 
   // Единицы измерения
   const [uName, setUName] = useState('');
@@ -383,6 +388,38 @@ export default function WarehousePage() {
     }
   }
 
+  // ---- инвентаризация (лист по филиалу) ----
+  function expectedFor(p: any, branchId: string) {
+    return Number((p.stock ?? []).find((s: any) => s.branchId === branchId)?.quantity ?? 0);
+  }
+  function openInventory() {
+    setInvBranch(branches[0]?.id ?? '');
+    setInvCounts({});
+    setInvResult('');
+    setInvOpen(true);
+  }
+  async function applyInventory() {
+    const branchId = invBranch || branches[0]?.id;
+    if (!branchId) { setInvResult('Нет филиала'); return; }
+    const items = Object.entries(invCounts)
+      .filter(([, v]) => String(v).trim() !== '')
+      .map(([productId, v]) => ({ productId, countedQuantity: Number(v) }))
+      .filter((it) => Number.isFinite(it.countedQuantity) && it.countedQuantity >= 0);
+    if (!items.length) { setInvResult('Введите фактические остатки хотя бы по одному товару'); return; }
+    setInvBusy(true);
+    setInvResult('');
+    try {
+      const r = await api.post('/stock/recount-bulk', { companyId: cid, branchId, items });
+      setInvResult(`✓ Применено: ${r.applied}, без изменений: ${r.unchanged}`);
+      setInvCounts({});
+      load();
+    } catch (e: any) {
+      setInvResult('Ошибка: ' + (e?.message ?? e));
+    } finally {
+      setInvBusy(false);
+    }
+  }
+
   // ---- фильтрация ----
   const ql = q.trim().toLowerCase();
   const filtered = products.filter((p) => {
@@ -417,6 +454,11 @@ export default function WarehousePage() {
         subtitle="Управляйте материалами, остатками и движением"
         actions={
           <div className="flex items-center gap-2">
+            {canManage && (
+              <Button variant="ghost" onClick={openInventory}>
+                <NavIcon name="check" className="h-4 w-4" />Инвентаризация
+              </Button>
+            )}
             {canProducts && (
               <Button variant="ghost" onClick={() => { setImportOpen(true); setImportResult(''); }}>
                 <NavIcon name="download" className="h-4 w-4 rotate-180" />Импорт
@@ -673,6 +715,80 @@ export default function WarehousePage() {
               {uMsg && <span className="text-sm text-slate-500">{uMsg}</span>}
             </form>
           </Card>
+        </div>
+      )}
+
+      {/* ===================== ИНВЕНТАРИЗАЦИЯ (ЛИСТ) ===================== */}
+      {invOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={() => setInvOpen(false)} />
+          <div className="relative flex max-h-[88vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-700/60">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Инвентаризация</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Впишите фактический остаток. Пустые строки не трогаются.</p>
+              </div>
+              <button onClick={() => setInvOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+            </div>
+
+            <div className="border-b border-slate-100 p-4 dark:border-slate-700/60">
+              <Field label="Филиал">
+                <Select value={invBranch} onChange={(e) => { setInvBranch(e.target.value); setInvCounts({}); }} className="w-auto">
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
+              </Field>
+            </div>
+
+            <div className="flex-1 overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-400 dark:bg-slate-800">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium">Товар</th>
+                    <th className="px-3 py-2 text-right font-medium">Учёт</th>
+                    <th className="px-3 py-2 text-right font-medium">Факт</th>
+                    <th className="px-4 py-2 text-right font-medium">Разница</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((p) => {
+                    const exp = expectedFor(p, invBranch);
+                    const raw = invCounts[p.id];
+                    const has = String(raw ?? '').trim() !== '';
+                    const diff = has ? Number(raw) - exp : 0;
+                    return (
+                      <tr key={p.id} className="border-b border-slate-100 dark:border-slate-800">
+                        <td className="px-4 py-2 text-slate-700 dark:text-slate-200">
+                          {p.name}
+                          <span className="ml-1 text-xs text-slate-400">{p.unit?.shortName ?? ''}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-500">{exp}</td>
+                        <td className="px-3 py-2 text-right">
+                          <input
+                            value={raw ?? ''}
+                            onChange={(e) => setInvCounts((c) => ({ ...c, [p.id]: e.target.value }))}
+                            inputMode="decimal"
+                            placeholder="—"
+                            className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-right outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                          />
+                        </td>
+                        <td className={`px-4 py-2 text-right tabular-nums font-medium ${!has ? 'text-slate-300' : diff === 0 ? 'text-slate-400' : diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {has ? (diff > 0 ? `+${diff}` : diff) : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center gap-3 border-t border-slate-100 p-4 dark:border-slate-700/60">
+              <Button onClick={applyInventory} disabled={invBusy}>
+                <NavIcon name="check" className="h-4 w-4" />{invBusy ? 'Применяю…' : 'Применить'}
+              </Button>
+              <Button variant="ghost" onClick={() => setInvOpen(false)}>Закрыть</Button>
+              {invResult && <span className="text-sm text-slate-600 dark:text-slate-300">{invResult}</span>}
+            </div>
+          </div>
         </div>
       )}
 
