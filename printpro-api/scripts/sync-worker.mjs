@@ -9,7 +9,10 @@
 //   SYNC_INTERVAL — период в секундах (по умолч. 20)
 //
 // Запуск:  node scripts/sync-worker.mjs
+// Переменные можно положить в printpro-api/.env — они подхватятся автоматически
+// (консольные переменные имеют приоритет над .env).
 
+import 'dotenv/config';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
