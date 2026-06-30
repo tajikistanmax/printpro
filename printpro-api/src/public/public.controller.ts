@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Query,
   UploadedFile,
@@ -147,6 +148,55 @@ export class PublicController {
   @Post('orders')
   createOrder(@Body() dto: PublicOrderDto) {
     return this.createOrderHandler(dto);
+  }
+
+  // Публичный просмотр чека по QR (без входа). Ссылка вида /r/:id на сайте.
+  @Get('receipt/:id')
+  async receipt(@Param('id') id: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      include: {
+        company: { select: { name: true } },
+        items: {
+          include: {
+            service: { select: { name: true } },
+            product: { select: { name: true } },
+          },
+        },
+      },
+    });
+    if (!order) return { found: false };
+
+    const rows = await this.prisma.setting.findMany({
+      where: {
+        companyId: order.companyId,
+        key: { in: ['companyName', 'companyAddress', 'phone', 'companyInn'] },
+      },
+    });
+    const s: Record<string, string> = {};
+    for (const r of rows) s[r.key] = r.value ?? '';
+
+    return {
+      found: true,
+      company: {
+        name: s.companyName || order.company?.name || 'PrintPro',
+        address: s.companyAddress || null,
+        phone: s.phone || null,
+        inn: s.companyInn || null,
+      },
+      orderNumber: order.orderNumber,
+      date: order.createdAt,
+      paymentStatus: order.paymentStatus,
+      total: Number(order.total),
+      paid: Number(order.paid),
+      balanceDue: Number(order.balanceDue),
+      items: order.items.map((it) => ({
+        name:
+          it.description || it.service?.name || it.product?.name || 'Позиция',
+        quantity: Number(it.quantity),
+        lineTotal: Number(it.lineTotal),
+      })),
+    };
   }
 
   // ---------- Личный кабинет клиента (по телефону, без пароля) ----------

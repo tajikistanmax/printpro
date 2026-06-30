@@ -8,6 +8,7 @@ import { SKINS, type CartItem, type PosCtx } from './_pos';
 import { useFeatureFlags } from '@/lib/feature-flags';
 import { sendDisplay, openCustomerDisplay } from '@/lib/customer-display';
 import { readVfdConfig, vfdShow, DEFAULT_VFD, type VfdConfig } from '@/lib/vfd-display';
+import QRCode from 'qrcode';
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(n) + ' c.';
@@ -37,6 +38,7 @@ export default function PosPage() {
   const [scanMsg, setScanMsg] = useState('');
   const scanRef = useRef<(code: string) => void>(() => {});
   const [shopInfo, setShopInfo] = useState<{ address?: string; phone?: string; inn?: string }>({});
+  const [qrUrl, setQrUrl] = useState('');
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState('');
@@ -247,6 +249,18 @@ export default function PosPage() {
       setScanMsg(`✗ Штрихкод ${code} не найден`);
     }
   };
+
+  // QR-код чека: ссылка на онлайн-просмотр заказа (/r/:id)
+  useEffect(() => {
+    if (!receipt?.id || typeof window === 'undefined') {
+      setQrUrl('');
+      return;
+    }
+    const url = `${window.location.origin}/r/${receipt.id}`;
+    QRCode.toDataURL(url, { margin: 1, width: 160 })
+      .then(setQrUrl)
+      .catch(() => setQrUrl(''));
+  }, [receipt]);
 
   // Автоскрытие подсказки скана
   useEffect(() => {
@@ -634,6 +648,13 @@ export default function PosPage() {
                   <span>{receipt._method}</span>
                 </div>
               </div>
+              {qrUrl && (
+                <div className="mt-3 flex flex-col items-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={qrUrl} alt="QR чека" className="h-24 w-24" />
+                  <div className="text-[10px] text-slate-400">Чек онлайн — наведите камеру</div>
+                </div>
+              )}
               <div className="mt-3 text-center text-xs text-slate-400">
                 Спасибо за покупку!
                 {shopInfo.phone && (
