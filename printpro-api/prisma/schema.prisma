@@ -526,6 +526,21 @@ model Product {
   orderItems       OrderItem[]
   receiptItems     StockReceiptItem[]
   serviceMaterials ServiceMaterial[]
+  barcodeAliases   ProductBarcodeAlias[]
+}
+
+// Доп. штрихкоды товара (один товар = несколько ШК)
+model ProductBarcodeAlias {
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+  syncNode  String?
+  id        String    @id @default(uuid())
+  productId String
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  barcode   String    @unique
+  createdAt DateTime  @default(now())
+
+  @@index([productId])
 }
 
 model Stock {

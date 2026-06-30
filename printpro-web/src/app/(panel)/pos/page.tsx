@@ -241,7 +241,12 @@ export default function PosPage() {
   scanRef.current = (raw: string) => {
     const code = raw.trim();
     if (!code) return;
-    const p = products.find((x) => x.barcode === code || x.sku === code);
+    const p = products.find(
+      (x) =>
+        x.barcode === code ||
+        x.sku === code ||
+        (x.barcodeAliases ?? []).some((a: any) => a.barcode === code),
+    );
     if (p) {
       addItem(p, 'PRODUCT');
       setScanMsg(`✓ ${p.name}`);

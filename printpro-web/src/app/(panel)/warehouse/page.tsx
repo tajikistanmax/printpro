@@ -76,6 +76,7 @@ export default function WarehousePage() {
   const [loading, setLoading] = useState(true);
 
   const [material, setMaterial] = useState<any | null>(null); // открытая панель
+  const [aliasInput, setAliasInput] = useState('');
 
   // Единицы измерения
   const [uName, setUName] = useState('');
@@ -279,6 +280,24 @@ export default function WarehousePage() {
   // ---- панель материала ----
   async function openMaterial(id: string) {
     try { const full = await api.get(`/products/${id}`); setMaterial(full); } catch {}
+  }
+  async function addAlias() {
+    const code = aliasInput.trim();
+    if (!code || !material) return;
+    try {
+      await api.post(`/products/${material.id}/barcode-aliases`, { barcode: code });
+      setAliasInput('');
+      openMaterial(material.id);
+    } catch (e: any) {
+      alert('Не удалось добавить штрихкод: ' + (e?.message ?? e));
+    }
+  }
+  async function removeAlias(aliasId: string) {
+    if (!material) return;
+    try {
+      await api.del(`/products/barcode-aliases/${aliasId}`);
+      openMaterial(material.id);
+    } catch { /* ignore */ }
   }
   function quickAction(action: 'receive' | 'transfer' | 'recount') {
     if (!material) return;
@@ -647,6 +666,48 @@ export default function WarehousePage() {
                   <Info label="Размер" value={material.size ?? '—'} />
                   <Info label="Вес" value={material.weight ?? '—'} />
                   <Info label="Цена за ед." value={money(Number(material.salePrice))} />
+                </div>
+
+                {/* Доп. штрихкоды (алиасы) — один товар = несколько ШК */}
+                <div className="mb-4">
+                  <SectionTitle>Доп. штрихкоды</SectionTitle>
+                  {(material.barcodeAliases ?? []).length === 0 ? (
+                    <p className="-mt-1 mb-2 text-xs text-slate-400">
+                      Несколько штрихкодов на один товар — сканер узнаёт любой из них.
+                    </p>
+                  ) : (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {material.barcodeAliases.map((a: any) => (
+                        <span
+                          key={a.id}
+                          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 font-mono text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                        >
+                          {a.barcode}
+                          {canManage && (
+                            <button
+                              onClick={() => removeAlias(a.id)}
+                              className="text-rose-400 transition hover:text-rose-600"
+                              title="Удалить"
+                            >
+                              <NavIcon name="close" className="h-3 w-3" />
+                            </button>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {canManage && (
+                    <div className="flex gap-2">
+                      <Input
+                        value={aliasInput}
+                        onChange={(e) => setAliasInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAlias(); } }}
+                        placeholder="Отсканируйте или введите ШК"
+                        className="flex-1"
+                      />
+                      <Button size="sm" onClick={addAlias}><NavIcon name="plus" className="h-4 w-4" />Добавить</Button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Остаток */}

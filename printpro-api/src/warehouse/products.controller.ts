@@ -43,6 +43,17 @@ export class ProductsController {
     return this.products.removeProduct(id);
   }
 
+  // ---- Доп. штрихкоды (алиасы) ----
+  @Post('products/:id/barcode-aliases')
+  addBarcodeAlias(@Param('id') id: string, @Body() body: { barcode: string }) {
+    return this.products.addBarcodeAlias(id, body.barcode);
+  }
+
+  @Delete('products/barcode-aliases/:aliasId')
+  removeBarcodeAlias(@Param('aliasId') aliasId: string) {
+    return this.products.removeBarcodeAlias(aliasId);
+  }
+
   // ---- Категории товаров ----
   @Post('product-categories')
   createCategory(@Body() dto: CreateCategoryDto) {

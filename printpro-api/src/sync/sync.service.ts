@@ -25,6 +25,7 @@ const SYNC_TABLES: { model: string; table: string }[] = [
   { model: 'productCategory', table: 'ProductCategory' },
   { model: 'unit', table: 'Unit' },
   { model: 'product', table: 'Product' },
+  { model: 'productBarcodeAlias', table: 'ProductBarcodeAlias' },
   { model: 'serviceMaterial', table: 'ServiceMaterial' },
   { model: 'supplier', table: 'Supplier' },
   { model: 'stock', table: 'Stock' },

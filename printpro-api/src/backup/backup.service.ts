@@ -20,6 +20,7 @@ const TABLES: { model: string; where: (cid: string) => any }[] = [
   { model: 'productCategory', where: (cid) => ({ companyId: cid }) },
   { model: 'unit', where: (cid) => ({ companyId: cid }) },
   { model: 'product', where: (cid) => ({ companyId: cid }) },
+  { model: 'productBarcodeAlias', where: (cid) => ({ product: { companyId: cid } }) },
   { model: 'supplier', where: (cid) => ({ companyId: cid }) },
   { model: 'stock', where: (cid) => ({ product: { companyId: cid } }) },
   { model: 'stockReceipt', where: (cid) => ({ companyId: cid }) },

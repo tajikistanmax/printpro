@@ -36,6 +36,10 @@ export class ProductsService {
         category: true,
         unit: true,
         stock: { include: { branch: { select: { name: true } } } },
+        barcodeAliases: {
+          where: { deletedAt: null },
+          select: { id: true, barcode: true },
+        },
       },
       orderBy: { name: 'asc' },
     });
@@ -49,6 +53,11 @@ export class ProductsService {
         unit: true,
         stock: { include: { branch: true } },
         serviceMaterials: { include: { service: { select: { id: true, name: true } } } },
+        barcodeAliases: {
+          where: { deletedAt: null },
+          select: { id: true, barcode: true },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
     if (!product) throw new NotFoundException('Товар не найден');
@@ -90,6 +99,21 @@ export class ProductsService {
       lastReceipt,
       consumption: { avgPerDay, daysLeft },
     };
+  }
+
+  // ---------- Доп. штрихкоды (алиасы) ----------
+  async addBarcodeAlias(productId: string, barcode: string) {
+    const code = (barcode ?? '').trim();
+    if (!code) throw new NotFoundException('Пустой штрихкод');
+    return this.prisma.productBarcodeAlias.create({
+      data: { productId, barcode: code },
+      select: { id: true, barcode: true },
+    });
+  }
+
+  async removeBarcodeAlias(aliasId: string) {
+    await this.prisma.productBarcodeAlias.delete({ where: { id: aliasId } });
+    return { ok: true };
   }
 
   // ---------- Категории товаров ----------
