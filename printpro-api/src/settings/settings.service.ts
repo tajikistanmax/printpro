@@ -22,6 +22,10 @@ export class SettingsService {
       'companyName',
       'currency',
       'language',
+      // Контакты компании — для чека (не секреты)
+      'companyAddress',
+      'phone',
+      'companyInn',
     ];
     const out: Record<string, string> = {};
     for (const k of PUBLIC_KEYS) if (all[k] != null) out[k] = all[k];

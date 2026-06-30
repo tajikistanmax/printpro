@@ -36,6 +36,7 @@ export default function PosPage() {
   const [vfdCfg, setVfdCfg] = useState<VfdConfig>(DEFAULT_VFD);
   const [scanMsg, setScanMsg] = useState('');
   const scanRef = useRef<(code: string) => void>(() => {});
+  const [shopInfo, setShopInfo] = useState<{ address?: string; phone?: string; inn?: string }>({});
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState('');
@@ -86,7 +87,14 @@ export default function PosPage() {
       .then((ui) => {
         if (ui?.posLayout) setLayout(ui.posLayout);
         if (ui?.companyName) setShopName(ui.companyName);
-        if (ui) setVfdCfg(readVfdConfig(ui));
+        if (ui) {
+          setVfdCfg(readVfdConfig(ui));
+          setShopInfo({
+            address: ui.companyAddress,
+            phone: ui.phone,
+            inn: ui.companyInn,
+          });
+        }
       })
       .catch(() => {});
     // Недавние заказы + статистика (для богатых оформлений). Требует orders.view —
@@ -575,8 +583,17 @@ export default function PosPage() {
           <div className="w-80 rounded-2xl bg-white p-6 shadow-2xl">
             <div className="receipt-print">
               <div className="text-center">
-                <div className="text-lg font-bold">PrintPro</div>
-                <div className="text-xs text-slate-500">Чек продажи</div>
+                <div className="text-lg font-bold">{shopName}</div>
+                {shopInfo.address && (
+                  <div className="text-[11px] text-slate-500">{shopInfo.address}</div>
+                )}
+                {shopInfo.phone && (
+                  <div className="text-[11px] text-slate-500">тел. {shopInfo.phone}</div>
+                )}
+                {shopInfo.inn && (
+                  <div className="text-[11px] text-slate-500">ИНН {shopInfo.inn}</div>
+                )}
+                <div className="mt-1 text-xs font-medium text-slate-500">Чек продажи</div>
               </div>
               <div className="my-3 border-y border-dashed border-slate-300 py-2 text-xs">
                 {receipt.receiptNumber && (
@@ -618,7 +635,10 @@ export default function PosPage() {
                 </div>
               </div>
               <div className="mt-3 text-center text-xs text-slate-400">
-                Спасибо за заказ!
+                Спасибо за покупку!
+                {shopInfo.phone && (
+                  <div className="mt-0.5">По вопросам заказа: {shopInfo.phone}</div>
+                )}
               </div>
             </div>
 
