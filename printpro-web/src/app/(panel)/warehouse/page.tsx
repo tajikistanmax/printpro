@@ -86,6 +86,7 @@ export default function WarehousePage() {
   const [invCounts, setInvCounts] = useState<Record<string, string>>({});
   const [invBusy, setInvBusy] = useState(false);
   const [invResult, setInvResult] = useState('');
+  const [invSearch, setInvSearch] = useState('');
 
   // Единицы измерения
   const [uName, setUName] = useState('');
@@ -396,6 +397,7 @@ export default function WarehousePage() {
     setInvBranch(branches[0]?.id ?? '');
     setInvCounts({});
     setInvResult('');
+    setInvSearch('');
     setInvOpen(true);
   }
   async function applyInventory() {
@@ -419,6 +421,23 @@ export default function WarehousePage() {
       setInvBusy(false);
     }
   }
+  // производные данные листа инвентаризации: фильтр по поиску + итоги
+  const invQ = invSearch.trim().toLowerCase();
+  const invFiltered = invQ
+    ? products.filter((p) => String(p.name ?? '').toLowerCase().includes(invQ))
+    : products;
+  const invSummary = products.reduce(
+    (acc, p) => {
+      const raw = invCounts[p.id];
+      if (String(raw ?? '').trim() === '') return acc;
+      const d = Number(raw) - expectedFor(p, invBranch);
+      acc.filled++;
+      if (d > 0) acc.surplus += d;
+      else if (d < 0) acc.shortage += -d;
+      return acc;
+    },
+    { filled: 0, surplus: 0, shortage: 0 },
+  );
 
   // ---- фильтрация ----
   const ql = q.trim().toLowerCase();
@@ -731,11 +750,19 @@ export default function WarehousePage() {
               <button onClick={() => setInvOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
-            <div className="border-b border-slate-100 p-4 dark:border-slate-700/60">
+            <div className="flex flex-wrap items-end gap-4 border-b border-slate-100 p-4 dark:border-slate-700/60">
               <Field label="Филиал">
                 <Select value={invBranch} onChange={(e) => { setInvBranch(e.target.value); setInvCounts({}); }} className="w-auto">
                   {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </Select>
+              </Field>
+              <Field label="Поиск товара">
+                <input
+                  value={invSearch}
+                  onChange={(e) => setInvSearch(e.target.value)}
+                  placeholder="Название…"
+                  className="w-56 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                />
               </Field>
             </div>
 
@@ -750,7 +777,14 @@ export default function WarehousePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {products.map((p) => {
+                  {invFiltered.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-400">
+                        Ничего не найдено
+                      </td>
+                    </tr>
+                  )}
+                  {invFiltered.map((p) => {
                     const exp = expectedFor(p, invBranch);
                     const raw = invCounts[p.id];
                     const has = String(raw ?? '').trim() !== '';
@@ -781,12 +815,22 @@ export default function WarehousePage() {
               </table>
             </div>
 
-            <div className="flex items-center gap-3 border-t border-slate-100 p-4 dark:border-slate-700/60">
-              <Button onClick={applyInventory} disabled={invBusy}>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 p-4 dark:border-slate-700/60">
+              <Button onClick={applyInventory} disabled={invBusy || invSummary.filled === 0}>
                 <NavIcon name="check" className="h-4 w-4" />{invBusy ? 'Применяю…' : 'Применить'}
               </Button>
               <Button variant="ghost" onClick={() => setInvOpen(false)}>Закрыть</Button>
-              {invResult && <span className="text-sm text-slate-600 dark:text-slate-300">{invResult}</span>}
+              {/* Итог по заполненным строкам */}
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                Заполнено: <b className="text-slate-700 dark:text-slate-200">{invSummary.filled}</b>
+                {invSummary.surplus > 0 && (
+                  <span className="ml-3 text-emerald-600">излишек +{+invSummary.surplus.toFixed(3)}</span>
+                )}
+                {invSummary.shortage > 0 && (
+                  <span className="ml-3 text-rose-600">недостача −{+invSummary.shortage.toFixed(3)}</span>
+                )}
+              </span>
+              {invResult && <span className="ml-auto text-sm text-slate-600 dark:text-slate-300">{invResult}</span>}
             </div>
           </div>
         </div>
