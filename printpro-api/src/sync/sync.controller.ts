@@ -5,8 +5,12 @@ import {
   Get,
   Headers,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { SyncService } from './sync.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { RequirePermissions } from '../auth/permissions.decorator';
 
 // Синхронизация между узлами защищена общим секретом SYNC_SECRET
 // (передаётся в заголовке x-sync-secret), а не входом пользователя.
@@ -50,5 +54,13 @@ export class SyncController {
   @Get('status')
   status() {
     return this.sync.status();
+  }
+
+  // Ручной запуск синхронизации из панели (вход + право настроек)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('settings.manage')
+  @Post('run')
+  run() {
+    return this.sync.runNow();
   }
 }

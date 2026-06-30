@@ -47,6 +47,7 @@ type Section =
   | 'orders'
   | 'pos'
   | 'display'
+  | 'sync'
   | 'notifications'
   | 'features'
   | 'backup';
@@ -229,6 +230,7 @@ export default function SettingsPage() {
     orders: 'Заказы',
     pos: 'Касса и оплата',
     display: 'Дисплей покупателя',
+    sync: 'Синхронизация',
     notifications: 'Уведомления',
     features: 'Функции системы',
   };
@@ -238,6 +240,7 @@ export default function SettingsPage() {
     orders: 'Нумерация и сроки заказов',
     pos: 'Оформление экрана продажи',
     display: 'Второй экран: графический монитор и текстовый VFD-дисплей',
+    sync: 'Обмен данными между локальным сервером и облаком',
     notifications: 'Email, Telegram и системные уведомления',
     features: 'Включение и отключение разделов',
   };
@@ -252,6 +255,7 @@ export default function SettingsPage() {
     { key: 'notifications', icon: 'complaints', title: 'Уведомления',         tone: 'rose' },
     { key: 'pos',           icon: 'pos',        title: 'Касса и оплата',      tone: 'sky' },
     { key: 'display',       icon: 'production', title: 'Дисплей покупателя',  tone: 'violet' },
+    { key: 'sync',          icon: 'refresh',    title: 'Синхронизация',       tone: 'emerald' },
     { key: 'features',      icon: 'settings',   title: 'Функции системы',     tone: 'indigo' },
     { href: '/audit',       icon: 'audit',      title: 'Журнал системы',      tone: 'slate' },
   ];
@@ -349,6 +353,7 @@ export default function SettingsPage() {
           {section === 'orders' && <OrdersSection s={s} set={set} />}
           {section === 'pos' && <PosSection s={s} set={set} />}
           {section === 'display' && <DisplaySection s={s} set={set} setMsg={setMsg} />}
+          {section === 'sync' && <SyncSection />}
           {section === 'notifications' && (
             <NotificationsSection s={s} set={set} testTelegram={testTelegram} testEmail={testEmail} />
           )}
@@ -816,6 +821,116 @@ function DisplaySection({
           </>
         )}
       </Card>
+    </div>
+  );
+}
+
+function SyncSection() {
+  const [st, setSt] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  function loadStatus() {
+    api.get('/sync/status').then(setSt).catch(() => {});
+  }
+  useEffect(() => {
+    loadStatus();
+    const id = setInterval(loadStatus, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  async function runNow() {
+    setBusy(true);
+    setMsg('Синхронизирую с облаком…');
+    try {
+      const r = await api.post('/sync/run', {});
+      setMsg(`✓ Готово: отправлено в облако ${r.up}, получено ${r.down}`);
+      loadStatus();
+    } catch (e: any) {
+      setMsg('Ошибка: ' + (e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const configured = !!(st?.cloudConfigured && st?.secretConfigured);
+  const isCloud = st?.node === 'C';
+  const lastSync = st?.lastSyncAt
+    ? new Date(st.lastSyncAt).toLocaleString('ru-RU')
+    : 'ещё не было';
+  const fresh =
+    st?.lastSyncAt && Date.now() - new Date(st.lastSyncAt).getTime() < 5 * 60 * 1000;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <SectionTitle>Состояние</SectionTitle>
+        <dl className="space-y-2.5 text-sm">
+          <InfoRow label="Этот узел" value={st?.node ?? '…'} />
+          <InfoRow label="Адрес облака" value={st?.cloudApi ?? (isCloud ? 'это облако' : 'не задан')} />
+          <InfoRow label="Последняя синхронизация" value={lastSync} />
+          <div className="flex items-center justify-between pt-1">
+            <dt className="text-slate-500 dark:text-slate-400">Готовность</dt>
+            <dd>
+              {isCloud ? (
+                <span className="rounded border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                  облачный узел
+                </span>
+              ) : configured ? (
+                <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                  настроено{fresh ? ' · на связи' : ''}
+                </span>
+              ) : (
+                <span className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                  не настроено
+                </span>
+              )}
+            </dd>
+          </div>
+        </dl>
+
+        {!isCloud && (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button onClick={runNow} disabled={busy || !configured}>
+              <NavIcon name="refresh" className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
+              Синхронизировать сейчас
+            </Button>
+            <Button variant="ghost" onClick={loadStatus} disabled={busy}>
+              Обновить статус
+            </Button>
+            {msg && <span className="text-sm text-slate-600 dark:text-slate-300">{msg}</span>}
+          </div>
+        )}
+        {isCloud && (
+          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+            Вы открыли облачную панель — облако само принимает данные от точек. Кнопка
+            синхронизации нужна на локальных серверах точек.
+          </p>
+        )}
+      </Card>
+
+      {!isCloud && !configured && (
+        <Card>
+          <SectionTitle>Как включить синхронизацию</SectionTitle>
+          <ol className="ml-4 list-decimal space-y-2 text-sm text-slate-600 dark:text-slate-300">
+            <li>
+              В облаке (Render → сервис <b>printpro-api</b> → <b>Environment</b>) скопируйте
+              значение <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">SYNC_SECRET</code>.
+            </li>
+            <li>
+              На этом компьютере в файле <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">printpro-api/.env</code> впишите:
+              <pre className="mt-1 overflow-x-auto rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-100">SYNC_SECRET=вставьте_секрет
+CLOUD_API=https://printpro-api.onrender.com/api</pre>
+            </li>
+            <li>Перезапустите локальный сервер (чтобы он прочитал новый <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">.env</code>).</li>
+            <li>Вернитесь сюда и нажмите «Синхронизировать сейчас».</li>
+          </ol>
+          <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+            Для постоянного автообмена в фоне можно запустить <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">npm run sync</code> или
+            установщик локального узла (Docker).
+          </p>
+        </Card>
+      )}
     </div>
   );
 }

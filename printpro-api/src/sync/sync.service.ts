@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 // Реестр синхронизируемых таблиц. Порядок важен: родители раньше детей
@@ -139,6 +144,77 @@ export class SyncService {
       now: new Date().toISOString(),
       lastSyncAt: hb ? hb.lastPullAt.toISOString() : null,
       node: (process.env.NODE_ID ?? 'C').toUpperCase(),
+      cloudConfigured: !!process.env.CLOUD_API,
+      secretConfigured: !!process.env.SYNC_SECRET,
+      cloudApi: process.env.CLOUD_API ?? null,
     };
+  }
+
+  // Ручная синхронизация «сейчас» — локальный API сам сходит в облако.
+  // Один полный цикл: облако→локал и локал→облако. Курсоры — в SyncCursor.
+  async runNow() {
+    const CLOUD = process.env.CLOUD_API;
+    const SECRET = process.env.SYNC_SECRET;
+    const NODE_ID = (process.env.NODE_ID ?? 'K1').toUpperCase();
+    if (!CLOUD || !SECRET) {
+      throw new BadRequestException(
+        'Синхронизация не настроена: задайте CLOUD_API и SYNC_SECRET в .env локального сервера',
+      );
+    }
+
+    const getCursor = async (peer: string) => {
+      const c = await this.prisma.syncCursor.findUnique({ where: { peer } });
+      return c ? c.lastPullAt.toISOString() : new Date(0).toISOString();
+    };
+    const setCursor = async (peer: string, ts: string) => {
+      await this.prisma.syncCursor.upsert({
+        where: { peer },
+        create: { peer, lastPullAt: new Date(ts) },
+        update: { lastPullAt: new Date(ts) },
+      });
+    };
+    const callCloud = async (path: string, body: unknown) => {
+      const res = await fetch(`${CLOUD}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-sync-secret': SECRET },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`облако ${path} → ${res.status}`);
+      return res.json();
+    };
+    const count = (changes: Record<string, unknown[]>) =>
+      Object.values(changes ?? {}).reduce((s, a) => s + a.length, 0);
+
+    let up = 0;
+    let down = 0;
+    try {
+      // 1) Облако → Локал
+      const cloudSince = await getCursor('cloudPull');
+      const fromCloud = await callCloud('/sync/pull', { since: cloudSince });
+      if (count(fromCloud.changes) > 0) {
+        const r = await this.push(fromCloud.changes, 'CLOUD');
+        down = r.applied;
+      }
+      await setCursor('cloudPull', fromCloud.until);
+
+      // 2) Локал → Облако
+      const localSince = await getCursor('localPull');
+      const fromLocal = await this.pull(localSince);
+      if (count(fromLocal.changes) > 0) {
+        const r = await callCloud('/sync/push', {
+          changes: fromLocal.changes,
+          peer: NODE_ID,
+        });
+        up = r.applied;
+      }
+      await setCursor('localPull', fromLocal.until);
+
+      await this.heartbeat();
+      return { ok: true, up, down, at: new Date().toISOString() };
+    } catch (e: any) {
+      throw new ServiceUnavailableException(
+        `Не удалось синхронизироваться: ${e?.message ?? e}`,
+      );
+    }
   }
 }
