@@ -1,5 +1,5 @@
 // Простой клиент для общения с API PrintPro.
-import { API_BASE } from './config';
+import { API_BASE, SERVER_ORIGIN } from './config';
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -74,9 +74,11 @@ export const api = {
   },
 };
 
-// Полный URL к файлу из /uploads (для <img src>)
+// Полный URL к файлу из /uploads (для <img src>).
+// Статика раздаётся бэкендом по корню (/uploads/...), БЕЗ префикса /api,
+// поэтому берём SERVER_ORIGIN, а не API_BASE.
 export function fileUrl(path?: string | null): string {
   if (!path) return '';
   if (/^https?:\/\//.test(path)) return path;
-  return `${API_BASE}${path}`;
+  return `${SERVER_ORIGIN}${path}`;
 }
