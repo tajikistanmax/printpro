@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { DEFAULT_POS_LAYOUT } from '@/lib/pos-layouts';
@@ -34,6 +34,8 @@ export default function PosPage() {
   const [search, setSearch] = useState('');
   const [layout, setLayout] = useState<string>(DEFAULT_POS_LAYOUT);
   const [vfdCfg, setVfdCfg] = useState<VfdConfig>(DEFAULT_VFD);
+  const [scanMsg, setScanMsg] = useState('');
+  const scanRef = useRef<(code: string) => void>(() => {});
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState('');
@@ -223,6 +225,55 @@ export default function PosPage() {
       method: receipt._method,
     });
   }, [receipt, shopName, displayOn, vfdCfg]);
+
+  // Сканер штрихкодов: «невидимый» захват. Кассир сканирует где угодно на кассе —
+  // товар сам падает в корзину. Поиск по штрихкоду или SKU среди загруженных товаров.
+  scanRef.current = (raw: string) => {
+    const code = raw.trim();
+    if (!code) return;
+    const p = products.find((x) => x.barcode === code || x.sku === code);
+    if (p) {
+      addItem(p, 'PRODUCT');
+      setScanMsg(`✓ ${p.name}`);
+    } else {
+      setScanMsg(`✗ Штрихкод ${code} не найден`);
+    }
+  };
+
+  // Автоскрытие подсказки скана
+  useEffect(() => {
+    if (!scanMsg) return;
+    const id = setTimeout(() => setScanMsg(''), 2500);
+    return () => clearTimeout(id);
+  }, [scanMsg]);
+
+  // Глобальный перехват сканера (keyboard-wedge): быстрый ввод + Enter = штрихкод.
+  // Во время ручного ввода в поля (INPUT/TEXTAREA) не вмешиваемся.
+  useEffect(() => {
+    let buf = '';
+    let last = 0;
+    function onKey(e: KeyboardEvent) {
+      const el = document.activeElement as HTMLElement | null;
+      if (
+        el &&
+        (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+      ) {
+        return; // печатают вручную — не мешаем
+      }
+      const gap = e.timeStamp - last;
+      last = e.timeStamp;
+      if (gap > 80) buf = ''; // медленно = человек: сбрасываем
+      if (e.key === 'Enter') {
+        const code = buf;
+        buf = '';
+        if (code.length >= 4) scanRef.current(code);
+        return;
+      }
+      if (e.key.length === 1) buf += e.key;
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   async function checkPromo() {
     setPromoMsg('');
@@ -450,6 +501,15 @@ export default function PosPage() {
             </svg>
           </span>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Касса — продажа</h1>
+          <span
+            className="hidden items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500 sm:flex dark:bg-slate-800 dark:text-slate-400"
+            title="Сканируйте штрихкод где угодно на кассе — товар сам добавится в корзину"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" className="h-4 w-4">
+              <path d="M3 5v14M7 5v14M11 5v14M14 5v14M18 5v14M21 5v14" />
+            </svg>
+            Сканер ШК
+          </span>
         </div>
         {displayOn && (
           <button
@@ -497,6 +557,17 @@ export default function PosPage() {
       )}
 
       <Skin ctx={ctx} />
+
+      {/* Тост результата сканирования штрихкода */}
+      {scanMsg && (
+        <div
+          className={`fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-2xl ${
+            scanMsg.startsWith('✓') ? 'bg-emerald-600' : 'bg-rose-600'
+          }`}
+        >
+          {scanMsg}
+        </div>
+      )}
 
       {/* Чек после продажи */}
       {receipt && (
