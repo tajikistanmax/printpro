@@ -101,6 +101,103 @@ export class ProductsService {
     };
   }
 
+  // ---------- Импорт каталога (CSV/Excel) ----------
+  // Принимает строки {name, category, unit, salePrice, purchasePrice, minStock, sku, barcode}.
+  // Категории/единицы подбираются по имени (создаются при отсутствии).
+  // Совпадение по имени товара (без учёта регистра) → обновляем, иначе создаём.
+  async importProducts(
+    companyId: string,
+    rows: Array<Record<string, any>>,
+  ) {
+    const num = (v: any) => {
+      const n = Number(String(v ?? '').replace(/\s/g, '').replace(',', '.'));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const str = (v: any) => {
+      const s = String(v ?? '').trim();
+      return s || undefined;
+    };
+
+    const cats = await this.prisma.productCategory.findMany({
+      where: { companyId, deletedAt: null },
+    });
+    const units = await this.prisma.unit.findMany({ where: { companyId } });
+    const catMap = new Map(cats.map((c) => [c.name.toLowerCase(), c.id]));
+    const unitMap = new Map<string, string>();
+    for (const u of units) {
+      unitMap.set(u.name.toLowerCase(), u.id);
+      if (u.shortName) unitMap.set(u.shortName.toLowerCase(), u.id);
+    }
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    for (const r of rows) {
+      const name = String(r.name ?? '').trim();
+      if (!name) {
+        skipped++;
+        continue;
+      }
+
+      let categoryId: string | null = null;
+      const catName = String(r.category ?? '').trim();
+      if (catName) {
+        const key = catName.toLowerCase();
+        categoryId = catMap.get(key) ?? null;
+        if (!categoryId) {
+          const c = await this.prisma.productCategory.create({
+            data: { companyId, name: catName },
+          });
+          categoryId = c.id;
+          catMap.set(key, c.id);
+        }
+      }
+
+      let unitId: string | null = null;
+      const unitName = String(r.unit ?? '').trim();
+      if (unitName) {
+        const key = unitName.toLowerCase();
+        unitId = unitMap.get(key) ?? null;
+        if (!unitId) {
+          const u = await this.prisma.unit.create({
+            data: { companyId, name: unitName, shortName: unitName },
+          });
+          unitId = u.id;
+          unitMap.set(key, u.id);
+        }
+      }
+
+      const data = {
+        name,
+        categoryId,
+        unitId,
+        salePrice: num(r.salePrice ?? r.price),
+        purchasePrice: num(r.purchasePrice),
+        minStock: num(r.minStock),
+        sku: str(r.sku),
+        barcode: str(r.barcode),
+      };
+
+      const existing = await this.prisma.product.findFirst({
+        where: {
+          companyId,
+          deletedAt: null,
+          name: { equals: name, mode: 'insensitive' },
+        },
+      });
+      if (existing) {
+        await this.prisma.product.update({ where: { id: existing.id }, data });
+        updated++;
+      } else {
+        await this.prisma.product.create({ data: { companyId, ...data } });
+        created++;
+      }
+    }
+
+    return { created, updated, skipped, total: rows.length };
+  }
+
   // ---------- Доп. штрихкоды (алиасы) ----------
   async addBarcodeAlias(productId: string, barcode: string) {
     const code = (barcode ?? '').trim();

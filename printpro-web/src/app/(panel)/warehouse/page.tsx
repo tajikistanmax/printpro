@@ -77,6 +77,10 @@ export default function WarehousePage() {
 
   const [material, setMaterial] = useState<any | null>(null); // открытая панель
   const [aliasInput, setAliasInput] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importResult, setImportResult] = useState('');
+  const [importing, setImporting] = useState(false);
 
   // Единицы измерения
   const [uName, setUName] = useState('');
@@ -326,6 +330,59 @@ export default function WarehousePage() {
       filtered.map((p) => [p.name, p.category?.name ?? '', p.unit?.shortName ?? '', stockOf(p), Number(p.minStock), Number(p.salePrice), p.sku ?? '', p.barcode ?? '']));
   }
 
+  // ---- импорт каталога из CSV/Excel ----
+  function parseCSV(text: string): any[] {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (!lines.length) return [];
+    const delim = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ',';
+    const split = (l: string) => l.split(delim).map((c) => c.trim().replace(/^"|"$/g, ''));
+    const FIELD: Record<string, string> = {
+      'материал': 'name', 'название': 'name', 'наименование': 'name', 'name': 'name', 'товар': 'name',
+      'категория': 'category', 'category': 'category',
+      'ед.': 'unit', 'ед': 'unit', 'единица': 'unit', 'unit': 'unit',
+      'остаток': '_skip', 'stock': '_skip',
+      'мин.': 'minStock', 'мин': 'minStock', 'минимум': 'minStock', 'minstock': 'minStock',
+      'цена': 'salePrice', 'price': 'salePrice', 'saleprice': 'salePrice', 'цена продажи': 'salePrice',
+      'закупка': 'purchasePrice', 'purchaseprice': 'purchasePrice', 'цена закупки': 'purchasePrice',
+      'артикул': 'sku', 'sku': 'sku',
+      'штрихкод': 'barcode', 'barcode': 'barcode', 'шк': 'barcode',
+    };
+    const header = split(lines[0]).map((h) => h.toLowerCase());
+    const hasHeader = header.some((h) => FIELD[h]);
+    const cols = hasHeader
+      ? header.map((h) => FIELD[h] ?? null)
+      : ['name', 'category', 'unit', '_skip', 'minStock', 'salePrice', 'sku', 'barcode'];
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+    return dataLines
+      .map((l) => {
+        const cells = split(l);
+        const row: any = {};
+        cols.forEach((f, i) => { if (f && f !== '_skip') row[f] = cells[i]; });
+        return row;
+      })
+      .filter((r) => (r.name ?? '').trim());
+  }
+  function onImportFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => setImportText(String(reader.result));
+    reader.readAsText(file, 'utf-8');
+  }
+  async function doImport() {
+    const rows = parseCSV(importText);
+    if (!rows.length) { setImportResult('Не найдено строк для импорта'); return; }
+    setImporting(true);
+    setImportResult('');
+    try {
+      const r = await api.post('/products/import', { companyId: cid, rows });
+      setImportResult(`✓ Готово: создано ${r.created}, обновлено ${r.updated}, пропущено ${r.skipped}`);
+      load();
+    } catch (e: any) {
+      setImportResult('Ошибка: ' + (e?.message ?? e));
+    } finally {
+      setImporting(false);
+    }
+  }
+
   // ---- фильтрация ----
   const ql = q.trim().toLowerCase();
   const filtered = products.filter((p) => {
@@ -360,6 +417,11 @@ export default function WarehousePage() {
         subtitle="Управляйте материалами, остатками и движением"
         actions={
           <div className="flex items-center gap-2">
+            {canProducts && (
+              <Button variant="ghost" onClick={() => { setImportOpen(true); setImportResult(''); }}>
+                <NavIcon name="download" className="h-4 w-4 rotate-180" />Импорт
+              </Button>
+            )}
             <Button variant="ghost" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт</Button>
             {canProducts && <Button onClick={() => setTab('ref')}>+ Новый материал</Button>}
           </div>
@@ -611,6 +673,42 @@ export default function WarehousePage() {
               {uMsg && <span className="text-sm text-slate-500">{uMsg}</span>}
             </form>
           </Card>
+        </div>
+      )}
+
+      {/* ===================== ИМПОРТ КАТАЛОГА ===================== */}
+      {importOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={() => setImportOpen(false)} />
+          <div className="relative w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Импорт товаров</h3>
+              <button onClick={() => setImportOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+            </div>
+            <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+              Загрузите CSV-файл (из Excel: «Сохранить как → CSV») или вставьте таблицу.
+              Колонки: <b>Название, Категория, Ед., Мин., Цена, Закупка, Артикул, Штрихкод</b>.
+              Категории и единицы создаются автоматически. Совпадение по названию — обновляется.
+            </p>
+            <label className="mb-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-transparent dark:text-slate-300 dark:hover:bg-slate-800">
+              <NavIcon name="download" className="h-4 w-4 rotate-180" />Выбрать CSV-файл
+              <input type="file" accept=".csv,text/csv,text/plain" className="hidden" onChange={(e) => e.target.files?.[0] && onImportFile(e.target.files[0])} />
+            </label>
+            <textarea
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              rows={8}
+              placeholder={'Название;Категория;Ед.;Мин.;Цена;Закупка;Артикул;Штрихкод\nБумага A4;Бумага;пач;5;35;28;PAP-A4;4600001'}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            />
+            <div className="mt-4 flex items-center gap-3">
+              <Button onClick={doImport} disabled={importing || !importText.trim()}>
+                <NavIcon name="check" className="h-4 w-4" />{importing ? 'Импорт…' : 'Импортировать'}
+              </Button>
+              <Button variant="ghost" onClick={() => setImportOpen(false)}>Закрыть</Button>
+              {importResult && <span className="text-sm text-slate-600 dark:text-slate-300">{importResult}</span>}
+            </div>
+          </div>
         </div>
       )}
 

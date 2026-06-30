@@ -28,6 +28,14 @@ export class ProductsController {
     return this.products.findAllProducts(companyId);
   }
 
+  // Импорт каталога из CSV/Excel (массив строк)
+  @Post('products/import')
+  importProducts(
+    @Body() body: { companyId: string; rows: Array<Record<string, any>> },
+  ) {
+    return this.products.importProducts(body.companyId, body.rows ?? []);
+  }
+
   @Get('products/:id')
   findOneProduct(@Param('id') id: string) {
     return this.products.findOneProduct(id);
