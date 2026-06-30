@@ -37,6 +37,11 @@ export const FEATURE_GROUPS: { group: string; items: FeatureFlag[] }[] = [
         label: 'Дисплей покупателя',
         desc: 'Кнопка «Второй экран» на кассе для показа корзины клиенту',
       },
+      {
+        key: 'feature.posDebt',
+        label: 'Продажа в долг',
+        desc: 'Способ оплаты «В долг» на кассе — заказ создаётся без оплаты',
+      },
     ],
   },
 ];

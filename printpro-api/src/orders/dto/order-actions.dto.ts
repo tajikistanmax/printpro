@@ -65,6 +65,7 @@ export class QuickSaleDto {
   @IsOptional() @IsNumber() @Min(0) discount?: number; // скидка, абсолютная
   @IsOptional() @IsString() promoCode?: string; // промокод
   @IsOptional() @IsNumber() @Min(0) useBonus?: number; // списать бонусов
+  @IsOptional() @IsString() note?: string; // примечание к заказу
 
   // Один способ оплаты…
   @IsOptional() @IsEnum(PaymentMethod) method?: PaymentMethod;

@@ -77,6 +77,17 @@ export interface PosCtx {
   setSplitAmounts: Dispatch<SetStateAction<Record<string, string>>>;
   splitSum: number;
   splitLeft: number;
+  splitMethods: PosMethod[];
+  isMixed: boolean;
+  cashReceived: string;
+  setCashReceived: Dispatch<SetStateAction<string>>;
+  change: number;
+  note: string;
+  setNote: Dispatch<SetStateAction<string>>;
+  debtEnabled: boolean;
+  promoEnabled: boolean;
+  scan: (code: string) => void;
+  scanMsg: string;
   pay: () => void;
   payWith: (method: string) => void;
   msg: string;
@@ -292,6 +303,7 @@ function ActionTile({
 function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
   const c = ctx;
   const [showPromo, setShowPromo] = useState(false);
+  const [showNote, setShowNote] = useState(false);
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm xl:sticky xl:top-4 xl:self-start dark:border-slate-700/60">
       <div className="mb-4 flex items-center justify-between">
@@ -353,9 +365,23 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
         </div>
       )}
 
-      <button className="mb-4 flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-200 py-2.5 text-sm font-medium text-indigo-600 transition hover:bg-indigo-50 dark:border-slate-700 dark:hover:bg-indigo-500/10">
-        <IcoPlus className="h-4 w-4" /> Добавить примечание к заказу
-      </button>
+      {showNote || c.note ? (
+        <textarea
+          value={c.note}
+          onChange={(e) => c.setNote(e.target.value)}
+          placeholder="Примечание к заказу…"
+          rows={2}
+          autoFocus
+          className="mb-4 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+        />
+      ) : (
+        <button
+          onClick={() => setShowNote(true)}
+          className="mb-4 flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-200 py-2.5 text-sm font-medium text-indigo-600 transition hover:bg-indigo-50 dark:border-slate-700 dark:hover:bg-indigo-500/10"
+        >
+          <IcoPlus className="h-4 w-4" /> Добавить примечание к заказу
+        </button>
+      )}
 
       <div className="space-y-2 border-t border-slate-100 pt-3 text-sm">
         <Row label="Сумма товаров" value={c.money(c.subtotal)} muted />
@@ -375,6 +401,8 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
             />
           </div>
         </div>
+        {c.promoEnabled && (
+        <>
         <div className="flex items-center justify-between">
           <span className="text-slate-500">Промокод</span>
           {showPromo ? (
@@ -415,6 +443,8 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
             {c.promoMsg}
           </div>
         )}
+        </>
+        )}
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
@@ -428,29 +458,99 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
         <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
           Способ оплаты
         </div>
-        <div className="grid grid-cols-4 gap-1.5">
-          {c.methods.map((m) => (
-            <button
-              key={m.k}
-              onClick={() => c.setMethod(m.k)}
-              className={`rounded-lg py-2 text-xs font-medium transition ${
-                c.method === m.k
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-100 text-slate-600'
-              }`}
-            >
-              {m.l}
-            </button>
-          ))}
+        <div className="grid grid-cols-2 gap-1.5">
+          {c.methods
+            .filter((m) => m.k !== 'DEBT' || c.debtEnabled)
+            .map((m) => (
+              <button
+                key={m.k}
+                onClick={() => c.setMethod(m.k)}
+                className={`rounded-lg py-2 text-xs font-medium transition ${
+                  c.method === m.k
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                }`}
+              >
+                {m.l}
+              </button>
+            ))}
         </div>
+
+        {/* Наличные → получено и сдача */}
+        {c.method === 'CASH' && (
+          <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Получено</span>
+              <input
+                value={c.cashReceived}
+                onChange={(e) => c.setCashReceived(e.target.value)}
+                type="number"
+                inputMode="decimal"
+                placeholder={String(c.total)}
+                className="w-28 rounded-lg border border-slate-200 px-2 py-1 text-right dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              />
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Сдача</span>
+              <span className={`font-semibold ${c.change < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                {c.cashReceived ? c.money(c.change) : '—'}
+              </span>
+            </div>
+            {c.cashReceived && c.change < 0 && (
+              <p className="text-xs text-rose-500">Не хватает {c.money(-c.change)}</p>
+            )}
+          </div>
+        )}
+
+        {/* Смешанная → суммы по способам */}
+        {c.isMixed && (
+          <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+            {c.splitMethods.map((m) => (
+              <div key={m.k} className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">{m.l}</span>
+                <input
+                  value={c.splitAmounts[m.k] ?? ''}
+                  onChange={(e) => c.setSplitAmounts((s) => ({ ...s, [m.k]: e.target.value }))}
+                  type="number"
+                  placeholder="0"
+                  className="w-28 rounded-lg border border-slate-200 px-2 py-1 text-right dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                />
+              </div>
+            ))}
+            <div className="flex items-center justify-between border-t border-slate-200 pt-1 text-sm dark:border-slate-700">
+              <span className="text-slate-500">Осталось</span>
+              <span className={`font-semibold ${c.splitLeft === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {c.money(c.splitLeft)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* В долг */}
+        {c.method === 'DEBT' && (
+          <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+            Заказ запишется <b>в долг</b> — без оплаты сейчас. Будет виден в заказах и в отчёте по долгам.
+          </p>
+        )}
+
+        {/* Перевод */}
+        {c.method === 'TRANSFER' && (
+          <p className="mt-3 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+            Клиент переводит на карту / по QR. QR для перевода настраивается в «Настройки → Оплата».
+          </p>
+        )}
       </div>
 
       <button
         onClick={c.pay}
-        disabled={c.cart.length === 0}
+        disabled={
+          c.cart.length === 0 ||
+          (c.isMixed && c.splitLeft !== 0) ||
+          (c.method === 'CASH' && !!c.cashReceived && c.change < 0)
+        }
         className="mt-4 flex w-full items-center justify-between rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
       >
-        <span>Оплатить {c.money(c.total)}</span>
+        <span>{c.method === 'DEBT' ? 'Записать в долг' : `Оплатить ${c.money(c.total)}`}</span>
         <span className="text-xs opacity-70">F2</span>
       </button>
       <button
@@ -471,6 +571,7 @@ const SkinShop: FC<{ ctx: PosCtx }> = ({ ctx }) => {
   const { items, allCats } = useCombined(c);
   const [activeCat, setActiveCat] = useState('ALL');
   const [view, setView] = useState<'grid' | 'list'>('grid');
+  const [scanInput, setScanInput] = useState('');
 
   const countFor = (catId: string) =>
     items.filter((i) => i.categoryId === catId).length;
@@ -516,9 +617,22 @@ const SkinShop: FC<{ ctx: PosCtx }> = ({ ctx }) => {
 
             <div>
               <div className="mb-3 flex items-center justify-between">
-                <span className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-500 dark:border-slate-700">
-                  <IcoBarcode className="h-4 w-4" /> Сканировать штрихкод
-                </span>
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm dark:border-slate-700">
+                  <IcoBarcode className="h-4 w-4 text-slate-400" />
+                  <input
+                    value={scanInput}
+                    onChange={(e) => setScanInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && scanInput.trim()) {
+                        c.scan(scanInput.trim());
+                        setScanInput('');
+                      }
+                    }}
+                    placeholder="Сканировать или ввести штрихкод"
+                    className="w-56 bg-transparent text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200"
+                  />
+                  {c.scanMsg && <span className="whitespace-nowrap text-xs text-slate-400">{c.scanMsg}</span>}
+                </div>
                 <div className="flex gap-1 rounded-lg border border-slate-200 p-0.5 dark:border-slate-700">
                   <button
                     onClick={() => setView('grid')}

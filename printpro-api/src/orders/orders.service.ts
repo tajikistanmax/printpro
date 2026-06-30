@@ -342,6 +342,7 @@ export class OrdersService {
         createdById: userId,
         decrementStock: true,
         idempotencyKey: dto.idempotencyKey,
+        note: dto.note,
         items: dto.items,
       });
     } catch (e: any) {
@@ -400,8 +401,14 @@ export class OrdersService {
       });
     }
 
+    // «В долг»: оплату НЕ проводим — заказ остаётся неоплаченным (balanceDue = итог),
+    // это и есть задолженность клиента (видно в списке заказов и долгах).
+    const isDebt =
+      dto.method === PaymentMethod.DEBT &&
+      (!dto.payments || dto.payments.length === 0);
+
     // Оплата: смешанная (несколько способов) или одним способом
-    if (total > 0) {
+    if (total > 0 && !isDebt) {
       const parts =
         dto.payments && dto.payments.length > 0
           ? dto.payments
@@ -415,7 +422,7 @@ export class OrdersService {
           );
         }
       }
-    } else {
+    } else if (total <= 0) {
       await this.prisma.order.update({
         where: { id: order.id },
         data: { paid: 0, balanceDue: 0, paymentStatus: PaymentStatus.PAID },

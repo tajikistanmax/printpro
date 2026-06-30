@@ -14,10 +14,17 @@ function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(n) + ' c.';
 }
 
+// Способы оплаты на кассе. «Смешанная» — это оплата частями (наличные + перевод),
+// «В долг» — заказ остаётся неоплаченным (показывается, только если включено в настройках).
 const METHODS = [
   { k: 'CASH', l: 'Наличные' },
-  { k: 'CARD', l: 'Карта' },
-  { k: 'QR', l: 'QR' },
+  { k: 'TRANSFER', l: 'Перевод' },
+  { k: 'MIXED', l: 'Смешанная' },
+  { k: 'DEBT', l: 'В долг' },
+];
+// Реальные «деньги» для смешанной оплаты (без MIXED/DEBT):
+const SPLIT_METHODS = [
+  { k: 'CASH', l: 'Наличные' },
   { k: 'TRANSFER', l: 'Перевод' },
 ];
 
@@ -50,6 +57,8 @@ export default function PosPage() {
   const [method, setMethod] = useState('CASH');
   const [split, setSplit] = useState(false);
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
+  const [cashReceived, setCashReceived] = useState(''); // получено наличными (для сдачи)
+  const [note, setNote] = useState(''); // примечание к заказу
   const [msg, setMsg] = useState('');
   const [receipt, setReceipt] = useState<any | null>(null);
   // Ключ идемпотентности: один на «корзину», новый — после успешной продажи.
@@ -327,26 +336,33 @@ export default function PosPage() {
     }
   }
 
-  const splitSum = METHODS.reduce(
+  const splitSum = SPLIT_METHODS.reduce(
     (s, m) => s + (Number(splitAmounts[m.k]) || 0),
     0,
   );
   const splitLeft = Number((total - splitSum).toFixed(2));
+  // Смешанная оплата = выбран способ MIXED. Сдача — только для наличных.
+  const isMixed = method === 'MIXED';
+  const change =
+    method === 'CASH' && Number(cashReceived) > 0
+      ? Number((Number(cashReceived) - total).toFixed(2))
+      : 0;
 
   async function pay(overrideMethod?: string) {
     if (cart.length === 0) return;
     setMsg('');
     const useMethod = overrideMethod ?? method;
 
+    const mixed = useMethod === 'MIXED';
     let payments: { method: string; amount: number }[] | undefined;
-    if (split) {
-      payments = METHODS.map((m) => ({
+    if (mixed) {
+      payments = SPLIT_METHODS.map((m) => ({
         method: m.k,
         amount: Number(splitAmounts[m.k]) || 0,
       })).filter((p) => p.amount > 0);
       const sum = Number(payments.reduce((s, p) => s + p.amount, 0).toFixed(2));
       if (sum !== total) {
-        setMsg(`Сумма частей (${sum}) должна равняться итогу (${total})`);
+        setMsg(`Сумма частей (${sum} c.) должна равняться итогу (${total} c.)`);
         return;
       }
     }
@@ -359,7 +375,8 @@ export default function PosPage() {
         discount: disc || undefined,
         promoCode: promoCode.trim() || undefined,
         useBonus: Number(useBonus) > 0 ? Number(useBonus) : undefined,
-        method: split ? undefined : useMethod,
+        note: note.trim() || undefined,
+        method: mixed ? undefined : useMethod,
         payments,
         idempotencyKey: saleKey,
         items: cart.map((c) => ({
@@ -373,11 +390,12 @@ export default function PosPage() {
       });
       setReceipt({
         ...order,
-        _method: split
+        _method: mixed
           ? payments!
-              .map((p) => `${METHODS.find((m) => m.k === p.method)?.l} ${p.amount}`)
+              .map((p) => `${SPLIT_METHODS.find((m) => m.k === p.method)?.l} ${p.amount}`)
               .join(', ')
           : METHODS.find((m) => m.k === useMethod)?.l,
+        _change: useMethod === 'CASH' && Number(cashReceived) > 0 ? change : 0,
         _date: new Date().toLocaleString('ru-RU'),
       });
       setCart([]);
@@ -389,6 +407,8 @@ export default function PosPage() {
       setPhone('');
       setSplit(false);
       setSplitAmounts({});
+      setCashReceived('');
+      setNote('');
       // Новый ключ — следующая продажа получит свой
       setSaleKey(
         typeof crypto !== 'undefined' && crypto.randomUUID
@@ -414,6 +434,8 @@ export default function PosPage() {
     setPhone('');
     setSplit(false);
     setSplitAmounts({});
+    setCashReceived('');
+    setNote('');
   }
 
   // ---- Отложенные чеки ----
@@ -503,6 +525,17 @@ export default function PosPage() {
     setSplitAmounts,
     splitSum,
     splitLeft,
+    splitMethods: SPLIT_METHODS,
+    isMixed,
+    cashReceived,
+    setCashReceived,
+    change,
+    note,
+    setNote,
+    debtEnabled: isEnabled('feature.posDebt'),
+    promoEnabled: isEnabled('feature.promocodes'),
+    scan: (code: string) => scanRef.current(code),
+    scanMsg,
     pay: () => {
       void pay();
     },
