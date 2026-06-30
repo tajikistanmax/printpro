@@ -18,8 +18,9 @@ import {
   EmptyState,
 } from '@/components/ui';
 import NavIcon from '@/lib/NavIcons';
+import FeatureGate from '@/lib/FeatureGate';
 
-export default function PromocodesPage() {
+function PromocodesInner() {
   const cid = DEFAULT_COMPANY_ID;
   const { can } = useAuth();
   const manage = can('orders.manage');
@@ -184,5 +185,13 @@ export default function PromocodesPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PromocodesPage() {
+  return (
+    <FeatureGate flag="feature.promocodes">
+      <PromocodesInner />
+    </FeatureGate>
   );
 }

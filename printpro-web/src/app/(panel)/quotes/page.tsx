@@ -20,6 +20,7 @@ import {
   Tone,
 } from '@/components/ui';
 import NavIcon from '@/lib/NavIcons';
+import FeatureGate from '@/lib/FeatureGate';
 
 interface Line {
   itemType: 'SERVICE' | 'PRODUCT';
@@ -36,7 +37,7 @@ const STATUS: Record<string, { label: string; tone: Tone }> = {
   REJECTED: { label: 'Отклонено', tone: 'rose' },
 };
 
-export default function QuotesPage() {
+function QuotesInner() {
   const cid = DEFAULT_COMPANY_ID;
   const { can } = useAuth();
   const manage = can('orders.manage');
@@ -312,5 +313,13 @@ export default function QuotesPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function QuotesPage() {
+  return (
+    <FeatureGate flag="feature.quotes">
+      <QuotesInner />
+    </FeatureGate>
   );
 }

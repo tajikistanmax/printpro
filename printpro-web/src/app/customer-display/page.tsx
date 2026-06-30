@@ -14,73 +14,144 @@ const METHOD_LABEL: Record<string, string> = {
   TRANSFER: 'Перевод',
 };
 
+// Категории типографии — для приветственного экрана (как в витрине)
+const CATEGORIES = ['Визитки', 'Флаеры', 'Буклеты', 'Баннеры', 'Плакаты', 'Наклейки'];
+
+function Wordmark({ shop }: { shop: string }) {
+  if (shop === 'PrintPro') {
+    return (
+      <>
+        Print<span className="text-violet-500">Pro</span>
+      </>
+    );
+  }
+  return <>{shop}</>;
+}
+
 export default function CustomerDisplayPage() {
   const [state, setState] = useState<DisplayState>({ type: 'welcome' });
+  const [now, setNow] = useState('');
 
   useEffect(() => subscribeDisplay(setState), []);
+
+  // Часы в шапке — приятная деталь для экрана у кассы
+  useEffect(() => {
+    const tick = () =>
+      setNow(
+        new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+      );
+    tick();
+    const id = setInterval(tick, 15000);
+    return () => clearInterval(id);
+  }, []);
 
   const shop = state.shopName || 'PrintPro';
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-slate-900 text-white">
+    <div className="flex min-h-screen w-full flex-col bg-gradient-to-br from-violet-50 via-white to-indigo-50 text-slate-900">
       {/* Шапка */}
-      <header className="flex items-center gap-3 px-8 py-5">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-lg font-black">
-          {shop.slice(0, 1).toUpperCase()}
-        </span>
-        <span className="text-xl font-extrabold tracking-tight">{shop}</span>
+      <header className="flex items-center justify-between border-b border-slate-200/70 bg-white/70 px-10 py-5 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.svg" alt="" className="h-11 w-11 shrink-0 object-contain" />
+          <div className="flex flex-col leading-none">
+            <span className="text-2xl font-extrabold tracking-tight">
+              <Wordmark shop={shop} />
+            </span>
+            <span className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Online Printing Service
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="flex items-center gap-1.5 text-sm font-medium text-slate-400">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+            </span>
+            на связи
+          </span>
+          {now && (
+            <span className="font-mono text-5xl font-bold tabular-nums tracking-tight text-slate-700">
+              {now}
+            </span>
+          )}
+        </div>
       </header>
 
+      {/* Приветствие */}
       {state.type === 'welcome' && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
-          <div className="text-6xl">🛍️</div>
-          <div className="text-4xl font-extrabold">Добро пожаловать!</div>
-          <div className="text-lg text-slate-400">
-            Здесь появится ваш заказ
+        <div className="flex flex-1 flex-col items-center justify-center gap-8 px-8 text-center">
+          <div className="relative">
+            <div className="absolute left-1/2 top-1/2 -z-10 h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-300/40 blur-3xl" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo.svg"
+              alt="PrintPro"
+              className="h-36 w-36 object-contain drop-shadow-[0_12px_40px_rgba(124,92,255,0.35)]"
+            />
+          </div>
+          <div>
+            <h1 className="text-5xl font-black tracking-tight">Добро пожаловать!</h1>
+            <p className="mt-3 text-sm font-semibold uppercase tracking-[0.22em] text-slate-400">
+              Типография · Полиграфия · Дизайн · Печать
+            </p>
+          </div>
+          <div className="flex max-w-2xl flex-wrap items-center justify-center gap-2.5">
+            {CATEGORIES.map((c) => (
+              <span
+                key={c}
+                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm"
+              >
+                {c}
+              </span>
+            ))}
           </div>
         </div>
       )}
 
+      {/* Корзина */}
       {state.type === 'cart' && (
-        <div className="flex flex-1 flex-col px-8 pb-8">
-          <div className="mb-4 flex items-baseline justify-between border-b border-white/10 pb-3">
-            <span className="text-lg font-semibold text-slate-300">
-              Ваш заказ
-            </span>
-            <span className="text-sm text-slate-400">
+        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-8 pb-8 pt-6">
+          <div className="mb-5 flex items-baseline justify-between">
+            <h2 className="text-2xl font-bold">Ваш заказ</h2>
+            <span className="rounded-full bg-violet-100 px-3.5 py-1 text-sm font-semibold text-violet-600">
               {state.lines.reduce((s, l) => s + l.qty, 0)} поз.
             </span>
           </div>
 
-          <div className="flex-1 space-y-2 overflow-auto">
+          <div className="flex-1 space-y-3 overflow-auto">
             {state.lines.map((l, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between rounded-xl bg-white/5 px-4 py-3"
+                className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm"
               >
-                <div className="min-w-0">
-                  <div className="truncate text-lg font-medium">{l.name}</div>
-                  <div className="text-sm text-slate-400">
-                    {l.qty} × {money(l.price)}
+                <div className="flex min-w-0 items-center gap-4">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-lg font-bold text-white">
+                    {(l.name || '?').slice(0, 1).toUpperCase()}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-lg font-semibold">{l.name}</div>
+                    <div className="text-sm text-slate-400">
+                      {l.qty} × {money(l.price)}
+                    </div>
                   </div>
                 </div>
-                <div className="ml-4 shrink-0 text-lg font-semibold">
-                  {money(l.total)}
-                </div>
+                <div className="ml-4 shrink-0 text-lg font-bold">{money(l.total)}</div>
               </div>
             ))}
           </div>
 
-          <div className="mt-4 border-t border-white/10 pt-4">
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             {state.discount > 0 && (
-              <div className="mb-1 flex items-center justify-between text-base text-emerald-400">
+              <div className="mb-2 flex items-center justify-between text-base font-medium text-emerald-600">
                 <span>Скидка</span>
                 <span>−{money(state.discount)}</span>
               </div>
             )}
             <div className="flex items-end justify-between">
-              <span className="text-xl font-semibold text-slate-300">Итого</span>
-              <span className="text-5xl font-black tracking-tight">
+              <span className="text-xl font-semibold text-slate-500">Итого</span>
+              <span className="bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-5xl font-black tracking-tight text-transparent">
                 {money(state.total)}
               </span>
             </div>
@@ -88,19 +159,34 @@ export default function CustomerDisplayPage() {
         </div>
       )}
 
+      {/* Итог / оплата */}
       {state.type === 'total' && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-5 px-8 text-center">
-          <div className="text-2xl font-semibold text-slate-400">К оплате</div>
-          <div className="text-7xl font-black tracking-tight">
+        <div className="flex flex-1 flex-col items-center justify-center gap-6 px-8 text-center">
+          <div className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-400">
+            К оплате
+          </div>
+          <div className="bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-8xl font-black tracking-tight text-transparent">
             {money(state.total)}
           </div>
           {state.method && (
-            <div className="rounded-full bg-white/10 px-5 py-2 text-lg font-medium">
+            <div className="rounded-full border border-slate-200 bg-white px-6 py-2.5 text-lg font-semibold text-slate-600 shadow-sm">
               {METHOD_LABEL[state.method] || state.method}
             </div>
           )}
-          <div className="mt-2 text-3xl font-extrabold text-emerald-400">
-            Спасибо за покупку! 🎉
+          <div className="mt-3 flex items-center gap-2.5 rounded-full bg-emerald-50 px-6 py-3 text-2xl font-bold text-emerald-600">
+            <svg
+              width="26"
+              height="26"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+            Спасибо за покупку!
           </div>
         </div>
       )}

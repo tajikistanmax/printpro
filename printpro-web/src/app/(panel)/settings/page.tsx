@@ -6,6 +6,15 @@ import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { POS_LAYOUTS, DEFAULT_POS_LAYOUT } from '@/lib/pos-layouts';
 import { FEATURE_GROUPS, clearFeatureFlagsCache } from '@/lib/feature-flags';
+import { openCustomerDisplay } from '@/lib/customer-display';
+import {
+  VFD_PROTOCOLS,
+  VFD_BAUDS,
+  vfdSupported,
+  requestVfdPort,
+  vfdTest,
+  readVfdConfig,
+} from '@/lib/vfd-display';
 import NavIcon from '@/lib/NavIcons';
 import {
   PageHeader,
@@ -37,6 +46,7 @@ type Section =
   | 'branches'
   | 'orders'
   | 'pos'
+  | 'display'
   | 'notifications'
   | 'features'
   | 'backup';
@@ -218,6 +228,7 @@ export default function SettingsPage() {
     branches: 'Филиалы и склады',
     orders: 'Заказы',
     pos: 'Касса и оплата',
+    display: 'Дисплей покупателя',
     notifications: 'Уведомления',
     features: 'Функции системы',
   };
@@ -226,10 +237,11 @@ export default function SettingsPage() {
     branches: 'Точки обслуживания и склады',
     orders: 'Нумерация и сроки заказов',
     pos: 'Оформление экрана продажи',
+    display: 'Второй экран: графический монитор и текстовый VFD-дисплей',
     notifications: 'Email, Telegram и системные уведомления',
     features: 'Включение и отключение разделов',
   };
-  const savableSections = ['profile', 'orders', 'pos', 'notifications', 'features'];
+  const savableSections = ['profile', 'orders', 'pos', 'display', 'notifications', 'features'];
 
   const NAV: { key?: Section; href?: string; icon: string; title: string; tone: string }[] = [
     { key: 'profile',       icon: 'staff',      title: 'Компания и профиль',  tone: 'indigo' },
@@ -239,6 +251,7 @@ export default function SettingsPage() {
     { href: '/services',    icon: 'services',   title: 'Цены и услуги',       tone: 'emerald' },
     { key: 'notifications', icon: 'complaints', title: 'Уведомления',         tone: 'rose' },
     { key: 'pos',           icon: 'pos',        title: 'Касса и оплата',      tone: 'sky' },
+    { key: 'display',       icon: 'production', title: 'Дисплей покупателя',  tone: 'violet' },
     { key: 'features',      icon: 'settings',   title: 'Функции системы',     tone: 'indigo' },
     { href: '/audit',       icon: 'audit',      title: 'Журнал системы',      tone: 'slate' },
   ];
@@ -335,6 +348,7 @@ export default function SettingsPage() {
           )}
           {section === 'orders' && <OrdersSection s={s} set={set} />}
           {section === 'pos' && <PosSection s={s} set={set} />}
+          {section === 'display' && <DisplaySection s={s} set={set} setMsg={setMsg} />}
           {section === 'notifications' && (
             <NotificationsSection s={s} set={set} testTelegram={testTelegram} testEmail={testEmail} />
           )}
@@ -657,6 +671,152 @@ function PosSection({ s, set }: { s: Record<string, string>; set: (k: string, v:
         })}
       </div>
     </Card>
+  );
+}
+
+function DisplaySection({
+  s, set, setMsg,
+}: {
+  s: Record<string, string>;
+  set: (k: string, v: string) => void;
+  setMsg: (m: string) => void;
+}) {
+  const supported = vfdSupported();
+  const cfg = readVfdConfig(s);
+  const vfdOn = s['display.vfd'] === 'true';
+  const proto = VFD_PROTOCOLS.find((p) => p.k === cfg.protocol);
+
+  async function connect() {
+    try {
+      const ok = await requestVfdPort();
+      setMsg(ok ? '✓ COM-порт выбран. Нажмите «Тест» для проверки.' : 'Порт не выбран');
+    } catch (e: any) {
+      setMsg('Не удалось открыть порт: ' + (e?.message ?? e));
+    }
+  }
+  async function test() {
+    try {
+      await vfdTest(cfg);
+      setMsg('Отправил тест на дисплей. Пусто или «кракозябры» — смените протокол или кодировку.');
+    } catch (e: any) {
+      setMsg('Ошибка вывода: ' + (e?.message ?? e));
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Графический монитор */}
+      <Card>
+        <SectionTitle>Графический экран (второй монитор)</SectionTitle>
+        <p className="-mt-1 mb-4 text-xs text-slate-400 dark:text-slate-500">
+          Обычный второй монитор/телевизор по HDMI или USB. Windows видит его как
+          экран — показывает красивую витрину с корзиной целиком. В Windows:
+          «Параметры экрана → Расширить эти экраны», затем перетащите окно дисплея
+          на второй монитор и разверните на весь экран (F11).
+        </p>
+        <Toggle
+          label="Показывать графический дисплей покупателя"
+          desc="Добавляет на кассе кнопку «Второй экран»"
+          checked={s['feature.customerDisplay'] !== 'false'}
+          onChange={(v) => set('feature.customerDisplay', String(v))}
+        />
+        <div className="mt-3">
+          <Button variant="ghost" onClick={() => openCustomerDisplay()}>
+            <NavIcon name="production" className="h-4 w-4" />Открыть второй экран сейчас
+          </Button>
+        </div>
+      </Card>
+
+      {/* Текстовый VFD */}
+      <Card>
+        <SectionTitle>Текстовый дисплей (VFD / линейный)</SectionTitle>
+        <p className="-mt-1 mb-4 text-xs text-slate-400 dark:text-slate-500">
+          Встроенный в POS-терминал 2-строчный дисплей (тот, что «показывает только
+          цифры»), подключённый по COM-порту. Браузер шлёт на него текст напрямую.
+        </p>
+
+        {!supported && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+            Этот браузер не поддерживает прямое подключение к COM-порту. Откройте
+            кассу в <b>Google Chrome</b> или <b>Microsoft Edge</b> на Windows.
+          </div>
+        )}
+
+        <Toggle
+          label="Использовать текстовый VFD-дисплей"
+          desc="Дублировать сумму заказа на линейный дисплей у кассы"
+          checked={vfdOn}
+          onChange={(v) => set('display.vfd', String(v))}
+        />
+
+        {vfdOn && (
+          <>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Field label="Протокол дисплея">
+                <Select
+                  value={cfg.protocol}
+                  onChange={(e) => set('display.vfd.protocol', e.target.value)}
+                >
+                  {VFD_PROTOCOLS.map((p) => (
+                    <option key={p.k} value={p.k}>{p.name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Скорость порта (baud)">
+                <Select
+                  value={String(cfg.baud)}
+                  onChange={(e) => set('display.vfd.baud', e.target.value)}
+                >
+                  {VFD_BAUDS.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Кодировка (кириллица)">
+                <Select
+                  value={cfg.charset}
+                  onChange={(e) => set('display.vfd.charset', e.target.value)}
+                >
+                  <option value="latin">Латиница (транслит) — безопасно везде</option>
+                  <option value="cp866">CP866 — если дисплей знает русский</option>
+                </Select>
+              </Field>
+              <Field label="Ширина строки">
+                <Select
+                  value={String(cfg.width)}
+                  onChange={(e) => set('display.vfd.width', e.target.value)}
+                >
+                  <option value="20">20 символов</option>
+                  <option value="16">16 символов</option>
+                </Select>
+              </Field>
+            </div>
+
+            {proto && (
+              <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+                {proto.name}: {proto.hint}.
+              </p>
+            )}
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button onClick={connect} disabled={!supported}>
+                <NavIcon name="plus" className="h-4 w-4" />Подключить устройство (COM-порт)
+              </Button>
+              <Button variant="ghost" onClick={test} disabled={!supported}>
+                <NavIcon name="play" className="h-4 w-4" />Тест
+              </Button>
+            </div>
+
+            <div className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
+              <b className="text-slate-600 dark:text-slate-300">Как настроить:</b> 1) включите тумблер;
+              2) нажмите «Подключить» и выберите COM-порт дисплея (обычно COM1–COM4);
+              3) нажмите «Тест». Если текст не появился или нечитаем — поменяйте
+              протокол / скорость / кодировку и снова «Тест». 4) Сохраните изменения.
+            </div>
+          </>
+        )}
+      </Card>
+    </div>
   );
 }
 

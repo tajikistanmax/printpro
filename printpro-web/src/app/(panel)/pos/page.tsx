@@ -7,6 +7,7 @@ import { DEFAULT_POS_LAYOUT } from '@/lib/pos-layouts';
 import { SKINS, type CartItem, type PosCtx } from './_pos';
 import { useFeatureFlags } from '@/lib/feature-flags';
 import { sendDisplay, openCustomerDisplay } from '@/lib/customer-display';
+import { readVfdConfig, vfdShow, DEFAULT_VFD, type VfdConfig } from '@/lib/vfd-display';
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(n) + ' c.';
@@ -32,6 +33,7 @@ export default function PosPage() {
   const [branchId, setBranchId] = useState('');
   const [search, setSearch] = useState('');
   const [layout, setLayout] = useState<string>(DEFAULT_POS_LAYOUT);
+  const [vfdCfg, setVfdCfg] = useState<VfdConfig>(DEFAULT_VFD);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState('');
@@ -82,6 +84,7 @@ export default function PosPage() {
       .then((ui) => {
         if (ui?.posLayout) setLayout(ui.posLayout);
         if (ui?.companyName) setShopName(ui.companyName);
+        if (ui) setVfdCfg(readVfdConfig(ui));
       })
       .catch(() => {});
     // Недавние заказы + статистика (для богатых оформлений). Требует orders.view —
@@ -177,8 +180,16 @@ export default function PosPage() {
 
   // Транслируем корзину на дисплей покупателя (второй экран)
   useEffect(() => {
-    if (!displayOn) return;
     if (receipt) return; // во время показа чека дисплей держит экран оплаты
+    // Текстовый VFD-дисплей (линейный) — независимо от графического
+    if (vfdCfg.enabled) {
+      if (cart.length === 0) {
+        vfdShow(shopName.slice(0, vfdCfg.width), 'Добро пожаловать', vfdCfg);
+      } else {
+        vfdShow(`Позиций: ${cartCount}`, `Итого: ${money(total)}`, vfdCfg);
+      }
+    }
+    if (!displayOn) return;
     if (cart.length === 0) {
       sendDisplay({ type: 'welcome', shopName });
     } else {
@@ -196,18 +207,22 @@ export default function PosPage() {
         total,
       });
     }
-  }, [cart, subtotal, total, totalDiscount, shopName, receipt, displayOn]);
+  }, [cart, subtotal, total, totalDiscount, shopName, receipt, displayOn, vfdCfg, cartCount]);
 
   // После оплаты показываем итог/«спасибо» на дисплее
   useEffect(() => {
-    if (!displayOn || !receipt) return;
+    if (!receipt) return;
+    if (vfdCfg.enabled) {
+      vfdShow(`К оплате: ${money(Number(receipt.total))}`, 'Спасибо за покупку', vfdCfg);
+    }
+    if (!displayOn) return;
     sendDisplay({
       type: 'total',
       shopName,
       total: Number(receipt.total),
       method: receipt._method,
     });
-  }, [receipt, shopName, displayOn]);
+  }, [receipt, shopName, displayOn, vfdCfg]);
 
   async function checkPromo() {
     setPromoMsg('');

@@ -137,12 +137,15 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
           }`}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="PrintPro" className="h-9 w-9 shrink-0 object-contain" />
-          <span
-            className={`text-xl font-extrabold italic tracking-tight text-slate-800 ${hideOnRail}`}
-          >
-            Print<span className="text-violet-500">Pro</span>
-          </span>
+          <img src="/logo.svg" alt="PrintPro" className="h-10 w-10 shrink-0 object-contain" />
+          <div className={`flex min-w-0 flex-col leading-none ${hideOnRail}`}>
+            <span className="text-xl font-extrabold tracking-tight text-slate-800">
+              Print<span className="text-violet-500">Pro</span>
+            </span>
+            <span className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              Online Printing Service
+            </span>
+          </div>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2.5 py-3">

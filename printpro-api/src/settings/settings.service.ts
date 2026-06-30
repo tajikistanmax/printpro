@@ -27,8 +27,10 @@ export class SettingsService {
     for (const k of PUBLIC_KEYS) if (all[k] != null) out[k] = all[k];
     // Тумблеры функций (feature.*) — публичные, чтобы меню и страницы
     // могли скрывать/показывать разделы без права settings.manage.
+    // Настройки дисплея покупателя (display.*) — тоже публичные, чтобы касса
+    // знала тип/протокол второго экрана без права settings.manage.
     for (const [k, v] of Object.entries(all)) {
-      if (k.startsWith('feature.')) out[k] = v;
+      if (k.startsWith('feature.') || k.startsWith('display.')) out[k] = v;
     }
     return out;
   }
