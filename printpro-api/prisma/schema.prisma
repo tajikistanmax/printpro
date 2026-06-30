@@ -405,6 +405,7 @@ model Service {
   leadTimeMin     Int? // время выполнения, минут
   designSurcharge Decimal          @default(0) @db.Decimal(12, 2)
   minQuantity     Int              @default(1)
+  imageUrl        String? // фото услуги (путь /uploads/...)
   isActive        Boolean          @default(true)
   createdAt       DateTime         @default(now())
 
@@ -518,6 +519,7 @@ model Product {
   sku        String? // артикул
   size       String? // размер (напр. 610 x 860 мм)
   weight     String? // вес (напр. 2.5 кг)
+  imageUrl   String? // фото товара (путь /uploads/...)
   isActive   Boolean          @default(true)
   createdAt  DateTime         @default(now())
 

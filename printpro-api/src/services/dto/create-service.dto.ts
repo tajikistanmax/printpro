@@ -61,6 +61,8 @@ export class CreateServiceDto {
 
   @IsOptional() @IsInt() @Min(1) minQuantity?: number;
 
+  @IsOptional() @IsString() imageUrl?: string;
+
   @IsOptional() @IsBoolean() isActive?: boolean;
 
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => PriceTierDto)

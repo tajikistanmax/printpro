@@ -23,6 +23,7 @@ import {
 } from '@/components/ui';
 import type { Tone } from '@/components/ui';
 import NavIcon from '@/lib/NavIcons';
+import ImageUpload from '@/lib/ImageUpload';
 
 const PRICING_LABELS: Record<string, string> = {
   FIXED: 'Фиксированная',
@@ -89,7 +90,7 @@ export default function ServicesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newF, setNewF] = useState({
     name: '', categoryId: '', pricingType: 'FIXED',
-    basePrice: '', costPrice: '', leadTime: '', designSurcharge: '',
+    basePrice: '', costPrice: '', leadTime: '', designSurcharge: '', imageUrl: '',
   });
   const [addMsg, setAddMsg] = useState('');
 
@@ -156,8 +157,9 @@ export default function ServicesPage() {
         costPrice: newF.costPrice ? Number(newF.costPrice) : 0,
         leadTimeMin: newF.leadTime ? Number(newF.leadTime) : undefined,
         designSurcharge: newF.designSurcharge ? Number(newF.designSurcharge) : 0,
+        imageUrl: newF.imageUrl || undefined,
       });
-      setNewF({ name: '', categoryId: '', pricingType: 'FIXED', basePrice: '', costPrice: '', leadTime: '', designSurcharge: '' });
+      setNewF({ name: '', categoryId: '', pricingType: 'FIXED', basePrice: '', costPrice: '', leadTime: '', designSurcharge: '', imageUrl: '' });
       setAddMsg('✓ Услуга добавлена');
       setShowAddForm(false);
       load();
@@ -176,6 +178,7 @@ export default function ServicesPage() {
       costPrice: String(Number(s.costPrice) || ''),
       leadTime: s.leadTimeMin ? String(s.leadTimeMin) : '',
       designSurcharge: String(Number(s.designSurcharge) || ''),
+      imageUrl: s.imageUrl ?? '',
       isActive: s.isActive ?? true,
       priceTiers: (s.priceTiers ?? []).map((t: any) => ({
         _k: t.id, minQty: String(t.minQty), maxQty: t.maxQty ? String(t.maxQty) : '', price: String(Number(t.price)),
@@ -210,6 +213,7 @@ export default function ServicesPage() {
         costPrice: ef.costPrice ? Number(ef.costPrice) : 0,
         leadTimeMin: ef.leadTime ? Number(ef.leadTime) : null,
         designSurcharge: ef.designSurcharge ? Number(ef.designSurcharge) : 0,
+        imageUrl: ef.imageUrl || undefined,
         isActive: ef.isActive,
         priceTiers: priceTiers.length > 0 ? priceTiers : [],
         sizes: sizes.length > 0 ? sizes : [],
@@ -319,6 +323,7 @@ export default function ServicesPage() {
           <Field label="Наценка за дизайн, c.">
             <Input type="number" value={ef.designSurcharge} onChange={(e) => setEf((f: any) => ({ ...f, designSurcharge: e.target.value }))} placeholder="0" />
           </Field>
+          <ImageUpload value={ef.imageUrl} onChange={(url) => setEf((f: any) => ({ ...f, imageUrl: url }))} label="Фото услуги" />
           <div className="flex items-end gap-2">
             <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
               <input type="checkbox" checked={ef.isActive} onChange={(e) => setEf((f: any) => ({ ...f, isActive: e.target.checked }))} className="h-4 w-4 rounded" />
@@ -480,6 +485,7 @@ export default function ServicesPage() {
             <Field label="Дизайн +" className="w-32">
               <Input type="number" value={newF.designSurcharge} onChange={(e) => setNewF((f) => ({ ...f, designSurcharge: e.target.value }))} placeholder="0" />
             </Field>
+            <ImageUpload value={newF.imageUrl} onChange={(url) => setNewF((f) => ({ ...f, imageUrl: url }))} label="Фото" />
             <Button type="submit">Добавить</Button>
             {addMsg && <span className="text-sm text-slate-600">{addMsg}</span>}
           </form>

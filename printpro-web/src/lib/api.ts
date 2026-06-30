@@ -46,4 +46,37 @@ export const api = {
   put: <T = any>(path: string, body?: unknown) =>
     apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body ?? {}) }),
   del: <T = any>(path: string) => apiFetch<T>(path, { method: 'DELETE' }),
+  // Загрузка файла (multipart). Content-Type выставит браузер сам (с boundary).
+  upload: async <T = any>(path: string, file: File): Promise<T> => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers,
+      body: fd,
+    });
+    if (!res.ok) {
+      let message = `Ошибка ${res.status}`;
+      try {
+        const body = await res.json();
+        message = body.message ?? message;
+        if (Array.isArray(message)) message = message.join(', ');
+      } catch {
+        /* не json */
+      }
+      throw new Error(message);
+    }
+    const text = await res.text();
+    return text ? JSON.parse(text) : (undefined as T);
+  },
 };
+
+// Полный URL к файлу из /uploads (для <img src>)
+export function fileUrl(path?: string | null): string {
+  if (!path) return '';
+  if (/^https?:\/\//.test(path)) return path;
+  return `${API_BASE}${path}`;
+}

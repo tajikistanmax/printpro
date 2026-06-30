@@ -17,5 +17,6 @@ export class CreateProductDto {
   @IsOptional() @IsString() sku?: string;
   @IsOptional() @IsString() size?: string;
   @IsOptional() @IsString() weight?: string;
+  @IsOptional() @IsString() imageUrl?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }

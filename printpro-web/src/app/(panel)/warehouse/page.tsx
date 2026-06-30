@@ -24,6 +24,8 @@ import {
 } from '@/components/ui';
 import type { Tone } from '@/components/ui';
 import NavIcon from '@/lib/NavIcons';
+import ImageUpload from '@/lib/ImageUpload';
+import { fileUrl } from '@/lib/api';
 
 const MOV_LABEL: Record<string, string> = {
   IN: 'Приход', OUT: 'Расход', WRITE_OFF: 'Списание', ADJUST: 'Корректировка', RETURN: 'Возврат',
@@ -106,6 +108,7 @@ export default function WarehousePage() {
   const [pBarcode, setPBarcode] = useState('');
   const [pSize, setPSize] = useState('');
   const [pWeight, setPWeight] = useState('');
+  const [pImage, setPImage] = useState('');
   const [pMsg, setPMsg] = useState('');
 
   // Редактирование товара
@@ -206,8 +209,9 @@ export default function WarehousePage() {
         barcode: pBarcode || undefined,
         size: pSize || undefined,
         weight: pWeight || undefined,
+        imageUrl: pImage || undefined,
       });
-      setPName(''); setPPrice(''); setPPurchase(''); setPMin(''); setPSku(''); setPBarcode(''); setPSize(''); setPWeight('');
+      setPName(''); setPPrice(''); setPPurchase(''); setPMin(''); setPSku(''); setPBarcode(''); setPSize(''); setPWeight(''); setPImage('');
       setPMsg('✓ Товар добавлен'); load();
     } catch (err: any) { setPMsg('Ошибка: ' + err.message); }
   }
@@ -219,6 +223,7 @@ export default function WarehousePage() {
       name: p.name, categoryId: p.categoryId ?? '', unitId: p.unitId ?? '',
       salePrice: String(Number(p.salePrice) || ''), purchasePrice: String(Number(p.purchasePrice) || ''), minStock: String(Number(p.minStock) || ''),
       sku: p.sku ?? '', barcode: p.barcode ?? '', size: p.size ?? '', weight: p.weight ?? '',
+      imageUrl: p.imageUrl ?? '',
       isActive: p.isActive ?? true,
     });
   }
@@ -236,6 +241,7 @@ export default function WarehousePage() {
         barcode: editP.barcode || undefined,
         size: editP.size || undefined,
         weight: editP.weight || undefined,
+        imageUrl: editP.imageUrl || undefined,
         isActive: editP.isActive,
       });
       setEditPId(null); load();
@@ -449,7 +455,7 @@ export default function WarehousePage() {
     <div>
       <PageHeader
         icon="warehouse"
-        title="Склад материалов"
+        title="Склад товаров"
         subtitle="Остатки, приём, инвентаризация, списания и движения"
         actions={
           <div className="flex items-center gap-2">
@@ -459,7 +465,7 @@ export default function WarehousePage() {
               </Button>
             )}
             <Button variant="ghost" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт</Button>
-            {canProducts && <Button onClick={() => setTab('ref')}>+ Новый материал</Button>}
+            {canProducts && <Button onClick={() => setTab('ref')}>+ Новый товар</Button>}
           </div>
         }
       />
@@ -490,7 +496,7 @@ export default function WarehousePage() {
 
           <TableCard>
             <Toolbar>
-              <SearchInput value={q} onChange={setQ} placeholder="Поиск по материалам, артикулу, штрихкоду…" />
+              <SearchInput value={q} onChange={setQ} placeholder="Поиск по товарам, артикулу, штрихкоду…" />
               <Select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className="w-auto">
                 <option value="">Все склады</option>
                 {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -507,13 +513,13 @@ export default function WarehousePage() {
             {loading ? (
               <EmptyState title="Загрузка…" />
             ) : filtered.length === 0 ? (
-              <EmptyState icon="warehouse" title="Материалов нет" hint={q || filterCat !== 'ALL' ? 'Ничего не найдено.' : 'Добавьте материал во вкладке «Справочники».'} />
+              <EmptyState icon="warehouse" title="Товаров нет" hint={q || filterCat !== 'ALL' ? 'Ничего не найдено.' : 'Добавьте товар во вкладке «Справочники».'} />
             ) : (
               <div className="pp-table-scroll">
                 <table className="pp-table">
                   <thead>
                     <tr>
-                      <th>Материал</th>
+                      <th>Товар</th>
                       <th>Категория</th>
                       <th>Ед.</th>
                       <th className="text-right">Остаток</th>
@@ -562,7 +568,7 @@ export default function WarehousePage() {
           <Card>
             <SectionTitle>Приём материала (приход)</SectionTitle>
             <form onSubmit={receive} className="space-y-3">
-              <Field label="Материал"><Select value={productId} onChange={(e) => setProductId(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
+              <Field label="Товар"><Select value={productId} onChange={(e) => setProductId(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Склад"><Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
                 <Field label="Количество"><Input value={qty} onChange={(e) => setQty(e.target.value)} type="number" step="0.001" placeholder="0" required /></Field>
@@ -576,7 +582,7 @@ export default function WarehousePage() {
           <Card>
             <SectionTitle>Перемещение между складами</SectionTitle>
             <form onSubmit={transfer} className="space-y-3">
-              <Field label="Материал"><Select value={tProduct} onChange={(e) => setTProduct(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
+              <Field label="Товар"><Select value={tProduct} onChange={(e) => setTProduct(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Откуда"><Select value={tFrom} onChange={(e) => setTFrom(e.target.value)} required><option value="">—</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
                 <Field label="Куда"><Select value={tTo} onChange={(e) => setTTo(e.target.value)} required><option value="">—</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
@@ -606,7 +612,7 @@ export default function WarehousePage() {
 
           <div className="pp-table-scroll">
             <table className="pp-table">
-              <thead><tr><th>Материал</th><th className="text-right">Учёт</th><th className="text-right">Факт</th><th className="text-right">Разница</th></tr></thead>
+              <thead><tr><th>Товар</th><th className="text-right">Учёт</th><th className="text-right">Факт</th><th className="text-right">Разница</th></tr></thead>
               <tbody>
                 {invFiltered.length === 0 && (
                   <tr><td colSpan={4} className="py-6 text-center text-sm text-slate-400">Ничего не найдено</td></tr>
@@ -651,7 +657,7 @@ export default function WarehousePage() {
           <Card>
             <SectionTitle>Списание (бой / брак / порча)</SectionTitle>
             <form onSubmit={writeOff} className="space-y-3">
-              <Field label="Материал"><Select value={woProduct} onChange={(e) => setWoProduct(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
+              <Field label="Товар"><Select value={woProduct} onChange={(e) => setWoProduct(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Склад"><Select value={woBranch} onChange={(e) => setWoBranch(e.target.value)}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
                 <Field label="Количество"><Input value={woQty} onChange={(e) => setWoQty(e.target.value)} type="number" step="0.001" placeholder="0" required /></Field>
@@ -673,7 +679,7 @@ export default function WarehousePage() {
           ) : (
             <div className="pp-table-scroll">
               <table className="pp-table">
-                <thead><tr><th>Дата</th><th>Материал</th><th>Тип</th><th className="text-right">Кол-во</th><th className="text-right">Было</th><th className="text-right">Стало</th><th>Причина</th><th>Сотрудник</th></tr></thead>
+                <thead><tr><th>Дата</th><th>Товар</th><th>Тип</th><th className="text-right">Кол-во</th><th className="text-right">Было</th><th className="text-right">Стало</th><th>Причина</th><th>Сотрудник</th></tr></thead>
                 <tbody>
                   {movements.map((m) => (
                     <tr key={m.id}>
@@ -698,9 +704,9 @@ export default function WarehousePage() {
       {tab === 'ref' && canProducts && (
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
-            <SectionTitle>Новый материал</SectionTitle>
+            <SectionTitle>Новый товар</SectionTitle>
             <form onSubmit={createProduct} className="space-y-3">
-              <Input value={pName} onChange={(e) => setPName(e.target.value)} placeholder="Название материала *" required />
+              <Input value={pName} onChange={(e) => setPName(e.target.value)} placeholder="Название товара *" required />
               <Select value={pCat} onChange={(e) => setPCat(e.target.value)}>
                 <option value="">— без категории —</option>
                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -717,7 +723,8 @@ export default function WarehousePage() {
                 <Input value={pSize} onChange={(e) => setPSize(e.target.value)} placeholder="Размер (610×860 мм)" />
                 <Input value={pWeight} onChange={(e) => setPWeight(e.target.value)} placeholder="Вес (2.5 кг)" />
               </div>
-              <Button type="submit" variant="emerald" className="w-full">Добавить материал</Button>
+              <ImageUpload value={pImage} onChange={setPImage} label="Фото товара" />
+              <Button type="submit" variant="emerald" className="w-full">Добавить товар</Button>
               {pMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{pMsg}</p>}
             </form>
 
@@ -802,7 +809,7 @@ export default function WarehousePage() {
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={() => { setMaterial(null); setEditPId(null); }} />
           <div className="relative z-10 h-full w-full max-w-md overflow-y-auto border-l border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Информация о материале</h2>
+              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Информация о товаре</h2>
               <button onClick={() => { setMaterial(null); setEditPId(null); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
@@ -821,6 +828,7 @@ export default function WarehousePage() {
                     <Field label="Размер"><Input value={editP.size} onChange={(e) => setEditP((f: any) => ({ ...f, size: e.target.value }))} /></Field>
                     <Field label="Вес"><Input value={editP.weight} onChange={(e) => setEditP((f: any) => ({ ...f, weight: e.target.value }))} /></Field>
                   </div>
+                  <ImageUpload value={editP.imageUrl} onChange={(url) => setEditP((f: any) => ({ ...f, imageUrl: url }))} label="Фото товара" />
                   <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                     <input type="checkbox" checked={editP.isActive} onChange={(e) => setEditP((f: any) => ({ ...f, isActive: e.target.checked }))} className="h-4 w-4 rounded" /> Активен
                   </label>
@@ -831,7 +839,12 @@ export default function WarehousePage() {
             ) : (
               <>
                 <div className="mb-3 flex items-start gap-3">
-                  <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-800"><NavIcon name="warehouse" className="h-7 w-7" /></span>
+                  {material.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={fileUrl(material.imageUrl)} alt="" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
+                  ) : (
+                    <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-800"><NavIcon name="warehouse" className="h-7 w-7" /></span>
+                  )}
                   <div className="min-w-0">
                     <div className="font-semibold text-slate-800 dark:text-slate-100">{material.name}</div>
                     <div className="mt-1 flex flex-wrap gap-1.5">

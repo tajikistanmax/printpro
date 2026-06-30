@@ -32,6 +32,7 @@ import { PromocodesModule } from './promocodes/promocodes.module';
 import { ComplaintsModule } from './complaints/complaints.module';
 import { EmailModule } from './email/email.module';
 import { SystemModule } from './system/system.module';
+import { UploadsModule } from './uploads/uploads.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { SystemModule } from './system/system.module';
     ComplaintsModule, // рекламации (жалобы)
     EmailModule, // email-уведомления (SMTP)
     SystemModule, // информация о системе (версия, СУБД, аптайм)
+    UploadsModule, // загрузка изображений (фото товаров/услуг, QR оплаты)
   ],
   controllers: [AppController],
   providers: [AppService],
