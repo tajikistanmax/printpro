@@ -750,6 +750,7 @@ model Order {
   total          Decimal       @default(0) @db.Decimal(12, 2)
   paid           Decimal       @default(0) @db.Decimal(12, 2)
   balanceDue     Decimal       @default(0) @db.Decimal(12, 2)
+  debtDueDate    DateTime? // срок погашения долга (для напоминаний о просрочке)
   note           String?
   idempotencyKey String?       @unique // защита от двойной продажи (POS)
   createdAt      DateTime      @default(now())

@@ -63,6 +63,7 @@ export class CreateOrderDto {
   @IsOptional() @IsEnum(OrderUrgency) urgency?: OrderUrgency;
 
   @IsOptional() @IsString() deadline?: string; // ISO дата
+  @IsOptional() @IsString() debtDueDate?: string; // ISO дата — срок погашения долга
   @IsOptional() @IsString() note?: string;
 
   // Ключ идемпотентности — защита от двойного создания заказа/продажи

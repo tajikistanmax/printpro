@@ -177,6 +177,7 @@ export class OrdersService {
             : leadDays > 0
               ? new Date(Date.now() + leadDays * 86400000)
               : undefined,
+          debtDueDate: dto.debtDueDate ? new Date(dto.debtDueDate) : undefined,
           note: dto.note,
           idempotencyKey: dto.idempotencyKey,
           total,
@@ -357,6 +358,7 @@ export class OrdersService {
         decrementStock: true,
         idempotencyKey: dto.idempotencyKey,
         note: dto.note,
+        debtDueDate: dto.debtDueDate,
         items: dto.items,
       });
     } catch (e: any) {
@@ -909,6 +911,7 @@ export class OrdersService {
       include: { client: true },
       orderBy: { createdAt: 'asc' },
     });
+    const now = Date.now();
     return orders.map((o) => ({
       orderId: o.id,
       orderNumber: o.orderNumber,
@@ -917,7 +920,19 @@ export class OrdersService {
       total: Number(o.total),
       paid: Number(o.paid),
       debt: Number(o.balanceDue),
+      dueDate: o.debtDueDate,
+      overdue: o.debtDueDate ? new Date(o.debtDueDate).getTime() < now : false,
     }));
+  }
+
+  // Установить/изменить срок погашения долга по заказу
+  async setDebtDue(orderId: string, dueDate: string | null) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Заказ не найден');
+    return this.prisma.order.update({
+      where: { id: orderId },
+      data: { debtDueDate: dueDate ? new Date(dueDate) : null },
+    });
   }
 
   // Открытая смена кассира (для привязки движений кассы к Z-отчёту).

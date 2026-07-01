@@ -23,6 +23,19 @@ function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(n) + ' c.';
 }
 
+function fmtDate(s?: string | null) {
+  if (!s) return '—';
+  return new Date(s).toLocaleDateString('ru-RU');
+}
+
+// YYYY-MM-DD для <input type="date">
+function toDateInput(s?: string | null) {
+  if (!s) return '';
+  const d = new Date(s);
+  const off = d.getTimezoneOffset();
+  return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
+}
+
 const CLIENT_METHODS = [
   { value: 'CASH', label: 'Наличные' },
   { value: 'CARD', label: 'Карта' },
@@ -49,6 +62,11 @@ export default function DebtsPage() {
   const [paySupplier, setPaySupplier] = useState<any | null>(null);
   const [sAmount, setSAmount] = useState('');
   const [sMsg, setSMsg] = useState('');
+
+  // Срок погашения долга клиента
+  const [dueTarget, setDueTarget] = useState<any | null>(null);
+  const [dueVal, setDueVal] = useState('');
+  const [dueMsg, setDueMsg] = useState('');
 
   function load() {
     api.get(`/orders/debts?companyId=${cid}`).then(setClientDebts).catch(() => {});
@@ -86,6 +104,26 @@ export default function DebtsPage() {
       load();
     } catch (err: any) {
       setCMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  // ---- срок погашения ----
+  function openDue(d: any) {
+    setDueTarget(d);
+    setDueVal(toDateInput(d.dueDate));
+    setDueMsg('');
+  }
+  async function submitDue(e: React.FormEvent) {
+    e.preventDefault();
+    if (!dueTarget) return;
+    try {
+      await api.patch(`/orders/${dueTarget.orderId}/debt-due`, {
+        dueDate: dueVal || null,
+      });
+      setDueTarget(null);
+      load();
+    } catch (err: any) {
+      setDueMsg('Ошибка: ' + err.message);
     }
   }
 
@@ -155,23 +193,34 @@ export default function DebtsPage() {
                   <th>Клиент</th>
                   <th>Телефон</th>
                   <th className="text-right">Сумма</th>
-                  <th className="text-right">Оплачено</th>
                   <th className="text-right">Долг</th>
+                  <th>Срок</th>
                   {canPay && <th className="text-right">Действие</th>}
                 </tr>
               </thead>
               <tbody>
                 {clientDebts.map((d) => (
-                  <tr key={d.orderId}>
+                  <tr key={d.orderId} className={d.overdue ? 'bg-rose-50/60 dark:bg-rose-500/10' : ''}>
                     <td className="font-medium text-slate-700 dark:text-slate-200">{d.orderNumber}</td>
                     <td className="text-slate-700 dark:text-slate-200">{d.client}</td>
                     <td className="text-slate-500 dark:text-slate-400">{d.phone || '—'}</td>
                     <td className="text-right text-slate-500 dark:text-slate-400">{money(Number(d.total))}</td>
-                    <td className="text-right text-slate-500 dark:text-slate-400">{money(Number(d.paid))}</td>
                     <td className="text-right font-semibold text-rose-600 dark:text-rose-400">{money(Number(d.debt))}</td>
+                    <td>
+                      {d.dueDate ? (
+                        <span className={d.overdue ? 'font-semibold text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'}>
+                          {fmtDate(d.dueDate)}{d.overdue ? ' · просрочено' : ''}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
                     {canPay && (
                       <td className="text-right">
-                        <Button size="sm" variant="ghost" onClick={() => openClient(d)}>Принять оплату</Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => openDue(d)} title="Срок погашения">Срок</Button>
+                          <Button size="sm" variant="ghost" onClick={() => openClient(d)}>Принять оплату</Button>
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -251,6 +300,38 @@ export default function DebtsPage() {
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="ghost" onClick={() => setPayClient(null)} className="flex-1">Отмена</Button>
                 <Button type="submit" variant="emerald" className="flex-1">Принять</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== СРОК ПОГАШЕНИЯ ДОЛГА ===================== */}
+      {dueTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={() => setDueTarget(null)} />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Срок погашения долга</h3>
+              <button onClick={() => setDueTarget(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <NavIcon name="close" className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mb-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800/40">
+              <div className="font-medium text-slate-700 dark:text-slate-200">{dueTarget.orderNumber} — {dueTarget.client}</div>
+              <div className="mt-0.5 text-rose-600 dark:text-rose-400">Долг: <b>{money(Number(dueTarget.debt) || 0)}</b></div>
+            </div>
+
+            <form onSubmit={submitDue} className="space-y-3">
+              <Field label="Оплатить до">
+                <Input value={dueVal} onChange={(e) => setDueVal(e.target.value)} type="date" autoFocus />
+              </Field>
+              <p className="-mt-1 text-xs text-slate-400">Просроченные долги подсветятся и попадут в напоминания. Пусто — убрать срок.</p>
+              {dueMsg && <p className="text-sm text-rose-600">{dueMsg}</p>}
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="ghost" onClick={() => setDueTarget(null)} className="flex-1">Отмена</Button>
+                <Button type="submit" variant="emerald" className="flex-1">Сохранить</Button>
               </div>
             </form>
           </div>

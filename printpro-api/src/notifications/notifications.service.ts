@@ -42,9 +42,28 @@ export class NotificationsService {
     if (debt._count > 0) {
       out.push({
         type: 'debts',
-        level: 'danger',
+        level: 'warning',
         title: `Долги клиентов: ${debt._count} на ${Number(debt._sum.balanceDue ?? 0)} c.`,
-        link: '/reports',
+        link: '/debts',
+      });
+    }
+
+    // 2b. Просроченные долги (срок погашения прошёл, остаток не погашен)
+    const overdue = await this.prisma.order.aggregate({
+      where: {
+        companyId,
+        balanceDue: { gt: new Prisma.Decimal(0) },
+        debtDueDate: { lt: new Date() },
+      },
+      _sum: { balanceDue: true },
+      _count: true,
+    });
+    if (overdue._count > 0) {
+      out.push({
+        type: 'debts_overdue',
+        level: 'danger',
+        title: `Просроченные долги: ${overdue._count} на ${Number(overdue._sum.balanceDue ?? 0)} c.`,
+        link: '/debts',
       });
     }
 

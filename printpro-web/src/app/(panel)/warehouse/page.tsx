@@ -111,11 +111,8 @@ export default function WarehousePage() {
   const [editPMsg, setEditPMsg] = useState('');
   const [editAdvOpen, setEditAdvOpen] = useState(false);
 
-  // Приём
-  const [productId, setProductId] = useState('');
+  // Филиал по умолчанию (для перемещения/инвентаризации/списания)
   const [branchId, setBranchId] = useState('');
-  const [qty, setQty] = useState('');
-  const [receiveMsg, setReceiveMsg] = useState('');
 
   // Перемещение
   const [tProduct, setTProduct] = useState('');
@@ -141,7 +138,6 @@ export default function WarehousePage() {
     ])
       .then(([p, u, b, c]) => {
         setProducts(p); setUnits(u); setBranches(b); setCategories(c);
-        if (p[0]) setProductId(p[0].id);
         if (b[0]) { setBranchId(b[0].id); setTFrom(b[0].id); setInvBranch(b[0].id); setWoBranch(b[0].id); }
         // Единица по умолчанию: помеченная isDefault → «шт» → первая
         if (u[0]) setPUnit((u.find((x: any) => x.isDefault) ?? u.find((x: any) => x.shortName === 'шт') ?? u[0]).id);
@@ -264,15 +260,7 @@ export default function WarehousePage() {
     catch (err: any) { setPMsg('Ошибка: ' + err.message); }
   }
 
-  // ---- приём / перемещение / инвентаризация ----
-  async function receive(e: React.FormEvent) {
-    e.preventDefault(); setReceiveMsg('');
-    try {
-      await api.post('/stock/receive', { companyId: cid, branchId, productId, quantity: Number(qty), reason: 'Приход через панель' });
-      setQty(''); setReceiveMsg('✓ Товар принят на склад'); load();
-      if (tab === 'moves') loadMovements();
-    } catch (err: any) { setReceiveMsg('Ошибка: ' + err.message); }
-  }
+  // ---- перемещение / инвентаризация ----
   async function transfer(e: React.FormEvent) {
     e.preventDefault(); setTMsg('');
     try {
@@ -313,7 +301,8 @@ export default function WarehousePage() {
   }
   function quickAction(action: 'receive' | 'transfer' | 'recount') {
     if (!material) return;
-    if (action === 'receive') { setProductId(material.id); setTab('recv'); }
+    // Приёмка теперь в «Закупках» (с поставщиком/ценой/оплатой)
+    if (action === 'receive') { window.location.href = '/purchasing'; return; }
     else if (action === 'transfer') { setTProduct(material.id); setTab('recv'); }
     else if (action === 'recount') { setInvSearch(material.name ?? ''); setTab('inv'); }
     setMaterial(null);
@@ -454,7 +443,7 @@ export default function WarehousePage() {
 
   const tabs: TabItem[] = [
     { key: 'stock', label: 'Остатки', count: products.length },
-    ...(canManage ? [{ key: 'recv', label: 'Приём' }] : []),
+    ...(canManage && branches.length > 1 ? [{ key: 'recv', label: 'Перемещение' }] : []),
     ...(canManage ? [{ key: 'inv', label: 'Инвентаризация' }] : []),
     ...(canManage ? [{ key: 'writeoff', label: 'Списания' }] : []),
     { key: 'moves', label: 'Движения' },
@@ -573,24 +562,15 @@ export default function WarehousePage() {
       )}
 
       {/* ============ ПРИЁМ (приход + перемещение) ============ */}
-      {tab === 'recv' && canManage && (
+      {tab === 'recv' && canManage && branches.length > 1 && (
         <div className="grid gap-6 md:grid-cols-2">
           <Card>
-            <SectionTitle>Приём материала (приход)</SectionTitle>
-            <form onSubmit={receive} className="space-y-3">
-              <Field label="Товар"><Select value={productId} onChange={(e) => setProductId(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
-              <div className="grid grid-cols-2 gap-2">
-                {branches.length > 1 && <Field label="Склад"><Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>}
-                <Field label="Количество"><Input value={qty} onChange={(e) => setQty(e.target.value)} type="number" step="0.001" placeholder="0" required /></Field>
-              </div>
-              <Button type="submit" className="w-full">Принять на склад</Button>
-              {receiveMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{receiveMsg}</p>}
-            </form>
-            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-              Это быстрый приход <b>одного</b> товара без учёта денег.
-              Чтобы принять <b>несколько позиций по накладной</b>, указать поставщика,
-              закупочную цену и оплату (полностью / частично / в долг) —{' '}
-              <a href="/purchasing" className="font-semibold underline">перейдите в «Закупки»</a>.
+            <SectionTitle>Приёмка товара</SectionTitle>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+              Приёмка товара на склад — с поставщиком, закупочной ценой и оплатой
+              (полностью / частично / в долг) — теперь в разделе{' '}
+              <a href="/purchasing" className="font-semibold underline">«Закупки»</a>.
+              Здесь — только перемещение между складами.
             </div>
           </Card>
 

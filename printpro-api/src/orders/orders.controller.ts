@@ -165,6 +165,13 @@ export class OrdersController {
     return this.orders.addPayment(id, dto, user.sub);
   }
 
+  // Установить/изменить срок погашения долга
+  @Patch(':id/debt-due')
+  @RequirePermissions('cash.operate')
+  setDebtDue(@Param('id') id: string, @Body() dto: { dueDate: string | null }) {
+    return this.orders.setDebtDue(id, dto.dueDate ?? null);
+  }
+
   // Смена статуса
   @Patch(':id/status')
   @RequirePermissions('orders.manage')
