@@ -33,9 +33,13 @@ export class NotificationsService {
       });
     }
 
-    // 2. Долги клиентов
+    // 2. Долги клиентов (отменённые заказы в долг не считаем)
     const debt = await this.prisma.order.aggregate({
-      where: { companyId, balanceDue: { gt: new Prisma.Decimal(0) } },
+      where: {
+        companyId,
+        status: { not: OrderStatus.CANCELLED },
+        balanceDue: { gt: new Prisma.Decimal(0) },
+      },
       _sum: { balanceDue: true },
       _count: true,
     });
@@ -48,12 +52,16 @@ export class NotificationsService {
       });
     }
 
-    // 2b. Просроченные долги (срок погашения прошёл, остаток не погашен)
+    // 2b. Просроченные долги (срок погашения прошёл, остаток не погашен).
+    // Просрочка считается только со следующего дня после срока (не в течение дня).
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
     const overdue = await this.prisma.order.aggregate({
       where: {
         companyId,
+        status: { not: OrderStatus.CANCELLED },
         balanceDue: { gt: new Prisma.Decimal(0) },
-        debtDueDate: { lt: new Date() },
+        debtDueDate: { lt: startOfToday },
       },
       _sum: { balanceDue: true },
       _count: true,

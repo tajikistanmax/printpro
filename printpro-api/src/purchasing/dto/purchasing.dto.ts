@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsDateString,
   IsNumber,
   IsOptional,
   IsString,
@@ -36,6 +37,8 @@ export class ReceiptItemDto {
   @IsNumber() @Min(0.001) quantity: number;
   // Закупочная цена за единицу
   @IsOptional() @IsNumber() @Min(0) cost?: number;
+  // Новая цена продажи товара (если задана — обновит цену товара)
+  @IsOptional() @IsNumber() @Min(0) salePrice?: number;
 }
 
 export class CreateReceiptDto {
@@ -45,6 +48,8 @@ export class CreateReceiptDto {
   @IsOptional() @IsString() note?: string;
   // Сколько сразу оплатили поставщику. Если не указано — считаем оплаченным полностью.
   @IsOptional() @IsNumber() @Min(0) paidAmount?: number;
+  // Срок оплаты долга поставщику (если приняли частично/в долг)
+  @IsOptional() @IsDateString() dueDate?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

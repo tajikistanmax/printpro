@@ -1143,7 +1143,7 @@ function OrderPanelPro({ ctx }: { ctx: PosCtx }) {
 
       {c.split && (
         <div className="mt-3 space-y-1.5 rounded-xl bg-slate-50 p-3">
-          {c.methods.map((m) => (
+          {c.splitMethods.map((m) => (
             <div key={m.k} className="flex items-center gap-2">
               <span className="w-20 text-xs text-slate-600">{m.l}</span>
               <input
@@ -1167,8 +1167,8 @@ function OrderPanelPro({ ctx }: { ctx: PosCtx }) {
             <span>Осталось: {c.money(c.splitLeft)}</span>
           </div>
           <button
-            onClick={c.pay}
-            disabled={c.cart.length === 0}
+            onClick={() => c.payWith('MIXED')}
+            disabled={c.cart.length === 0 || c.splitLeft !== 0}
             className="mt-1 w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
           >
             Провести смешанную оплату
@@ -1577,7 +1577,7 @@ function OrderPanelMarket({ ctx }: { ctx: PosCtx }) {
 
       {c.split && (
         <div className="mt-3 space-y-1.5 rounded-xl bg-slate-50 p-3">
-          {c.methods.map((m) => (
+          {c.splitMethods.map((m) => (
             <div key={m.k} className="flex items-center gap-2">
               <span className="w-20 text-xs text-slate-600">{m.l}</span>
               <input
@@ -1601,8 +1601,8 @@ function OrderPanelMarket({ ctx }: { ctx: PosCtx }) {
             <span>Осталось: {c.money(c.splitLeft)}</span>
           </div>
           <button
-            onClick={c.pay}
-            disabled={c.cart.length === 0}
+            onClick={() => c.payWith('MIXED')}
+            disabled={c.cart.length === 0 || c.splitLeft !== 0}
             className="mt-1 w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
           >
             Провести смешанную оплату

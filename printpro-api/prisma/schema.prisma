@@ -640,6 +640,7 @@ model StockReceipt {
   total         Decimal              @default(0) @db.Decimal(12, 2) // сумма приёмки
   paidAmount    Decimal              @default(0) @db.Decimal(12, 2) // сколько оплачено поставщику
   paymentStatus ReceiptPaymentStatus @default(PAID)
+  dueDate       DateTime? // срок оплаты долга поставщику (если приняли частично/в долг)
 
   items StockReceiptItem[]
 }
@@ -655,7 +656,8 @@ model StockReceiptItem {
   productId String
   product   Product      @relation(fields: [productId], references: [id])
   quantity  Decimal      @db.Decimal(12, 3)
-  cost      Decimal      @default(0) @db.Decimal(12, 2)
+  cost      Decimal      @default(0) @db.Decimal(12, 2) // закупочная цена за единицу
+  salePrice Decimal?     @db.Decimal(12, 2) // цена продажи, заданная при приёмке
 }
 
 // Отложенный чек (касса) — корзина сохранена, чтобы вернуться позже

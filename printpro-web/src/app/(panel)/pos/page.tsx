@@ -35,6 +35,15 @@ const SPLIT_METHODS = [
   { k: 'CASH', l: 'Наличные' },
   { k: 'TRANSFER', l: 'Перевод' },
 ];
+// Подписи всех способов оплаты (для чека) — включая карту/QR, которых нет в METHODS.
+const METHOD_LABEL: Record<string, string> = {
+  CASH: 'Наличные',
+  CARD: 'Карта',
+  QR: 'QR',
+  TRANSFER: 'Перевод',
+  MIXED: 'Смешанная',
+  DEBT: 'В долг',
+};
 
 export default function PosPage() {
   const cid = DEFAULT_COMPANY_ID;
@@ -52,6 +61,7 @@ export default function PosPage() {
   const [vfdCfg, setVfdCfg] = useState<VfdConfig>(DEFAULT_VFD);
   const [scanMsg, setScanMsg] = useState('');
   const scanRef = useRef<(code: string) => void>(() => {});
+  const lastScanRef = useRef<{ code: string; t: number }>({ code: '', t: 0 });
   const [shopInfo, setShopInfo] = useState<{ address?: string; phone?: string; inn?: string }>({});
   const [transferPay, setTransferPay] = useState<{ qr?: string; requisite?: string }>({});
   const [qrUrl, setQrUrl] = useState('');
@@ -203,10 +213,12 @@ export default function PosPage() {
   const afterDisc = Math.max(0, subtotal - disc);
   const promo = Math.min(promoDiscount, afterDisc);
   const afterPromo = Math.max(0, afterDisc - promo);
-  const bonusApplied = Math.min(
-    Number(useBonus) || 0,
-    Number((afterPromo * 0.3).toFixed(2)),
-  );
+  // Бонусы списываются только у клиента (бэкенд применяет их лишь при clientId).
+  // Без выбранного клиента бонус не уменьшает итог — иначе экран покажет заниженную
+  // сумму и неправильную сдачу.
+  const bonusApplied = phone.trim()
+    ? Math.min(Number(useBonus) || 0, Number((afterPromo * 0.3).toFixed(2)))
+    : 0;
   const total = Math.max(0, Number((afterPromo - bonusApplied).toFixed(2)));
   const cartCount = cart.reduce((s, c) => s + c.quantity, 0);
   const totalDiscount = Math.max(0, Number((subtotal - total).toFixed(2)));
@@ -272,6 +284,13 @@ export default function PosPage() {
   scanRef.current = (raw: string) => {
     const code = raw.trim();
     if (!code) return;
+    // Анти-дребезг: сканеры в режиме «поток» шлют один и тот же код много раз,
+    // пока луч наведён. Тот же код в пределах 800мс — игнорируем, чтобы количество
+    // не умножалось само. Для добавления второй штуки — сканируйте повторно позже
+    // или жмите «+» в корзине.
+    const now = typeof performance !== 'undefined' ? performance.now() : 0;
+    if (code === lastScanRef.current.code && now - lastScanRef.current.t < 800) return;
+    lastScanRef.current = { code, t: now };
     const p = products.find(
       (x) =>
         x.barcode === code ||
@@ -451,7 +470,7 @@ export default function PosPage() {
           ? payments!
               .map((p) => `${SPLIT_METHODS.find((m) => m.k === p.method)?.l} ${p.amount}`)
               .join(', ')
-          : METHODS.find((m) => m.k === useMethod)?.l,
+          : METHOD_LABEL[useMethod] ?? useMethod,
         _change: useMethod === 'CASH' && Number(cashReceived) > 0 ? change : 0,
         _date: new Date().toLocaleString('ru-RU'),
       });

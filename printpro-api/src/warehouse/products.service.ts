@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -8,8 +12,40 @@ import { CreateUnitDto } from './dto/create-unit.dto';
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Проверка, что штрихкод свободен в пределах компании (среди активных
+  // товаров и их доп. штрихкодов). Один штрихкод = один товар.
+  private async assertBarcodeFree(
+    companyId: string,
+    barcode: string | null | undefined,
+    exceptProductId?: string,
+  ) {
+    const code = (barcode ?? '').trim();
+    if (!code) return;
+    const notSelf = exceptProductId ? { id: { not: exceptProductId } } : {};
+    const prod = await this.prisma.product.findFirst({
+      where: { companyId, barcode: code, deletedAt: null, ...notSelf },
+      select: { name: true },
+    });
+    if (prod)
+      throw new BadRequestException(
+        `Штрихкод ${code} уже используется товаром «${prod.name}»`,
+      );
+    const alias = await this.prisma.productBarcodeAlias.findFirst({
+      where: {
+        barcode: code,
+        product: { companyId, deletedAt: null, ...notSelf },
+      },
+      select: { product: { select: { name: true } } },
+    });
+    if (alias)
+      throw new BadRequestException(
+        `Штрихкод ${code} уже используется товаром «${alias.product.name}» (доп. код)`,
+      );
+  }
+
   // ---------- Товары ----------
-  createProduct(dto: CreateProductDto) {
+  async createProduct(dto: CreateProductDto) {
+    await this.assertBarcodeFree(dto.companyId, dto.barcode);
     return this.prisma.product.create({
       data: {
         companyId: dto.companyId,
@@ -123,6 +159,19 @@ export class ProductsService {
       where: { companyId, deletedAt: null },
     });
     const units = await this.prisma.unit.findMany({ where: { companyId } });
+    // Кто уже владеет каким штрихкодом — чтобы не назначить один код двум товарам
+    const usedBarcodes = new Map<string, string>(); // barcode -> productId
+    const activeProducts = await this.prisma.product.findMany({
+      where: { companyId, deletedAt: null, barcode: { not: null } },
+      select: { id: true, barcode: true },
+    });
+    for (const p of activeProducts)
+      if (p.barcode) usedBarcodes.set(p.barcode, p.id);
+    const aliases = await this.prisma.productBarcodeAlias.findMany({
+      where: { product: { companyId, deletedAt: null } },
+      select: { barcode: true, productId: true },
+    });
+    for (const a of aliases) usedBarcodes.set(a.barcode, a.productId);
     const catMap = new Map(cats.map((c) => [c.name.toLowerCase(), c.id]));
     const unitMap = new Map<string, string>();
     for (const u of units) {
@@ -141,6 +190,7 @@ export class ProductsService {
         continue;
       }
 
+      try {
       let categoryId: string | null = null;
       const catName = String(r.category ?? '').trim();
       if (catName) {
@@ -187,12 +237,23 @@ export class ProductsService {
           name: { equals: name, mode: 'insensitive' },
         },
       });
+      // Если штрихкод уже занят другим товаром — не назначаем его (импорт не падает)
+      if (data.barcode) {
+        const owner = usedBarcodes.get(data.barcode);
+        if (owner && owner !== existing?.id) data.barcode = undefined;
+      }
       if (existing) {
         await this.prisma.product.update({ where: { id: existing.id }, data });
+        if (data.barcode) usedBarcodes.set(data.barcode, existing.id);
         updated++;
       } else {
-        await this.prisma.product.create({ data: { companyId, ...data } });
+        const p = await this.prisma.product.create({ data: { companyId, ...data } });
+        if (data.barcode) usedBarcodes.set(data.barcode, p.id);
         created++;
+      }
+      } catch {
+        // Ошибка на строке (конфликт данных и т.п.) не должна рушить весь импорт
+        skipped++;
       }
     }
 
@@ -236,10 +297,24 @@ export class ProductsService {
   async addBarcodeAlias(productId: string, barcode: string) {
     const code = (barcode ?? '').trim();
     if (!code) throw new NotFoundException('Пустой штрихкод');
-    return this.prisma.productBarcodeAlias.create({
-      data: { productId, barcode: code },
-      select: { id: true, barcode: true },
+    const product = await this.prisma.product.findUniqueOrThrow({
+      where: { id: productId },
+      select: { companyId: true },
     });
+    // Не даём назначить чужой штрихкод (уже у другого товара или его доп. кода)
+    await this.assertBarcodeFree(product.companyId, code, productId);
+    try {
+      return await this.prisma.productBarcodeAlias.create({
+        data: { productId, barcode: code },
+        select: { id: true, barcode: true },
+      });
+    } catch (e: any) {
+      // Штрихкод доп. кодов уникален глобально — понятная ошибка вместо 500.
+      if (e?.code === 'P2002') {
+        throw new BadRequestException(`Штрихкод ${code} уже используется`);
+      }
+      throw e;
+    }
   }
 
   async removeBarcodeAlias(aliasId: string) {
@@ -288,7 +363,10 @@ export class ProductsService {
   }
 
   async updateProduct(id: string, dto: Partial<CreateProductDto>) {
-    await this.prisma.product.findUniqueOrThrow({ where: { id } });
+    const current = await this.prisma.product.findUniqueOrThrow({ where: { id } });
+    if (dto.barcode != null && dto.barcode.trim() !== (current.barcode ?? '')) {
+      await this.assertBarcodeFree(current.companyId, dto.barcode, id);
+    }
     return this.prisma.product.update({
       where: { id },
       data: {

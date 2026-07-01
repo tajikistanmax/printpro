@@ -81,21 +81,38 @@ export class StockService {
   // Списание / корректировка (уменьшаем остаток)
   async adjust(dto: AdjustStockDto) {
     return this.prisma.$transaction(async (tx) => {
-      const current = await tx.stock.findUnique({
+      // Условное списание: атомарно уменьшаем, только если остатка хватает.
+      const dec = await tx.stock.updateMany({
+        where: {
+          productId: dto.productId,
+          branchId: dto.branchId,
+          quantity: { gte: dto.quantity },
+        },
+        data: { quantity: { decrement: dto.quantity } },
+      });
+      if (dec.count === 0) {
+        const cur = await tx.stock.findUnique({
+          where: {
+            productId_branchId: {
+              productId: dto.productId,
+              branchId: dto.branchId,
+            },
+          },
+        });
+        throw new BadRequestException(
+          `Недостаточно товара на складе. Доступно: ${cur ? Number(cur.quantity) : 0}`,
+        );
+      }
+      const after = await tx.stock.findUnique({
         where: {
           productId_branchId: {
             productId: dto.productId,
             branchId: dto.branchId,
           },
         },
+        include: { product: true, branch: true },
       });
-
-      const available = current ? Number(current.quantity) : 0;
-      if (available < dto.quantity) {
-        throw new BadRequestException(
-          `Недостаточно товара на складе. Доступно: ${available}`,
-        );
-      }
+      const afterQty = after ? Number(after.quantity) : 0;
 
       await tx.stockMovement.create({
         data: {
@@ -104,23 +121,14 @@ export class StockService {
           branchId: dto.branchId,
           type: dto.type,
           quantity: dto.quantity,
-          beforeQty: available,
-          afterQty: Number((available - Number(dto.quantity)).toFixed(3)),
+          beforeQty: Number((afterQty + Number(dto.quantity)).toFixed(3)),
+          afterQty,
           reason: dto.reason ?? 'Списание',
           userId: dto.userId,
         },
       });
 
-      return tx.stock.update({
-        where: {
-          productId_branchId: {
-            productId: dto.productId,
-            branchId: dto.branchId,
-          },
-        },
-        data: { quantity: { decrement: dto.quantity } },
-        include: { product: true, branch: true },
-      });
+      return after;
     });
   }
 
@@ -130,7 +138,30 @@ export class StockService {
       throw new BadRequestException('Филиалы должны отличаться');
     }
     return this.prisma.$transaction(async (tx) => {
-      const src = await tx.stock.findUnique({
+      const qty = Number(dto.quantity);
+      // Списываем из источника условно (атомарно), чтобы не увести в минус.
+      const dec = await tx.stock.updateMany({
+        where: {
+          productId: dto.productId,
+          branchId: dto.fromBranchId,
+          quantity: { gte: dto.quantity },
+        },
+        data: { quantity: { decrement: dto.quantity } },
+      });
+      if (dec.count === 0) {
+        const cur = await tx.stock.findUnique({
+          where: {
+            productId_branchId: {
+              productId: dto.productId,
+              branchId: dto.fromBranchId,
+            },
+          },
+        });
+        throw new BadRequestException(
+          `Недостаточно товара в филиале-источнике. Доступно: ${cur ? Number(cur.quantity) : 0}`,
+        );
+      }
+      const srcAfter = await tx.stock.findUnique({
         where: {
           productId_branchId: {
             productId: dto.productId,
@@ -138,12 +169,7 @@ export class StockService {
           },
         },
       });
-      const available = src ? Number(src.quantity) : 0;
-      if (available < dto.quantity) {
-        throw new BadRequestException(
-          `Недостаточно товара в филиале-источнике. Доступно: ${available}`,
-        );
-      }
+      const available = Number((Number(srcAfter?.quantity ?? 0) + qty).toFixed(3));
       // Остаток приёмника до перемещения (для аудита «до/после»)
       const dst = await tx.stock.findUnique({
         where: {
@@ -151,18 +177,7 @@ export class StockService {
         },
       });
       const destBefore = dst ? Number(dst.quantity) : 0;
-      const qty = Number(dto.quantity);
 
-      // Списываем из источника
-      await tx.stock.update({
-        where: {
-          productId_branchId: {
-            productId: dto.productId,
-            branchId: dto.fromBranchId,
-          },
-        },
-        data: { quantity: { decrement: dto.quantity } },
-      });
       // Зачисляем в приёмник
       await tx.stock.upsert({
         where: {
@@ -336,17 +351,31 @@ export class StockService {
   // Себестоимость берём из закупочной цены товара.
   async writeOff(dto: WriteOffDto) {
     return this.prisma.$transaction(async (tx) => {
-      const current = await tx.stock.findUnique({
+      // Условное списание: атомарно, только если остатка хватает.
+      const dec = await tx.stock.updateMany({
+        where: {
+          productId: dto.productId,
+          branchId: dto.branchId,
+          quantity: { gte: dto.quantity },
+        },
+        data: { quantity: { decrement: dto.quantity } },
+      });
+      if (dec.count === 0) {
+        const cur = await tx.stock.findUnique({
+          where: {
+            productId_branchId: { productId: dto.productId, branchId: dto.branchId },
+          },
+        });
+        throw new BadRequestException(
+          `Недостаточно товара для списания. Доступно: ${cur ? Number(cur.quantity) : 0}`,
+        );
+      }
+      const after = await tx.stock.findUnique({
         where: {
           productId_branchId: { productId: dto.productId, branchId: dto.branchId },
         },
       });
-      const available = current ? Number(current.quantity) : 0;
-      if (available < dto.quantity) {
-        throw new BadRequestException(
-          `Недостаточно товара для списания. Доступно: ${available}`,
-        );
-      }
+      const afterQty = after ? Number(after.quantity) : 0;
 
       const product = await tx.product.findUnique({
         where: { id: dto.productId },
@@ -373,18 +402,11 @@ export class StockService {
           branchId: dto.branchId,
           type: StockMovementType.WRITE_OFF,
           quantity: dto.quantity,
-          beforeQty: available,
-          afterQty: Number((available - Number(dto.quantity)).toFixed(3)),
+          beforeQty: Number((afterQty + Number(dto.quantity)).toFixed(3)),
+          afterQty,
           reason: dto.reason ?? 'Списание',
           userId: dto.userId,
         },
-      });
-
-      await tx.stock.update({
-        where: {
-          productId_branchId: { productId: dto.productId, branchId: dto.branchId },
-        },
-        data: { quantity: { decrement: dto.quantity } },
       });
 
       return wo;

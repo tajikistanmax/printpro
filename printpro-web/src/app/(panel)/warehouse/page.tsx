@@ -255,9 +255,9 @@ export default function WarehousePage() {
     }
   }
   async function deleteProduct(id: string) {
-    if (!confirm('Удалить товар? Он должен быть без остатков и без движений.')) return;
+    if (!confirm('Удалить товар из каталога? Он скроется из списков, история продаж и движений сохранится.')) return;
     try { await api.del(`/products/${id}`); if (editPId === id) setEditPId(null); if (material?.id === id) setMaterial(null); load(); }
-    catch (err: any) { setPMsg('Ошибка: ' + err.message); }
+    catch (err: any) { alert('Не удалось удалить товар: ' + (err?.message ?? err)); }
   }
 
   // ---- перемещение / инвентаризация ----
@@ -709,7 +709,16 @@ export default function WarehousePage() {
               <button onClick={() => setProductModalOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
-            <form onSubmit={createProduct} className="space-y-3">
+            <form
+              onSubmit={createProduct}
+              onKeyDown={(e) => {
+                // Сканер шлёт Enter после штрихкода — не даём ему сохранить товар
+                // раньше времени. Сохранение — только кнопкой.
+                const t = e.target as HTMLElement;
+                if (e.key === 'Enter' && t.tagName !== 'TEXTAREA') e.preventDefault();
+              }}
+              className="space-y-3"
+            >
               <Field label="Название *">
                 <Input value={pName} onChange={(e) => setPName(e.target.value)} placeholder="Например: Бумага A4 80г" required autoFocus />
               </Field>
@@ -735,7 +744,13 @@ export default function WarehousePage() {
 
               <Field label="Штрихкод">
                 <div className="flex gap-2">
-                  <Input value={pBarcode} onChange={(e) => setPBarcode(e.target.value)} placeholder="Отсканируйте или сгенерируйте" className="flex-1" />
+                  <Input
+                    value={pBarcode}
+                    onChange={(e) => setPBarcode(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                    placeholder="Отсканируйте или сгенерируйте"
+                    className="flex-1"
+                  />
                   <Button type="button" variant="ghost" onClick={generateBarcode} disabled={genBusy} className="shrink-0">
                     <NavIcon name="refresh" className="h-4 w-4" />{genBusy ? '…' : 'Сгенерировать'}
                   </Button>
@@ -970,6 +985,7 @@ export default function WarehousePage() {
                       <Button variant="ghost" size="sm" onClick={() => printLabel(material)}><NavIcon name="print" className="h-4 w-4" />Печать этикетки</Button>
                       <Button variant="ghost" size="sm" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт в Excel</Button>
                       {canProducts && <Button variant="ghost" size="sm" onClick={() => openEditP(material)}><NavIcon name="edit" className="h-4 w-4" />Изменить</Button>}
+                      {canProducts && <Button variant="danger" size="sm" onClick={() => deleteProduct(material.id)}><NavIcon name="close" className="h-4 w-4" />Удалить</Button>}
                     </div>
                   </>
                 )}

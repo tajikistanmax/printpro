@@ -29,7 +29,10 @@ export class PurchasingService {
   // Оплата нашего долга поставщику: запись оплаты + уменьшение долга + расход из кассы
   async paySupplierDebt(id: string, dto: PaySupplierDebtDto, userId?: string) {
     const supplier = await this.ensureSupplier(id);
-    const pay = Number(dto.amount.toFixed(2));
+    const outstanding = Number(supplier.debt) || 0;
+    // Нельзя заплатить больше долга: иначе из кассы уйдёт лишнее, а долг всё равно 0.
+    const pay = Number(Math.min(dto.amount, outstanding).toFixed(2));
+    if (pay <= 0) throw new BadRequestException('У поставщика нет долга к оплате');
     return this.prisma.$transaction(async (tx) => {
       await tx.supplierPayment.create({
         data: {
@@ -94,7 +97,8 @@ export class PurchasingService {
     const total = Number(
       dto.items.reduce((s, it) => s + (it.cost ?? 0) * it.quantity, 0).toFixed(2),
     );
-    const paidAmount = Number((dto.paidAmount ?? total).toFixed(2));
+    // Оплата не может превышать сумму приёмки (иначе из кассы уйдёт лишнее).
+    const paidAmount = Number(Math.min(dto.paidAmount ?? total, total).toFixed(2));
     const debt = Number(Math.max(0, total - paidAmount).toFixed(2));
     const paymentStatus: ReceiptPaymentStatus =
       paidAmount >= total
@@ -118,11 +122,14 @@ export class PurchasingService {
           total,
           paidAmount,
           paymentStatus,
+          // Срок оплаты фиксируем только когда остался долг
+          dueDate: debt > 0 && dto.dueDate ? new Date(dto.dueDate) : null,
           items: {
             create: dto.items.map((it) => ({
               productId: it.productId,
               quantity: it.quantity,
               cost: it.cost ?? 0,
+              salePrice: it.salePrice ?? null,
             })),
           },
         },
@@ -153,11 +160,16 @@ export class PurchasingService {
           update: { quantity: { increment: it.quantity } },
         });
 
-        // Обновляем закупочную цену товара по последней приёмке (для отчёта прибыли)
-        if (it.cost != null && it.cost > 0) {
+        // Обновляем цены товара по приёмке: закупочную (для отчёта прибыли)
+        // и, если задана, новую цену продажи.
+        const priceData: { purchasePrice?: number; salePrice?: number } = {};
+        if (it.cost != null && it.cost > 0) priceData.purchasePrice = it.cost;
+        if (it.salePrice != null && it.salePrice > 0)
+          priceData.salePrice = it.salePrice;
+        if (Object.keys(priceData).length) {
           await tx.product.update({
             where: { id: it.productId },
-            data: { purchasePrice: it.cost },
+            data: priceData,
           });
         }
 
