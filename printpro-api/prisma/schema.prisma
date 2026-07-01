@@ -702,6 +702,18 @@ model Return {
   @@index([orderId])
 }
 
+// Атомарный счётчик номеров документов по типу (ORDER/POS/VOZ/PRIH/SMENA/QUOTE...).
+// Инкремент делается через INSERT ... ON CONFLICT DO UPDATE RETURNING — безопасно
+// при одновременной работе многих кассиров/узлов (никаких одинаковых номеров).
+model DocumentCounter {
+  id        String @id @default(uuid())
+  companyId String
+  type      String
+  value     Int    @default(0)
+
+  @@unique([companyId, type])
+}
+
 // Списание со склада (бой/брак/порча) — с причиной и себестоимостью
 model WriteOff {
   // --- синхронизация ---
@@ -752,6 +764,8 @@ model Order {
   total          Decimal       @default(0) @db.Decimal(12, 2)
   paid           Decimal       @default(0) @db.Decimal(12, 2)
   balanceDue     Decimal       @default(0) @db.Decimal(12, 2)
+  returnedTotal  Decimal       @default(0) @db.Decimal(12, 2) // сумма возвращённых товаров (контр-выручка)
+  returnedCost   Decimal       @default(0) @db.Decimal(12, 2) // себестоимость возвращённого
   debtDueDate    DateTime? // срок погашения долга (для напоминаний о просрочке)
   note           String?
   idempotencyKey String?       @unique // защита от двойной продажи (POS)

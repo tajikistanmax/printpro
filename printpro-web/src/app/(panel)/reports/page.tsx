@@ -109,8 +109,14 @@ export default function ReportsPage() {
         <StatGrid cols={4}>
           <StatCard icon="cash" tone="emerald" label="Выручка деньгами" value={money(summary.collected)} highlight />
           <StatCard icon="quotes" tone="slate" label="Выставлено по заказам" value={money(summary.billed)} />
+          {summary.returns > 0 && (
+            <StatCard icon="alert" tone="rose" label="Возвраты" value={money(summary.returns)} />
+          )}
+          {summary.returns > 0 && (
+            <StatCard icon="reports" tone="sky" label="Чистая выручка" value={money(summary.net)} sub="выставлено − возвраты" />
+          )}
           <StatCard icon="orders" tone="indigo" label="Заказов" value={summary.ordersCount} />
-          <StatCard icon="reports" tone="sky" label="Средний чек" value={money(summary.avgCheck)} />
+          <StatCard icon="reports" tone="violet" label="Средний чек" value={money(summary.avgCheck)} />
         </StatGrid>
       )}
 

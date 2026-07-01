@@ -18,7 +18,7 @@ export class ReportsService {
     // Заказы за период: сколько выставлено, оплачено, осталось должно
     const orders = await this.prisma.order.aggregate({
       where: { companyId, createdAt: range },
-      _sum: { total: true, paid: true, balanceDue: true },
+      _sum: { total: true, paid: true, balanceDue: true, returnedTotal: true },
       _count: true,
     });
 
@@ -40,6 +40,8 @@ export class ReportsService {
     }
 
     const billed = Number(orders._sum.total ?? 0);
+    const returns = Number(orders._sum.returnedTotal ?? 0); // возвраты (контр-выручка)
+    const net = Number((billed - returns).toFixed(2)); // чистая выручка
     const ordersCount = orders._count;
     // Реальные деньги (без записей «в долг»)
     const collected = Number(
@@ -50,7 +52,9 @@ export class ReportsService {
       from: range.gte,
       to: range.lte,
       ordersCount,
-      billed, // выставлено по заказам
+      billed, // выставлено по заказам (валовое)
+      returns, // возвраты за период
+      net, // чистая выручка = выставлено − возвраты
       collected, // получено деньгами
       debt: Number(orders._sum.balanceDue ?? 0), // остаток долга по заказам периода
       avgCheck: ordersCount
@@ -153,6 +157,8 @@ export class ReportsService {
         orderNumber: true,
         createdAt: true,
         total: true,
+        returnedTotal: true,
+        returnedCost: true,
         client: { select: { fullName: true, phone: true } },
         items: { select: { lineTotal: true, lineCost: true } },
       },
@@ -162,8 +168,11 @@ export class ReportsService {
     let totalRevenue = 0;
     let totalCost = 0;
     const list = orders.map((o) => {
-      const revenue = o.items.reduce((s, it) => s + Number(it.lineTotal), 0);
-      const cost = o.items.reduce((s, it) => s + Number(it.lineCost), 0);
+      // Чистая выручка/себестоимость = валовые минус возвращённое (контр-выручка).
+      const revenue =
+        o.items.reduce((s, it) => s + Number(it.lineTotal), 0) - Number(o.returnedTotal);
+      const cost =
+        o.items.reduce((s, it) => s + Number(it.lineCost), 0) - Number(o.returnedCost);
       const profit = Number((revenue - cost).toFixed(2));
       totalRevenue += revenue;
       totalCost += cost;
@@ -201,8 +210,15 @@ export class ReportsService {
   // Расходы кассы по категориям за период (тип OUT)
   async expenses(companyId: string, from?: string, to?: string) {
     const range = this.range(from, to);
+    // Возвраты не показываем как расход: это контр-выручка (учтена в «net»),
+    // иначе она бы вычиталась дважды.
     const movements = await this.prisma.cashMovement.findMany({
-      where: { companyId, type: 'OUT', createdAt: range },
+      where: {
+        companyId,
+        type: 'OUT',
+        createdAt: range,
+        NOT: { category: 'Возвраты' },
+      },
       select: { amount: true, category: true, reason: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
     });

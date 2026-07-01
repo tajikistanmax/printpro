@@ -15,6 +15,7 @@ import { randomUUID } from 'crypto';
 import { IsArray, IsOptional, IsString } from 'class-validator';
 import { OrderStatus, OrderType, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { nextSeq } from '../common/next-number';
 import { ClientsService } from '../clients/clients.service';
 import { TelegramService } from '../telegram/telegram.service';
 
@@ -100,10 +101,9 @@ export class PublicController {
       dto.clientName,
     );
 
-    const count = await this.prisma.order.count({
-      where: { companyId: dto.companyId },
-    });
-    const orderNumber = String(count + 1).padStart(5, '0');
+    const orderNumber = String(
+      await nextSeq(this.prisma, dto.companyId, 'ORDER'),
+    ).padStart(5, '0');
 
     const order = await this.prisma.order.create({
       data: {
@@ -261,11 +261,9 @@ export class PublicController {
     const total = Number(items.reduce((s, it) => s + it.lineTotal, 0).toFixed(2));
 
     const node = (process.env.NODE_ID ?? 'C').toUpperCase();
-    const count = await this.prisma.order.count({
-      where: { companyId: body.companyId },
-    });
     const year = new Date().getFullYear();
-    const orderNumber = `ORD-${node}-${year}-${String(count + 1).padStart(6, '0')}`;
+    const orderSeq = await nextSeq(this.prisma, body.companyId, 'ORDER');
+    const orderNumber = `ORD-${node}-${year}-${String(orderSeq).padStart(6, '0')}`;
 
     const order = await this.prisma.order.create({
       data: {

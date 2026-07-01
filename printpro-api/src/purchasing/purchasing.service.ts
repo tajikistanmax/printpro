@@ -8,6 +8,7 @@ import {
   PaySupplierDebtDto,
 } from './dto/purchasing.dto';
 import { docNumber } from '../common/doc-number';
+import { nextSeq } from '../common/next-number';
 
 @Injectable()
 export class PurchasingService {
@@ -109,13 +110,11 @@ export class PurchasingService {
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Документ приёмки (с номером приходной накладной)
-      const count = await tx.stockReceipt.count({
-        where: { companyId: dto.companyId },
-      });
+      const prihSeq = await nextSeq(tx, dto.companyId, 'PRIH');
       const receipt = await tx.stockReceipt.create({
         data: {
           companyId: dto.companyId,
-          number: docNumber('PRIH', count + 1),
+          number: docNumber('PRIH', prihSeq),
           supplierId: dto.supplierId,
           branchId: dto.branchId,
           note: dto.note,

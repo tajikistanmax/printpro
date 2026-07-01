@@ -7,6 +7,7 @@ import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloseShiftDto, OpenShiftDto, CashMovementDto } from './dto/cash.dto';
 import { docNumber } from '../common/doc-number';
+import { nextSeq } from '../common/next-number';
 
 @Injectable()
 export class CashService {
@@ -21,11 +22,11 @@ export class CashService {
     if (open) {
       throw new BadRequestException('У вас уже есть открытая смена');
     }
-    const count = await this.prisma.cashShift.count({ where: { companyId } });
+    const smenaSeq = await nextSeq(this.prisma, companyId, 'SMENA');
     return this.prisma.cashShift.create({
       data: {
         companyId,
-        number: docNumber('SMENA', count + 1),
+        number: docNumber('SMENA', smenaSeq),
         userId,
         branchId: dto.branchId,
         openingBalance: dto.openingBalance ?? 0,

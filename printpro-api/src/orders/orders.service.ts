@@ -16,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ClientsService } from '../clients/clients.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { docNumber } from '../common/doc-number';
+import { nextSeq } from '../common/next-number';
 import { CreateOrderDto } from './dto/create-order.dto';
 import {
   AddPaymentDto,
@@ -152,9 +153,8 @@ export class OrdersService {
       // Номер заказа: <ПРЕФИКС>-<УЗЕЛ>-ГОД-NNNNNN.
       // Префикс узла (NODE_ID) гарантирует уникальность между точками сети.
       const node = (process.env.NODE_ID ?? 'C').toUpperCase();
-      const count = await tx.order.count({ where: { companyId: dto.companyId } });
       const year = new Date().getFullYear();
-      const seq = String(count + 1).padStart(6, '0');
+      const seq = String(await nextSeq(tx, dto.companyId, 'ORDER')).padStart(6, '0');
       const orderNumber = `${prefix}-${node}-${year}-${seq}`;
 
       // Создаём заказ с позициями
@@ -512,14 +512,12 @@ export class OrdersService {
       }
 
       // Продажа = сразу выдана + номер чека POS-...
-      const posCount = await this.prisma.order.count({
-        where: { companyId: dto.companyId, receiptNumber: { not: null } },
-      });
+      const posSeq = await nextSeq(this.prisma, dto.companyId, 'POS');
       await this.prisma.order.update({
         where: { id: order.id },
         data: {
           status: OrderStatus.DELIVERED,
-          receiptNumber: docNumber('POS', posCount + 1, 5),
+          receiptNumber: docNumber('POS', posSeq, 5),
         },
       });
     } catch (e) {
@@ -655,6 +653,7 @@ export class OrdersService {
       if (!order) throw new NotFoundException('Заказ не найден');
 
       let amount = 0;
+      let returnedCost = 0;
       const returned: any[] = [];
 
       for (const ri of dto.items) {
@@ -664,6 +663,7 @@ export class OrdersService {
         if (qty <= 0) continue;
         const lineAmount = Number((qty * Number(oi.unitPrice)).toFixed(2));
         amount += lineAmount;
+        returnedCost += Number((qty * Number(oi.unitCost)).toFixed(2));
         returned.push({
           orderItemId: oi.id,
           description: oi.description,
@@ -703,21 +703,10 @@ export class OrdersService {
             },
           });
         }
-
-        // Уменьшаем позицию заказа на возвращённое количество, чтобы отчёты
-        // (прибыль, продажи по позициям) считались от чистых продаж.
-        const leftQty = Number((Number(oi.quantity) - qty).toFixed(3));
-        await tx.orderItem.update({
-          where: { id: oi.id },
-          data: {
-            quantity: leftQty,
-            lineTotal: Number((leftQty * Number(oi.unitPrice)).toFixed(2)),
-            lineCost: Number((leftQty * Number(oi.unitCost)).toFixed(2)),
-          },
-        });
       }
 
       amount = Number(amount.toFixed(2));
+      returnedCost = Number(returnedCost.toFixed(2));
       if (amount <= 0) {
         throw new BadRequestException('Нечего возвращать');
       }
@@ -744,14 +733,14 @@ export class OrdersService {
       }
 
       // Документ возврата
-      const count = await tx.return.count({ where: { companyId: order.companyId } });
+      const vozSeq = await nextSeq(tx, order.companyId, 'VOZ');
       const ret = await tx.return.create({
         data: {
           companyId: order.companyId,
           orderId,
           branchId: order.branchId,
           clientId: order.clientId,
-          number: docNumber('VOZ', count + 1),
+          number: docNumber('VOZ', vozSeq),
           reason: dto.reason,
           amount,
           method: dto.method,
@@ -760,16 +749,22 @@ export class OrdersService {
         },
       });
 
-      // Возврат уменьшает сумму заказа на стоимость возвращённых товаров,
-      // а оплату — на реально возвращённые деньги. Долг = итог − оплата (≥0).
-      const newTotal = Number(Math.max(0, Number(order.total) - amount).toFixed(2));
+      // Возвраты — отдельной строкой: сам заказ (сумма и позиции) остаётся
+      // «валовым», а возвращённое копится в returnedTotal/returnedCost
+      // (контр-выручка). Оплата уменьшается на реально возвращённые деньги.
+      // Долг = итог − возвраты − оплата (не меньше нуля) — корректно и для «в долг».
+      const newReturnedTotal = Number((Number(order.returnedTotal) + amount).toFixed(2));
+      const newReturnedCost = Number((Number(order.returnedCost) + returnedCost).toFixed(2));
       const newPaid = Number(Math.max(0, Number(order.paid) - cashRefund).toFixed(2));
       await tx.order.update({
         where: { id: orderId },
         data: {
-          total: newTotal,
+          returnedTotal: newReturnedTotal,
+          returnedCost: newReturnedCost,
           paid: newPaid,
-          balanceDue: Number(Math.max(0, newTotal - newPaid).toFixed(2)),
+          balanceDue: Number(
+            Math.max(0, Number(order.total) - newReturnedTotal - newPaid).toFixed(2),
+          ),
         },
       });
 

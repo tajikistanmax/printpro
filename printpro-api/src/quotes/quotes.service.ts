@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { OrderType, QuoteStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { nextSeq } from '../common/next-number';
 import { ClientsService } from '../clients/clients.service';
 import { OrdersService } from '../orders/orders.service';
 import { CreateQuoteDto } from './dto/quote.dto';
@@ -38,11 +39,9 @@ export class QuotesService {
     );
 
     const node = (process.env.NODE_ID ?? 'C').toUpperCase();
-    const count = await this.prisma.quote.count({
-      where: { companyId: dto.companyId },
-    });
+    const quoteSeq = await nextSeq(this.prisma, dto.companyId, 'QUOTE');
     const year = new Date().getFullYear();
-    const number = `КП-${node}-${year}-${String(count + 1).padStart(5, '0')}`;
+    const number = `КП-${node}-${year}-${String(quoteSeq).padStart(5, '0')}`;
 
     return this.prisma.quote.create({
       data: {
