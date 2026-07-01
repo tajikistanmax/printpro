@@ -24,10 +24,10 @@ export class ComplaintsController {
   @Get()
   @RequirePermissions('clients.view')
   findAll(
-    @Query('companyId') companyId: string,
+    @CurrentUser() user: { companyId: string },
     @Query('status') status?: ComplaintStatus,
   ) {
-    return this.complaints.findAll(companyId, status);
+    return this.complaints.findAll(user.companyId, status);
   }
 
   @Post()
@@ -41,9 +41,13 @@ export class ComplaintsController {
       orderId?: string;
       clientId?: string;
     },
-    @CurrentUser() user: { sub: string },
+    @CurrentUser() user: { sub: string; companyId: string },
   ) {
-    return this.complaints.create({ ...dto, createdById: user.sub });
+    return this.complaints.create({
+      ...dto,
+      companyId: user.companyId,
+      createdById: user.sub,
+    });
   }
 
   @Patch(':id/status')
@@ -51,13 +55,19 @@ export class ComplaintsController {
   updateStatus(
     @Param('id') id: string,
     @Body() dto: { status: ComplaintStatus; resolution?: string },
+    @CurrentUser() user: { companyId: string },
   ) {
-    return this.complaints.updateStatus(id, dto.status, dto.resolution);
+    return this.complaints.updateStatus(
+      id,
+      user.companyId,
+      dto.status,
+      dto.resolution,
+    );
   }
 
   @Delete(':id')
   @RequirePermissions('clients.manage')
-  remove(@Param('id') id: string) {
-    return this.complaints.remove(id);
+  remove(@Param('id') id: string, @CurrentUser() user: { companyId: string }) {
+    return this.complaints.remove(id, user.companyId);
   }
 }

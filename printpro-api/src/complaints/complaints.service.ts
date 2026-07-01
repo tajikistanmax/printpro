@@ -36,8 +36,15 @@ export class ComplaintsService {
     });
   }
 
-  async updateStatus(id: string, status: ComplaintStatus, resolution?: string) {
-    const c = await this.prisma.complaint.findUnique({ where: { id } });
+  async updateStatus(
+    id: string,
+    companyId: string,
+    status: ComplaintStatus,
+    resolution?: string,
+  ) {
+    const c = await this.prisma.complaint.findFirst({
+      where: { id, companyId },
+    });
     if (!c) throw new NotFoundException('Рекламация не найдена');
     return this.prisma.complaint.update({
       where: { id },
@@ -49,7 +56,11 @@ export class ComplaintsService {
     });
   }
 
-  async remove(id: string) {
+  async remove(id: string, companyId: string) {
+    const c = await this.prisma.complaint.findFirst({
+      where: { id, companyId },
+    });
+    if (!c) throw new NotFoundException('Рекламация не найдена');
     await this.prisma.complaint.update({
       where: { id },
       data: { deletedAt: new Date() },

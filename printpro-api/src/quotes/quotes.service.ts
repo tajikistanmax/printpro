@@ -77,17 +77,17 @@ export class QuotesService {
     });
   }
 
-  async findOne(id: string) {
-    const q = await this.prisma.quote.findUnique({
-      where: { id },
+  async findOne(id: string, companyId: string) {
+    const q = await this.prisma.quote.findFirst({
+      where: { id, companyId },
       include: this.includes(),
     });
     if (!q) throw new NotFoundException('КП не найдено');
     return q;
   }
 
-  async updateStatus(id: string, status: QuoteStatus) {
-    await this.findOne(id);
+  async updateStatus(id: string, companyId: string, status: QuoteStatus) {
+    await this.findOne(id, companyId);
     return this.prisma.quote.update({
       where: { id },
       data: { status },
@@ -95,8 +95,8 @@ export class QuotesService {
     });
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, companyId: string) {
+    await this.findOne(id, companyId);
     await this.prisma.quote.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -105,11 +105,35 @@ export class QuotesService {
   }
 
   // Превратить КП в заказ
-  async convert(id: string) {
-    const q = await this.findOne(id);
+  async convert(id: string, companyId: string) {
+    const q = await this.findOne(id, companyId);
+
     if (q.convertedOrderId) {
       throw new BadRequestException('КП уже превращено в заказ');
     }
+    // Конвертировать можно только открытое/принятое КП.
+    if (q.status === QuoteStatus.REJECTED) {
+      throw new BadRequestException('Отклонённое КП нельзя превратить в заказ');
+    }
+
+    // Атомарно «захватываем» КП до создания заказа: помечаем ACCEPTED только
+    // если оно ещё не сконвертировано и в допустимом статусе. Если гонка/
+    // повторный вызов — count === 0, и мы прекращаем работу до создания заказа.
+    const claimed = await this.prisma.quote.updateMany({
+      where: {
+        id,
+        companyId,
+        convertedOrderId: null,
+        status: {
+          in: [QuoteStatus.DRAFT, QuoteStatus.SENT, QuoteStatus.ACCEPTED],
+        },
+      },
+      data: { status: QuoteStatus.ACCEPTED },
+    });
+    if (claimed.count === 0) {
+      throw new BadRequestException('КП уже превращено в заказ');
+    }
+
     const order = await this.orders.create({
       companyId: q.companyId,
       clientId: q.clientId ?? undefined,
@@ -127,7 +151,7 @@ export class QuotesService {
 
     await this.prisma.quote.update({
       where: { id },
-      data: { status: QuoteStatus.ACCEPTED, convertedOrderId: order.id },
+      data: { convertedOrderId: order.id },
     });
 
     return order;

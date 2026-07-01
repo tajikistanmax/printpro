@@ -40,8 +40,8 @@ export class TasksService {
     });
   }
 
-  async updateStatus(id: string, status: TaskStatus) {
-    const task = await this.prisma.task.findUnique({ where: { id } });
+  async updateStatus(id: string, status: TaskStatus, companyId: string) {
+    const task = await this.prisma.task.findFirst({ where: { id, companyId } });
     if (!task) throw new NotFoundException('Задача не найдена');
     return this.prisma.task.update({
       where: { id },

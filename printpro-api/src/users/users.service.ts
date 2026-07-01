@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -9,6 +13,15 @@ export class UsersService {
 
   // Создать сотрудника (пароль и PIN сохраняются в зашифрованном виде)
   async create(dto: CreateUserDto) {
+    // Защита от повышения привилегий: роль должна принадлежать компании
+    // текущего пользователя, иначе можно назначить чужую (например, админскую) роль.
+    if (dto.roleId) {
+      const role = await this.prisma.role.findFirst({
+        where: { id: dto.roleId, companyId: dto.companyId },
+        select: { id: true },
+      });
+      if (!role) throw new BadRequestException('Недопустимая роль');
+    }
     const passwordHash = await AuthService.hashPassword(dto.password);
     const pinHash = dto.pin ? await AuthService.hashPassword(dto.pin) : null;
     const user = await this.prisma.user.create({
@@ -29,8 +42,10 @@ export class UsersService {
   }
 
   // Установить / сбросить PIN кассира (админом). Пустой PIN — убрать доступ по PIN.
-  async setPin(id: string, pin: string | null) {
-    const exists = await this.prisma.user.findUnique({ where: { id } });
+  async setPin(id: string, pin: string | null, companyId: string) {
+    const exists = await this.prisma.user.findFirst({
+      where: { id, companyId },
+    });
     if (!exists) throw new NotFoundException('Сотрудник не найден');
     let pinHash: string | null = null;
     if (pin) {
@@ -54,8 +69,10 @@ export class UsersService {
   }
 
   // Сбросить пароль сотрудника (админом)
-  async resetPassword(id: string, newPassword: string) {
-    const exists = await this.prisma.user.findUnique({ where: { id } });
+  async resetPassword(id: string, newPassword: string, companyId: string) {
+    const exists = await this.prisma.user.findFirst({
+      where: { id, companyId },
+    });
     if (!exists) throw new NotFoundException('Сотрудник не найден');
     if (!newPassword || newPassword.length < 4) {
       throw new NotFoundException('Пароль слишком короткий (мин. 4 символа)');
@@ -66,8 +83,10 @@ export class UsersService {
   }
 
   // Включить/выключить сотрудника
-  async setActive(id: string, isActive: boolean) {
-    const exists = await this.prisma.user.findUnique({ where: { id } });
+  async setActive(id: string, isActive: boolean, companyId: string) {
+    const exists = await this.prisma.user.findFirst({
+      where: { id, companyId },
+    });
     if (!exists) throw new NotFoundException('Сотрудник не найден');
     const user = await this.prisma.user.update({
       where: { id },

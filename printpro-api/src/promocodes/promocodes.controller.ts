@@ -5,14 +5,14 @@ import {
   Get,
   Param,
   Post,
-  Query,
   UseGuards,
 } from '@nestjs/common';
-import { DiscountType } from '@prisma/client';
 import { PromocodesService } from './promocodes.service';
+import { CreatePromocodeDto } from './dto/create-promocode.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('promocodes')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -21,38 +21,35 @@ export class PromocodesController {
 
   @Get()
   @RequirePermissions('orders.view')
-  findAll(@Query('companyId') companyId: string) {
-    return this.promo.findAll(companyId);
+  findAll(@CurrentUser() user: { sub: string; companyId: string }) {
+    return this.promo.findAll(user.companyId);
   }
 
   @Post()
   @RequirePermissions('orders.manage')
   create(
-    @Body()
-    dto: {
-      companyId: string;
-      code: string;
-      discountType?: DiscountType;
-      value: number;
-      maxUses?: number | null;
-      validUntil?: string;
-    },
+    @CurrentUser() user: { sub: string; companyId: string },
+    @Body() dto: CreatePromocodeDto,
   ) {
-    return this.promo.create(dto);
+    return this.promo.create(user.companyId, dto);
   }
 
   // Проверить промокод (для кассы) — без списания
   @Post('validate')
   @RequirePermissions('cash.operate')
   validate(
-    @Body() body: { companyId: string; code: string; subtotal: number },
+    @CurrentUser() user: { sub: string; companyId: string },
+    @Body() body: { code: string; subtotal: number },
   ) {
-    return this.promo.validate(body.companyId, body.code, body.subtotal);
+    return this.promo.validate(user.companyId, body.code, body.subtotal);
   }
 
   @Delete(':id')
   @RequirePermissions('orders.manage')
-  remove(@Param('id') id: string) {
-    return this.promo.remove(id);
+  remove(
+    @CurrentUser() user: { sub: string; companyId: string },
+    @Param('id') id: string,
+  ) {
+    return this.promo.remove(user.companyId, id);
   }
 }

@@ -12,8 +12,8 @@ export class ProductionService {
 
   // Создать задание из заказа
   async create(dto: CreateProductionJobDto) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: dto.orderId },
+    const order = await this.prisma.order.findFirst({
+      where: { id: dto.orderId, companyId: dto.companyId },
     });
     if (!order) throw new NotFoundException('Заказ не найден');
 
@@ -41,8 +41,8 @@ export class ProductionService {
   }
 
   // Обновить назначение/принтер/приоритет/заметку
-  async update(id: string, dto: UpdateProductionJobDto) {
-    await this.ensure(id);
+  async update(id: string, companyId: string, dto: UpdateProductionJobDto) {
+    await this.ensure(id, companyId);
     return this.prisma.productionJob.update({
       where: { id },
       data: {
@@ -59,10 +59,11 @@ export class ProductionService {
   // Сменить статус + синхронизировать статус заказа
   async updateStatus(
     id: string,
+    companyId: string,
     status: ProductionStatus,
     defectReason?: string,
   ) {
-    const job = await this.ensure(id);
+    const job = await this.ensure(id, companyId);
 
     const data: {
       status: ProductionStatus;
@@ -156,8 +157,8 @@ export class ProductionService {
     });
   }
 
-  async remove(id: string) {
-    await this.ensure(id);
+  async remove(id: string, companyId: string) {
+    await this.ensure(id, companyId);
     // Мягкое удаление — чтобы синхронизировалось между узлами
     await this.prisma.productionJob.update({
       where: { id },
@@ -167,8 +168,8 @@ export class ProductionService {
   }
 
   // Фото готового результата
-  async setResultPhoto(id: string, url: string) {
-    await this.ensure(id);
+  async setResultPhoto(id: string, companyId: string, url: string) {
+    await this.ensure(id, companyId);
     return this.prisma.productionJob.update({
       where: { id },
       data: { resultPhotoUrl: url },
@@ -193,8 +194,10 @@ export class ProductionService {
     };
   }
 
-  private async ensure(id: string) {
-    const job = await this.prisma.productionJob.findUnique({ where: { id } });
+  private async ensure(id: string, companyId: string) {
+    const job = await this.prisma.productionJob.findFirst({
+      where: { id, companyId },
+    });
     if (!job) throw new NotFoundException('Задание не найдено');
     return job;
   }

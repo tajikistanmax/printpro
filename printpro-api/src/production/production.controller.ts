@@ -25,6 +25,7 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('production')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -35,34 +36,47 @@ export class ProductionController {
   @Get()
   @RequirePermissions('production.view')
   findAll(
-    @Query('companyId') companyId: string,
+    @CurrentUser() user: { sub: string; companyId: string },
     @Query('status') status?: ProductionStatus,
   ) {
-    return this.production.findAll(companyId, status);
+    return this.production.findAll(user.companyId, status);
   }
 
   // Создать задание из заказа
   @Post()
   @RequirePermissions('production.manage')
-  create(@Body() dto: CreateProductionJobDto) {
-    return this.production.create(dto);
+  create(
+    @CurrentUser() user: { sub: string; companyId: string },
+    @Body() dto: CreateProductionJobDto,
+  ) {
+    return this.production.create({ ...dto, companyId: user.companyId });
   }
 
   // Назначение/принтер/приоритет/заметка
   @Patch(':id')
   @RequirePermissions('production.manage')
-  update(@Param('id') id: string, @Body() dto: UpdateProductionJobDto) {
-    return this.production.update(id, dto);
+  update(
+    @CurrentUser() user: { sub: string; companyId: string },
+    @Param('id') id: string,
+    @Body() dto: UpdateProductionJobDto,
+  ) {
+    return this.production.update(id, user.companyId, dto);
   }
 
   // Сменить статус (исполнителю достаточно права просмотра)
   @Patch(':id/status')
   @RequirePermissions('production.view')
   updateStatus(
+    @CurrentUser() user: { sub: string; companyId: string },
     @Param('id') id: string,
     @Body() dto: UpdateProductionStatusDto,
   ) {
-    return this.production.updateStatus(id, dto.status, dto.defectReason);
+    return this.production.updateStatus(
+      id,
+      user.companyId,
+      dto.status,
+      dto.defectReason,
+    );
   }
 
   // Загрузить фото готового результата
@@ -78,14 +92,25 @@ export class ProductionController {
       limits: { fileSize: 50 * 1024 * 1024 },
     }),
   )
-  uploadPhoto(@Param('id') id: string, @UploadedFile() file: any) {
-    return this.production.setResultPhoto(id, `/uploads/${file.filename}`);
+  uploadPhoto(
+    @CurrentUser() user: { sub: string; companyId: string },
+    @Param('id') id: string,
+    @UploadedFile() file: any,
+  ) {
+    return this.production.setResultPhoto(
+      id,
+      user.companyId,
+      `/uploads/${file.filename}`,
+    );
   }
 
   // Удалить задание
   @Delete(':id')
   @RequirePermissions('production.manage')
-  remove(@Param('id') id: string) {
-    return this.production.remove(id);
+  remove(
+    @CurrentUser() user: { sub: string; companyId: string },
+    @Param('id') id: string,
+  ) {
+    return this.production.remove(id, user.companyId);
   }
 }

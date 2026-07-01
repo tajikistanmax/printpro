@@ -18,7 +18,12 @@ export class PayrollService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ---------- Ставки сотрудников ----------
-  setSalary(userId: string, dto: SetSalaryDto) {
+  async setSalary(userId: string, dto: SetSalaryDto, companyId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, companyId },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('Сотрудник не найден');
     return this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -79,12 +84,16 @@ export class PayrollService {
 
   // ---------- Периоды ----------
   createPeriod(dto: CreatePeriodDto) {
+    // Конец периода — включительно до конца дня, иначе записи за последний
+    // день (со временем > 00:00) не попадут в расчёт.
+    const endDate = new Date(dto.endDate);
+    endDate.setHours(23, 59, 59, 999);
     return this.prisma.payrollPeriod.create({
       data: {
         companyId: dto.companyId,
         name: dto.name,
         startDate: new Date(dto.startDate),
-        endDate: new Date(dto.endDate),
+        endDate,
       },
     });
   }
@@ -96,8 +105,8 @@ export class PayrollService {
     });
   }
 
-  async closePeriod(id: string) {
-    await this.ensurePeriod(id);
+  async closePeriod(id: string, companyId: string) {
+    await this.ensurePeriod(id, companyId);
     return this.prisma.payrollPeriod.update({
       where: { id },
       data: { isClosed: true },
@@ -105,8 +114,8 @@ export class PayrollService {
   }
 
   // ---------- Расчёт зарплаты за период ----------
-  async calculate(periodId: string) {
-    const period = await this.ensurePeriod(periodId);
+  async calculate(periodId: string, companyId: string) {
+    const period = await this.ensurePeriod(periodId, companyId);
     if (period.isClosed) {
       throw new BadRequestException('Период закрыт');
     }
@@ -116,6 +125,12 @@ export class PayrollService {
     });
 
     for (const u of users) {
+      // Уже выплаченные записи не пересчитываем — иначе исказим факт выплаты.
+      const existing = await this.prisma.salaryRecord.findUnique({
+        where: { periodId_userId: { periodId, userId: u.id } },
+      });
+      if (existing?.isPaid) continue;
+
       // База: оклад или часы * ставка
       let base = Number(u.rate);
       if (u.salaryType === SalaryType.HOURLY) {
@@ -140,12 +155,13 @@ export class PayrollService {
       const advance = Number(adv._sum.amount ?? 0);
 
       // Сохраняем бонус/удержание из существующей записи
-      const existing = await this.prisma.salaryRecord.findUnique({
-        where: { periodId_userId: { periodId, userId: u.id } },
-      });
       const bonus = existing ? Number(existing.bonus) : 0;
       const deduction = existing ? Number(existing.deduction) : 0;
-      const total = Number((base + bonus - advance - deduction).toFixed(2));
+      // Итог не может быть отрицательным (авансы/удержания больше базы).
+      const total = Math.max(
+        0,
+        Number((base + bonus - advance - deduction).toFixed(2)),
+      );
 
       await this.prisma.salaryRecord.upsert({
         where: { periodId_userId: { periodId, userId: u.id } },
@@ -163,12 +179,13 @@ export class PayrollService {
       });
     }
 
-    return this.listRecords(periodId);
+    return this.listRecords(periodId, companyId);
   }
 
-  async listRecords(periodId: string) {
+  async listRecords(periodId: string, companyId: string) {
+    await this.ensurePeriod(periodId, companyId);
     const records = await this.prisma.salaryRecord.findMany({
-      where: { periodId },
+      where: { periodId, companyId },
       include: { user: { select: { fullName: true, position: true } } },
     });
     return records
@@ -188,13 +205,22 @@ export class PayrollService {
   }
 
   // Изменить бонус/удержание и пересчитать итог
-  async updateRecord(id: string, dto: UpdateRecordDto) {
-    const rec = await this.prisma.salaryRecord.findUnique({ where: { id } });
+  async updateRecord(id: string, dto: UpdateRecordDto, companyId: string) {
+    const rec = await this.prisma.salaryRecord.findFirst({
+      where: { id, companyId },
+      include: { period: { select: { isClosed: true } } },
+    });
     if (!rec) throw new NotFoundException('Запись не найдена');
+    if (rec.isPaid) throw new BadRequestException('Запись уже выплачена');
+    if (rec.period.isClosed) throw new BadRequestException('Период закрыт');
     const bonus = dto.bonus ?? Number(rec.bonus);
     const deduction = dto.deduction ?? Number(rec.deduction);
-    const total = Number(
-      (Number(rec.base) + bonus - Number(rec.advance) - deduction).toFixed(2),
+    // Итог не может быть отрицательным.
+    const total = Math.max(
+      0,
+      Number(
+        (Number(rec.base) + bonus - Number(rec.advance) - deduction).toFixed(2),
+      ),
     );
     return this.prisma.salaryRecord.update({
       where: { id },
@@ -203,33 +229,58 @@ export class PayrollService {
   }
 
   // Выплата: отметить + расход из кассы
-  async pay(id: string) {
-    const rec = await this.prisma.salaryRecord.findUnique({
-      where: { id },
-      include: { user: { select: { fullName: true } } },
+  async pay(id: string, companyId: string, userId?: string) {
+    const rec = await this.prisma.salaryRecord.findFirst({
+      where: { id, companyId },
+      include: {
+        user: { select: { fullName: true } },
+        period: { select: { isClosed: true } },
+      },
     });
     if (!rec) throw new NotFoundException('Запись не найдена');
     if (rec.isPaid) throw new BadRequestException('Уже выплачено');
+    if (rec.period.isClosed) throw new BadRequestException('Период закрыт');
 
-    await this.prisma.$transaction([
-      this.prisma.salaryRecord.update({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.salaryRecord.update({
         where: { id },
         data: { isPaid: true },
-      }),
-      this.prisma.cashMovement.create({
+      });
+      // Расход из кассы привязываем к открытой смене выплачивающего кассира
+      // и категории «Зарплата» — иначе выплата не попадёт в Z-отчёт и завысит
+      // остаток наличных.
+      const shiftId = await this.openShiftId(tx, rec.companyId, userId);
+      await tx.cashMovement.create({
         data: {
           companyId: rec.companyId,
+          shiftId,
           type: 'OUT',
           amount: rec.total,
+          category: 'Зарплата',
           reason: `Зарплата: ${rec.user.fullName}`,
         },
-      }),
-    ]);
+      });
+    });
     return { ok: true };
   }
 
-  private async ensurePeriod(id: string) {
-    const p = await this.prisma.payrollPeriod.findUnique({ where: { id } });
+  // Открытая смена кассира — для привязки движений кассы к Z-отчёту.
+  private async openShiftId(
+    tx: any,
+    companyId: string,
+    userId?: string,
+  ): Promise<string | undefined> {
+    if (!userId) return undefined;
+    const shift = await tx.cashShift.findFirst({
+      where: { companyId, userId, closedAt: null },
+    });
+    return shift?.id;
+  }
+
+  private async ensurePeriod(id: string, companyId: string) {
+    const p = await this.prisma.payrollPeriod.findFirst({
+      where: { id, companyId },
+    });
     if (!p) throw new NotFoundException('Период не найден');
     return p;
   }

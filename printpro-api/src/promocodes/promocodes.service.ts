@@ -1,22 +1,16 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DiscountType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreatePromocodeDto } from './dto/create-promocode.dto';
 
 @Injectable()
 export class PromocodesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(dto: {
-    companyId: string;
-    code: string;
-    discountType?: DiscountType;
-    value: number;
-    maxUses?: number | null;
-    validUntil?: string;
-  }) {
+  create(companyId: string, dto: CreatePromocodeDto) {
     return this.prisma.promoCode.create({
       data: {
-        companyId: dto.companyId,
+        companyId,
         code: dto.code.trim().toUpperCase(),
         discountType: dto.discountType ?? DiscountType.PERCENT,
         value: dto.value,
@@ -33,12 +27,28 @@ export class PromocodesService {
     });
   }
 
-  async remove(id: string) {
-    await this.prisma.promoCode.update({
-      where: { id },
+  async remove(companyId: string, id: string) {
+    await this.prisma.promoCode.updateMany({
+      where: { id, companyId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
     return { ok: true };
+  }
+
+  // Вычислить размер скидки для суммы с учётом ограничений
+  private calcDiscount(
+    discountType: DiscountType,
+    value: number,
+    subtotal: number,
+  ) {
+    if (discountType === DiscountType.PERCENT) {
+      // Процент не может превышать 100, а скидка — сумму заказа
+      const percent = Math.min(value, 100);
+      const raw = Number(((subtotal * percent) / 100).toFixed(2));
+      return Math.min(raw, subtotal);
+    }
+    // Фиксированная сумма не может превышать сумму заказа
+    return Math.min(value, subtotal);
   }
 
   // Проверка кода: вернуть размер скидки для суммы (без списания)
@@ -53,12 +63,17 @@ export class PromocodesService {
       return { valid: false, discount: 0, message: 'Срок промокода истёк' };
     }
     if (promo.maxUses != null && promo.usedCount >= promo.maxUses) {
-      return { valid: false, discount: 0, message: 'Лимит использований исчерпан' };
+      return {
+        valid: false,
+        discount: 0,
+        message: 'Лимит использований исчерпан',
+      };
     }
-    const discount =
-      promo.discountType === DiscountType.PERCENT
-        ? Number(((subtotal * Number(promo.value)) / 100).toFixed(2))
-        : Math.min(Number(promo.value), subtotal);
+    const discount = this.calcDiscount(
+      promo.discountType,
+      Number(promo.value),
+      subtotal,
+    );
     return { valid: true, discount, code: promo.code };
   }
 
@@ -66,10 +81,25 @@ export class PromocodesService {
   async consume(companyId: string, code: string, subtotal: number) {
     const res = await this.validate(companyId, code, subtotal);
     if (!res.valid) throw new BadRequestException(res.message);
-    await this.prisma.promoCode.updateMany({
-      where: { companyId, code: code.trim().toUpperCase(), deletedAt: null },
+
+    // Атомарно списываем использование: инкремент проходит только если лимит
+    // ещё не исчерпан. Это защищает от гонки при одновременных продажах.
+    const normalizedCode = code.trim().toUpperCase();
+    const { count } = await this.prisma.promoCode.updateMany({
+      where: {
+        companyId,
+        code: normalizedCode,
+        deletedAt: null,
+        OR: [
+          { maxUses: null },
+          { usedCount: { lt: this.prisma.promoCode.fields.maxUses } },
+        ],
+      },
       data: { usedCount: { increment: 1 } },
     });
+    if (count === 0) {
+      throw new BadRequestException('Лимит использований исчерпан');
+    }
     return res.discount;
   }
 }

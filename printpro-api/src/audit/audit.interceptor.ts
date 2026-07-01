@@ -30,7 +30,10 @@ export class AuditInterceptor implements NestInterceptor {
 
     // Раздел из пути: /api/orders/123/payments → orders
     const path: string = req.route?.path ?? req.url ?? '';
-    const entity = path.split('/').filter(Boolean)[0] ?? 'unknown';
+    const segments = path.split('/').filter(Boolean);
+    // Отбрасываем глобальный префикс 'api', берём реальный ресурс
+    if (segments[0] === 'api') segments.shift();
+    const entity = segments[0] ?? 'unknown';
 
     return next.handle().pipe(
       tap(() => {

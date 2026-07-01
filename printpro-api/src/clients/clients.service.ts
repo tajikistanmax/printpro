@@ -25,7 +25,7 @@ export class ClientsService {
     note?: string,
   ) {
     const existing = await this.prisma.client.findFirst({
-      where: { companyId, phone },
+      where: { companyId, phone, deletedAt: null },
     });
     if (existing) return existing;
     return this.prisma.client.create({
@@ -51,8 +51,8 @@ export class ClientsService {
     });
   }
 
-  async update(id: string, dto: UpdateClientDto) {
-    await this.ensure(id);
+  async update(id: string, dto: UpdateClientDto, companyId: string) {
+    await this.ensure(id, companyId);
     return this.prisma.client.update({ where: { id }, data: dto });
   }
 
@@ -154,9 +154,9 @@ export class ClientsService {
     };
   }
 
-  async findOne(id: string) {
-    const client = await this.prisma.client.findUnique({
-      where: { id },
+  async findOne(id: string, companyId: string) {
+    const client = await this.prisma.client.findFirst({
+      where: { id, companyId },
       include: {
         orders: {
           orderBy: { createdAt: 'desc' },
@@ -223,16 +223,22 @@ export class ClientsService {
   async addFile(
     clientId: string,
     fileUrl: string,
+    companyId: string,
     fileName?: string,
     type?: string,
   ) {
-    await this.ensure(clientId);
+    await this.ensure(clientId, companyId);
     return this.prisma.clientFile.create({
       data: { clientId, fileUrl, fileName, type },
     });
   }
 
-  async removeFile(fileId: string) {
+  async removeFile(fileId: string, companyId: string) {
+    // Проверяем принадлежность файла компании через родительского клиента
+    const file = await this.prisma.clientFile.findFirst({
+      where: { id: fileId, client: { companyId } },
+    });
+    if (!file) throw new NotFoundException('Файл не найден');
     await this.prisma.clientFile.update({
       where: { id: fileId },
       data: { deletedAt: new Date() },
@@ -240,8 +246,10 @@ export class ClientsService {
     return { ok: true };
   }
 
-  private async ensure(id: string) {
-    const c = await this.prisma.client.findUnique({ where: { id } });
+  private async ensure(id: string, companyId: string) {
+    const c = await this.prisma.client.findFirst({
+      where: { id, companyId },
+    });
     if (!c) throw new NotFoundException('Клиент не найден');
     return c;
   }
