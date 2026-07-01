@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
@@ -59,6 +60,7 @@ function downloadCSV(filename: string, headers: string[], rows: (string | number
 
 export default function WarehousePage() {
   const cid = DEFAULT_COMPANY_ID;
+  const router = useRouter();
   const { can } = useAuth();
   const canManage = can('stock.manage');
   const canProducts = can('products.manage');
@@ -496,6 +498,9 @@ export default function WarehousePage() {
                 <NavIcon name="download" className="h-4 w-4 rotate-180" />Импорт
               </Button>
             )}
+            <Button variant="ghost" onClick={() => router.push('/price-labels')}>
+              <NavIcon name="barcode" className="h-4 w-4" />Ценники
+            </Button>
             <Button variant="ghost" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт</Button>
             {canProducts && <Button onClick={openProductModal}>+ Новый товар</Button>}
           </div>
