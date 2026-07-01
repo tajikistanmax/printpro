@@ -360,6 +360,14 @@ export class OrdersService {
       );
     }
 
+    // Продажа «в долг» без клиента = непогашаемый долг «без клиента». Требуем клиента.
+    const isDebtSale =
+      dto.method === PaymentMethod.DEBT &&
+      (!dto.payments || dto.payments.length === 0);
+    if (isDebtSale && !dto.clientPhone?.trim()) {
+      throw new BadRequestException('Для продажи «в долг» укажите клиента');
+    }
+
     // Идемпотентность: повтор той же продажи (двойной клик / обрыв сети) не создаёт дубль.
     if (dto.idempotencyKey) {
       const existing = await this.prisma.order.findUnique({
