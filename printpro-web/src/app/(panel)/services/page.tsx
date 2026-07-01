@@ -13,7 +13,6 @@ import {
   SearchInput,
   Tabs,
   Card,
-  SectionTitle,
   Field,
   Input,
   Select,
@@ -439,8 +438,8 @@ export default function ServicesPage() {
         subtitle={`${services.length} услуг · ${categories.length} категорий`}
         actions={
           canManage && (
-            <Button variant={showAddForm ? 'ghost' : 'primary'} onClick={() => setShowAddForm((v) => !v)}>
-              {showAddForm ? 'Отмена' : '+ Добавить услугу'}
+            <Button variant="primary" onClick={() => { setShowAddForm(true); setAddMsg(''); }}>
+              + Добавить услугу
             </Button>
           )
         }
@@ -454,42 +453,56 @@ export default function ServicesPage() {
         <StatCard icon="cash" tone="sky" label="Выручка за месяц" value={monthRevenue === null ? '—' : money(monthRevenue)} sub="по услугам" />
       </StatGrid>
 
-      {/* Форма добавления */}
+      {/* Модальное окно добавления услуги */}
       {showAddForm && canManage && (
-        <Card className="mb-6">
-          <SectionTitle>Новая услуга</SectionTitle>
-          <form onSubmit={createService} className="flex flex-wrap items-end gap-3">
-            <Field label="Название *" className="min-w-[200px] flex-1">
-              <Input value={newF.name} onChange={(e) => setNewF((f) => ({ ...f, name: e.target.value }))} required placeholder="напр. Печать баннеров" />
-            </Field>
-            <Field label="Категория">
-              <Select value={newF.categoryId} onChange={(e) => setNewF((f) => ({ ...f, categoryId: e.target.value }))}>
-                <option value="">— без категории —</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
-            </Field>
-            <Field label="Тип цены">
-              <Select value={newF.pricingType} onChange={(e) => setNewF((f) => ({ ...f, pricingType: e.target.value }))}>
-                {Object.entries(PRICING_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </Select>
-            </Field>
-            <Field label="Цена, c." className="w-28">
-              <Input type="number" value={newF.basePrice} onChange={(e) => setNewF((f) => ({ ...f, basePrice: e.target.value }))} placeholder="0" />
-            </Field>
-            <Field label="Себест-ть" className="w-28">
-              <Input type="number" value={newF.costPrice} onChange={(e) => setNewF((f) => ({ ...f, costPrice: e.target.value }))} placeholder="0" />
-            </Field>
-            <Field label="Время, мин" className="w-24">
-              <Input type="number" value={newF.leadTime} onChange={(e) => setNewF((f) => ({ ...f, leadTime: e.target.value }))} placeholder="—" />
-            </Field>
-            <Field label="Дизайн +" className="w-32">
-              <Input type="number" value={newF.designSurcharge} onChange={(e) => setNewF((f) => ({ ...f, designSurcharge: e.target.value }))} placeholder="0" />
-            </Field>
-            <ImageUpload value={newF.imageUrl} onChange={(url) => setNewF((f) => ({ ...f, imageUrl: url }))} label="Фото" />
-            <Button type="submit">Добавить</Button>
-            {addMsg && <span className="text-sm text-slate-600">{addMsg}</span>}
-          </form>
-        </Card>
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={() => setShowAddForm(false)} />
+          <div className="relative max-h-[88vh] w-full max-w-2xl overflow-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Новая услуга</h3>
+              <button onClick={() => setShowAddForm(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+            </div>
+            <form onSubmit={createService} className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Название *" className="sm:col-span-2">
+                  <Input value={newF.name} onChange={(e) => setNewF((f) => ({ ...f, name: e.target.value }))} required placeholder="напр. Печать баннеров" />
+                </Field>
+                <Field label="Категория">
+                  <Select value={newF.categoryId} onChange={(e) => setNewF((f) => ({ ...f, categoryId: e.target.value }))}>
+                    <option value="">— без категории —</option>
+                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Тип цены">
+                  <Select value={newF.pricingType} onChange={(e) => setNewF((f) => ({ ...f, pricingType: e.target.value }))}>
+                    {Object.entries(PRICING_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Цена, c.">
+                  <Input type="number" value={newF.basePrice} onChange={(e) => setNewF((f) => ({ ...f, basePrice: e.target.value }))} placeholder="0" />
+                </Field>
+                <Field label="Себестоимость, c.">
+                  <Input type="number" value={newF.costPrice} onChange={(e) => setNewF((f) => ({ ...f, costPrice: e.target.value }))} placeholder="0" />
+                </Field>
+                <Field label="Время выполнения, мин">
+                  <Input type="number" value={newF.leadTime} onChange={(e) => setNewF((f) => ({ ...f, leadTime: e.target.value }))} placeholder="—" />
+                </Field>
+                <Field label="Наценка за дизайн, c.">
+                  <Input type="number" value={newF.designSurcharge} onChange={(e) => setNewF((f) => ({ ...f, designSurcharge: e.target.value }))} placeholder="0" />
+                </Field>
+              </div>
+              <ImageUpload value={newF.imageUrl} onChange={(url) => setNewF((f) => ({ ...f, imageUrl: url }))} label="Фото услуги" />
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                Тиры по тиражу, форматы и опции задаются после создания — в редактировании услуги.
+              </p>
+              <div className="flex items-center gap-3">
+                <Button type="submit"><NavIcon name="plus" className="h-4 w-4" />Добавить услугу</Button>
+                <Button type="button" variant="ghost" onClick={() => setShowAddForm(false)}>Отмена</Button>
+                {addMsg && <span className="text-sm text-slate-600 dark:text-slate-300">{addMsg}</span>}
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Категории (управление) — сворачиваемое */}
