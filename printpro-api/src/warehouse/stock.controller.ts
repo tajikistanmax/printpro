@@ -1,11 +1,14 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { StockService } from './stock.service';
 import { ReceiveStockDto } from './dto/receive-stock.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { TransferStockDto, RecountStockDto } from './dto/transfer-stock.dto';
 import { WriteOffDto } from './dto/write-off.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/permissions.guard';
 
 @Controller('stock')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class StockController {
   constructor(private readonly stock: StockService) {}
 

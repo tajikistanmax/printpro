@@ -322,10 +322,10 @@ export class StockService {
     });
   }
 
-  // Текущие остатки по компании
+  // Текущие остатки по компании (без мягко удалённых товаров)
   listStock(companyId: string) {
     return this.prisma.stock.findMany({
-      where: { product: { companyId } },
+      where: { product: { companyId, deletedAt: null } },
       include: { product: { include: { unit: true } }, branch: true },
       orderBy: { product: { name: 'asc' } },
     });
@@ -414,7 +414,11 @@ export class StockService {
     // Берём остатки, где у товара задан порог (minStock > 0)
     const rows = await this.prisma.stock.findMany({
       where: {
-        product: { companyId, minStock: { gt: new Prisma.Decimal(0) } },
+        product: {
+          companyId,
+          deletedAt: null,
+          minStock: { gt: new Prisma.Decimal(0) },
+        },
       },
       include: { product: { include: { unit: true } }, branch: true },
     });

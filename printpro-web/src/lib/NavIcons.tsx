@@ -325,6 +325,16 @@ const PATHS: Record<string, ReactNode> = {
       <path d="m4 18 5-5 4 4 3-3 4 4" />
     </>
   ),
+  barcode: (
+    <>
+      <path d="M3 5v14" />
+      <path d="M6.5 5v14" />
+      <path d="M10 5v14" />
+      <path d="M14 5v14" />
+      <path d="M17.5 5v14" />
+      <path d="M21 5v14" />
+    </>
+  ),
 };
 
 export default function NavIcon({

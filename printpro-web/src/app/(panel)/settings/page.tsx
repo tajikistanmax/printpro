@@ -45,6 +45,7 @@ type Section =
   | null
   | 'profile'
   | 'branches'
+  | 'catalog'
   | 'orders'
   | 'pos'
   | 'display'
@@ -228,6 +229,7 @@ export default function SettingsPage() {
   const titles: Record<string, string> = {
     profile: 'Компания и профиль',
     branches: 'Филиалы и склады',
+    catalog: 'Справочники',
     orders: 'Заказы',
     pos: 'Касса и оплата',
     display: 'Дисплей покупателя',
@@ -238,6 +240,7 @@ export default function SettingsPage() {
   const subtitles: Record<string, string> = {
     profile: 'Реквизиты, контакты, логотип и общие параметры',
     branches: 'Точки обслуживания и склады',
+    catalog: 'Категории товаров и единицы измерения',
     orders: 'Нумерация и сроки заказов',
     pos: 'Оформление экрана продажи',
     display: 'Второй экран: графический монитор и текстовый VFD-дисплей',
@@ -250,6 +253,7 @@ export default function SettingsPage() {
   const NAV: { key?: Section; href?: string; icon: string; title: string; tone: string }[] = [
     { key: 'profile',       icon: 'staff',      title: 'Компания и профиль',  tone: 'indigo' },
     { key: 'branches',      icon: 'warehouse',  title: 'Филиалы и склады',    tone: 'sky' },
+    { key: 'catalog',       icon: 'barcode',    title: 'Справочники',         tone: 'amber' },
     { href: '/staff',       icon: 'clients',    title: 'Пользователи и роли', tone: 'violet' },
     { key: 'orders',        icon: 'orders',     title: 'Заказы',              tone: 'amber' },
     { href: '/services',    icon: 'services',   title: 'Цены и услуги',       tone: 'emerald' },
@@ -351,6 +355,7 @@ export default function SettingsPage() {
               toggleBranch={toggleBranch}
             />
           )}
+          {section === 'catalog' && <CatalogSection cid={cid} />}
           {section === 'orders' && <OrdersSection s={s} set={set} />}
           {section === 'pos' && <PosSection s={s} set={set} />}
           {section === 'display' && <DisplaySection s={s} set={set} setMsg={setMsg} />}
@@ -615,6 +620,91 @@ function BranchesSection({
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+// Справочники: категории товаров и единицы измерения
+function CatalogSection({ cid }: { cid: string }) {
+  const [categories, setCategories] = useState<any[]>([]);
+  const [units, setUnits] = useState<any[]>([]);
+  const [catName, setCatName] = useState('');
+  const [uName, setUName] = useState('');
+  const [uShort, setUShort] = useState('');
+  const [msg, setMsg] = useState('');
+
+  function load() {
+    api.get(`/product-categories?companyId=${cid}`).then(setCategories).catch(() => {});
+    api.get(`/units?companyId=${cid}`).then(setUnits).catch(() => {});
+  }
+  useEffect(load, [cid]);
+
+  async function addCategory() {
+    const n = catName.trim();
+    if (!n) return;
+    try {
+      await api.post('/product-categories', { companyId: cid, name: n });
+      setCatName(''); setMsg(''); load();
+    } catch (e: any) { setMsg('Ошибка: ' + e.message); }
+  }
+  async function delCategory(id: string) {
+    if (!confirm('Удалить категорию? Товары останутся без категории.')) return;
+    try { await api.del(`/product-categories/${id}`); load(); } catch (e: any) { setMsg('Ошибка: ' + e.message); }
+  }
+  async function addUnit(e: React.FormEvent) {
+    e.preventDefault();
+    const short = uShort.trim() || uName.trim();
+    const name = uName.trim() || uShort.trim();
+    if (!short) return;
+    try {
+      await api.post('/units', { companyId: cid, name, shortName: short });
+      setUName(''); setUShort(''); setMsg(''); load();
+    } catch (e: any) { setMsg('Ошибка: ' + e.message); }
+  }
+  async function delUnit(id: string) {
+    if (!confirm('Удалить единицу измерения?')) return;
+    try { await api.del(`/units/${id}`); load(); } catch (e: any) { setMsg('Ошибка: ' + e.message); }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <SectionTitle>Категории товаров</SectionTitle>
+        <div className="flex flex-wrap items-center gap-2">
+          {categories.map((c) => (
+            <span key={c.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              {c.name}
+              <button type="button" onClick={() => delCategory(c.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
+            </span>
+          ))}
+          {categories.length === 0 && <span className="text-xs text-slate-400">Нет категорий.</span>}
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <Input value={catName} onChange={(e) => setCatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCategory())} placeholder="Новая категория (напр. Бумага)" />
+          <Button type="button" variant="ghost" onClick={addCategory} className="shrink-0">+ Категория</Button>
+        </div>
+      </Card>
+
+      <Card>
+        <SectionTitle>Единицы измерения</SectionTitle>
+        <div className="mb-3 flex flex-wrap gap-2">
+          {units.map((u) => (
+            <span key={u.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-sm dark:bg-slate-800">
+              <span className="font-medium text-slate-700 dark:text-slate-200">{u.shortName}</span>
+              <span className="text-slate-400">({u.name})</span>
+              <button type="button" onClick={() => delUnit(u.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
+            </span>
+          ))}
+          {units.length === 0 && <span className="text-sm text-slate-400">Нет единиц. Добавьте: шт, м², рул и т.д.</span>}
+        </div>
+        <form onSubmit={addUnit} className="flex flex-wrap items-end gap-2">
+          <Field label="Полное название"><Input value={uName} onChange={(e) => setUName(e.target.value)} placeholder="Штука" className="w-36" /></Field>
+          <Field label="Сокращение"><Input value={uShort} onChange={(e) => setUShort(e.target.value)} placeholder="шт" className="w-24" /></Field>
+          <Button type="submit" variant="ghost">+ Единица</Button>
+        </form>
+      </Card>
+
+      {msg && <p className="text-sm text-slate-600 dark:text-slate-300">{msg}</p>}
     </div>
   );
 }

@@ -199,6 +199,39 @@ export class ProductsService {
     return { created, updated, skipped, total: rows.length };
   }
 
+  // ---------- Генерация свободного штрихкода ----------
+  // Внутренний EAN-13: префикс «2» (зарезервирован для внутреннего использования)
+  // + 11 случайных цифр + контрольная цифра. Проверяем уникальность по каталогу.
+  async generateBarcode(companyId: string) {
+    const checkDigit = (d12: string) => {
+      let sum = 0;
+      for (let i = 0; i < 12; i++) {
+        const n = d12.charCodeAt(i) - 48;
+        sum += i % 2 === 0 ? n : n * 3;
+      }
+      return String((10 - (sum % 10)) % 10);
+    };
+
+    for (let attempt = 0; attempt < 30; attempt++) {
+      let base = '2';
+      for (let i = 0; i < 11; i++) base += Math.floor(Math.random() * 10);
+      const code = base + checkDigit(base);
+
+      const [usedProduct, usedAlias] = await Promise.all([
+        this.prisma.product.findFirst({
+          where: { companyId, barcode: code, deletedAt: null },
+          select: { id: true },
+        }),
+        this.prisma.productBarcodeAlias.findFirst({
+          where: { barcode: code },
+          select: { id: true },
+        }),
+      ]);
+      if (!usedProduct && !usedAlias) return { barcode: code };
+    }
+    throw new NotFoundException('Не удалось сгенерировать свободный штрихкод');
+  }
+
   // ---------- Доп. штрихкоды (алиасы) ----------
   async addBarcodeAlias(productId: string, barcode: string) {
     const code = (barcode ?? '').trim();

@@ -48,6 +48,49 @@ export class AuthService {
     };
   }
 
+  // Быстрый вход на кассе по PIN. Токен со сроком 12ч и меткой src=pos.
+  // Пользователь не вводит логин — определяем его по совпадению PIN среди
+  // активных сотрудников компании.
+  async posLogin(companyId: string, pin: string) {
+    if (!companyId || !/^\d{4,6}$/.test(pin ?? '')) {
+      throw new UnauthorizedException('Неверный PIN');
+    }
+    const users = await this.prisma.user.findMany({
+      where: { companyId, isActive: true, pinHash: { not: null } },
+      include: { role: true },
+    });
+
+    let matched: (typeof users)[number] | null = null;
+    for (const u of users) {
+      if (u.pinHash && (await bcrypt.compare(pin, u.pinHash))) {
+        matched = u;
+        break;
+      }
+    }
+    if (!matched) throw new UnauthorizedException('Неверный PIN');
+
+    const payload = {
+      sub: matched.id,
+      companyId: matched.companyId,
+      roleId: matched.roleId,
+      login: matched.login,
+      src: 'pos',
+    };
+    const token = await this.jwt.signAsync(payload, { expiresIn: '12h' });
+
+    return {
+      token,
+      user: {
+        id: matched.id,
+        fullName: matched.fullName,
+        login: matched.login,
+        role: matched.role?.name ?? null,
+        roleId: matched.roleId,
+        branchId: matched.branchId,
+      },
+    };
+  }
+
   // Данные текущего пользователя + его права
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({

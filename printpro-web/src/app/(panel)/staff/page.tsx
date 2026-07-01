@@ -53,6 +53,7 @@ function UsersTab({ cid }: { cid: string }) {
   const [fullName, setFullName] = useState('');
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
   const [roleId, setRoleId] = useState('');
   const [branchId, setBranchId] = useState('');
   const [msg, setMsg] = useState('');
@@ -73,12 +74,14 @@ function UsersTab({ cid }: { cid: string }) {
         fullName,
         login,
         password,
+        pin: pin || undefined,
         roleId: roleId || undefined,
         branchId: branchId || undefined,
       });
       setFullName('');
       setLogin('');
       setPassword('');
+      setPin('');
       setMsg('✓ Сотрудник добавлен');
       load();
     } catch (err: any) {
@@ -97,6 +100,27 @@ function UsersTab({ cid }: { cid: string }) {
     try {
       await api.patch(`/users/${u.id}/password`, { password: pwd });
       alert(`Пароль для «${u.fullName}» изменён. Сообщите ему новый пароль.`);
+    } catch (err: any) {
+      alert('Ошибка: ' + err.message);
+    }
+  }
+
+  // Задать/сбросить PIN кассира (пустое значение — убрать PIN)
+  async function setUserPin(u: any) {
+    const val = prompt(
+      `PIN (4–6 цифр) для входа на кассу — «${u.fullName}».\nПусто — убрать PIN:`,
+      '',
+    );
+    if (val === null) return;
+    const trimmed = val.trim();
+    if (trimmed && !/^\d{4,6}$/.test(trimmed)) {
+      alert('PIN должен быть 4–6 цифр');
+      return;
+    }
+    try {
+      await api.patch(`/users/${u.id}/pin`, { pin: trimmed || null });
+      alert(trimmed ? `PIN для «${u.fullName}» задан.` : `PIN для «${u.fullName}» убран.`);
+      load();
     } catch (err: any) {
       alert('Ошибка: ' + err.message);
     }
@@ -134,6 +158,12 @@ function UsersTab({ cid }: { cid: string }) {
               type="password"
               placeholder="Пароль (мин. 4)"
               required
+            />
+            <Input
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              inputMode="numeric"
+              placeholder="PIN кассира (4–6 цифр, необязательно)"
             />
             <Select
               value={roleId}
@@ -202,6 +232,14 @@ function UsersTab({ cid }: { cid: string }) {
                             title="Сбросить пароль"
                           >
                             <NavIcon name="key" className="h-4 w-4" />Пароль
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setUserPin(u)}
+                            title="Задать PIN для входа на кассу"
+                          >
+                            <NavIcon name="pin" className="h-4 w-4" />{u.hasPin ? 'PIN ✓' : 'PIN'}
                           </Button>
                           <button
                             onClick={() => toggle(u)}

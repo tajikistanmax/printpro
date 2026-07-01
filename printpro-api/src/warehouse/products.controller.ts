@@ -7,13 +7,17 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { CreateUnitDto } from './dto/create-unit.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/permissions.guard';
 
 @Controller()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ProductsController {
   constructor(private readonly products: ProductsService) {}
 
@@ -26,6 +30,12 @@ export class ProductsController {
   @Get('products')
   findAllProducts(@Query('companyId') companyId: string) {
     return this.products.findAllProducts(companyId);
+  }
+
+  // Сгенерировать свободный штрихкод для нового товара
+  @Get('products/generate-barcode')
+  generateBarcode(@Query('companyId') companyId: string) {
+    return this.products.generateBarcode(companyId);
   }
 
   // Импорт каталога из CSV/Excel (массив строк)

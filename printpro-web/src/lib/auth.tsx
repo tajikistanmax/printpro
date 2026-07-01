@@ -22,6 +22,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (login: string, password: string) => Promise<void>;
+  loginPin: (pin: string) => Promise<void>;
   logout: () => void;
   can: (permission: string) => boolean;
 }
@@ -64,6 +65,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(me);
   }
 
+  // Быстрый вход кассира по PIN
+  async function loginPin(pin: string) {
+    const res = await api.post<{ token: string }>('/auth/pos-login', {
+      companyId: DEFAULT_COMPANY_ID,
+      pin,
+    });
+    localStorage.setItem('pp_token', res.token);
+    const me = await api.get<AuthUser>('/auth/me');
+    setUser(me);
+  }
+
   function logout() {
     localStorage.removeItem('pp_token');
     setUser(null);
@@ -74,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, can }}>
+    <AuthContext.Provider value={{ user, loading, login, loginPin, logout, can }}>
       {children}
     </AuthContext.Provider>
   );

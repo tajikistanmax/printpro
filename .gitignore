@@ -5,6 +5,9 @@
 **/.env
 **/.env.*
 **/uploads
+# ...но не исходный код модуля загрузок (иначе теряется при коммите)
+!**/src/uploads
+!**/src/uploads/**
 *.log
 
 # Runtime dev logs

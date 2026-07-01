@@ -7,13 +7,34 @@ import { API_BASE, DEFAULT_COMPANY_ID } from '@/lib/config';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, loginPin } = useAuth();
+  const [mode, setMode] = useState<'password' | 'pin'>('password');
   const [loginValue, setLoginValue] = useState('admin');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // PIN-вход кассира
+  const [pin, setPin] = useState('');
+  function pushPin(d: string) {
+    setError('');
+    setPin((p) => (p.length >= 6 ? p : p + d));
+  }
+  async function submitPin(value: string) {
+    setError('');
+    setBusy(true);
+    try {
+      await loginPin(value);
+      router.replace('/pos');
+    } catch (err: any) {
+      setError(err.message ?? 'Неверный PIN');
+      setPin('');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // «Забыли пароль?»
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -79,6 +100,91 @@ export default function LoginPage() {
             Войдите в систему, чтобы продолжить
           </p>
 
+          {/* Переключатель способа входа */}
+          <div className="mb-5 flex gap-1 rounded-xl bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => { setMode('password'); setError(''); }}
+              className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${mode === 'password' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Логин и пароль
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('pin'); setError(''); }}
+              className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${mode === 'pin' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              PIN кассира
+            </button>
+          </div>
+
+          {mode === 'pin' && (
+            <div className="space-y-4">
+              {/* Точки-индикатор введённого PIN */}
+              <div className="flex justify-center gap-3 py-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <span
+                    key={i}
+                    className={`h-3.5 w-3.5 rounded-full transition ${i < pin.length ? 'bg-indigo-500' : 'bg-slate-200'}`}
+                  />
+                ))}
+              </div>
+
+              {error && (
+                <div className="rounded-lg bg-rose-50 px-3 py-2 text-center text-sm text-rose-600">
+                  {error}
+                </div>
+              )}
+
+              {/* Клавиатура PIN */}
+              <div className="grid grid-cols-3 gap-2.5">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => pushPin(d)}
+                    className="rounded-xl border border-slate-200 bg-slate-50 py-4 text-xl font-semibold text-slate-700 transition hover:bg-slate-100 active:scale-95"
+                  >
+                    {d}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setPin('')}
+                  className="rounded-xl border border-slate-200 bg-slate-50 py-4 text-sm font-medium text-slate-400 transition hover:bg-slate-100"
+                >
+                  Сброс
+                </button>
+                <button
+                  type="button"
+                  onClick={() => pushPin('0')}
+                  className="rounded-xl border border-slate-200 bg-slate-50 py-4 text-xl font-semibold text-slate-700 transition hover:bg-slate-100 active:scale-95"
+                >
+                  0
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPin((p) => p.slice(0, -1))}
+                  className="rounded-xl border border-slate-200 bg-slate-50 py-4 text-slate-400 transition hover:bg-slate-100"
+                  aria-label="Стереть"
+                >
+                  ⌫
+                </button>
+              </div>
+
+              <button
+                type="button"
+                disabled={busy || pin.length < 4}
+                onClick={() => submitPin(pin)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 py-3.5 text-base font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:from-indigo-600 hover:to-purple-700 disabled:opacity-60"
+              >
+                {busy ? 'Вход…' : 'Войти на кассу'}
+                {!busy && <ArrowIcon className="h-5 w-5" />}
+              </button>
+            </div>
+          )}
+
+          {mode === 'password' && (
           <form onSubmit={onSubmit} className="space-y-4">
             {/* Логин */}
             <div className="relative">
@@ -153,6 +259,7 @@ export default function LoginPage() {
               {!busy && <ArrowIcon className="h-5 w-5" />}
             </button>
           </form>
+          )}
         </div>
 
         {/* Низ панели */}

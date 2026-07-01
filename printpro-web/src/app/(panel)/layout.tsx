@@ -33,6 +33,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Склад и услуги',
     items: [
       { href: '/warehouse', label: 'Склад', icon: 'warehouse', perm: 'stock.view' },
+      { href: '/price-labels', label: 'Ценники', icon: 'barcode', perm: 'stock.view' },
       { href: '/purchasing', label: 'Закупки', icon: 'purchasing', perm: 'stock.view' },
       { href: '/services', label: 'Услуги', icon: 'services', perm: 'services.view' },
     ],

@@ -44,4 +44,11 @@ export class UsersController {
   resetPassword(@Param('id') id: string, @Body('password') password: string) {
     return this.users.resetPassword(id, password);
   }
+
+  // Установить / сбросить PIN кассира (пустое значение — убрать PIN)
+  @Patch(':id/pin')
+  @RequirePermissions('users.manage')
+  setPin(@Param('id') id: string, @Body('pin') pin: string | null) {
+    return this.users.setPin(id, pin ?? null);
+  }
 }

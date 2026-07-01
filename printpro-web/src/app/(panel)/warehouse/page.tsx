@@ -97,17 +97,17 @@ export default function WarehousePage() {
   // Категории
   const [catName, setCatName] = useState('');
 
-  // Новый товар
+  // Новый товар (модальное окно)
+  const [productModalOpen, setProductModalOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [genBusy, setGenBusy] = useState(false);
   const [pName, setPName] = useState('');
   const [pUnit, setPUnit] = useState('');
   const [pCat, setPCat] = useState('');
   const [pPrice, setPPrice] = useState('');
-  const [pPurchase, setPPurchase] = useState('');
   const [pMin, setPMin] = useState('');
   const [pSku, setPSku] = useState('');
   const [pBarcode, setPBarcode] = useState('');
-  const [pSize, setPSize] = useState('');
-  const [pWeight, setPWeight] = useState('');
   const [pImage, setPImage] = useState('');
   const [pMsg, setPMsg] = useState('');
 
@@ -115,6 +115,7 @@ export default function WarehousePage() {
   const [editPId, setEditPId] = useState<string | null>(null);
   const [editP, setEditP] = useState<any>({});
   const [editPMsg, setEditPMsg] = useState('');
+  const [editAdvOpen, setEditAdvOpen] = useState(false);
 
   // Приём
   const [productId, setProductId] = useState('');
@@ -195,6 +196,15 @@ export default function WarehousePage() {
   }
 
   // ---- новый товар ----
+  function resetProductForm() {
+    setPName(''); setPCat(''); setPPrice(''); setPMin(''); setPSku(''); setPBarcode(''); setPImage('');
+    setAdvancedOpen(false); setPMsg('');
+  }
+  function openProductModal() {
+    resetProductForm();
+    setProductModalOpen(true);
+  }
+
   async function createProduct(e: React.FormEvent) {
     e.preventDefault(); setPMsg('');
     try {
@@ -203,22 +213,33 @@ export default function WarehousePage() {
         categoryId: pCat || undefined,
         unitId: pUnit || undefined,
         salePrice: pPrice ? Number(pPrice) : 0,
-        purchasePrice: pPurchase ? Number(pPurchase) : 0,
         minStock: pMin ? Number(pMin) : 0,
         sku: pSku || undefined,
         barcode: pBarcode || undefined,
-        size: pSize || undefined,
-        weight: pWeight || undefined,
         imageUrl: pImage || undefined,
       });
-      setPName(''); setPPrice(''); setPPurchase(''); setPMin(''); setPSku(''); setPBarcode(''); setPSize(''); setPWeight(''); setPImage('');
-      setPMsg('✓ Товар добавлен'); load();
+      resetProductForm();
+      setProductModalOpen(false);
+      load();
     } catch (err: any) { setPMsg('Ошибка: ' + err.message); }
+  }
+
+  // Сгенерировать свободный штрихкод (кнопка в форме)
+  async function generateBarcode() {
+    setGenBusy(true);
+    try {
+      const r = await api.get<{ barcode: string }>(`/products/generate-barcode?companyId=${cid}`);
+      setPBarcode(r.barcode);
+    } catch (err: any) {
+      setPMsg('Не удалось сгенерировать штрихкод: ' + err.message);
+    } finally {
+      setGenBusy(false);
+    }
   }
 
   // ---- редактирование ----
   function openEditP(p: any) {
-    setEditPId(p.id); setEditPMsg('');
+    setEditPId(p.id); setEditPMsg(''); setEditAdvOpen(false);
     setEditP({
       name: p.name, categoryId: p.categoryId ?? '', unitId: p.unitId ?? '',
       salePrice: String(Number(p.salePrice) || ''), purchasePrice: String(Number(p.purchasePrice) || ''), minStock: String(Number(p.minStock) || ''),
@@ -239,14 +260,25 @@ export default function WarehousePage() {
         minStock: editP.minStock ? Number(editP.minStock) : 0,
         sku: editP.sku || undefined,
         barcode: editP.barcode || undefined,
-        size: editP.size || undefined,
-        weight: editP.weight || undefined,
         imageUrl: editP.imageUrl || undefined,
         isActive: editP.isActive,
       });
       setEditPId(null); load();
       if (material?.id === editPId) openMaterial(editPId);
     } catch (err: any) { setEditPMsg('Ошибка: ' + err.message); }
+  }
+
+  // Генерация штрихкода в форме редактирования товара
+  async function generateEditBarcode() {
+    setGenBusy(true);
+    try {
+      const r = await api.get<{ barcode: string }>(`/products/generate-barcode?companyId=${cid}`);
+      setEditP((f: any) => ({ ...f, barcode: r.barcode }));
+    } catch (err: any) {
+      setEditPMsg('Не удалось сгенерировать штрихкод: ' + err.message);
+    } finally {
+      setGenBusy(false);
+    }
   }
   async function deleteProduct(id: string) {
     if (!confirm('Удалить товар? Он должен быть без остатков и без движений.')) return;
@@ -465,7 +497,7 @@ export default function WarehousePage() {
               </Button>
             )}
             <Button variant="ghost" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт</Button>
-            {canProducts && <Button onClick={() => setTab('ref')}>+ Новый товар</Button>}
+            {canProducts && <Button onClick={openProductModal}>+ Новый товар</Button>}
           </div>
         }
       />
@@ -704,44 +736,18 @@ export default function WarehousePage() {
       {tab === 'ref' && canProducts && (
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
-            <SectionTitle>Новый товар</SectionTitle>
-            <form onSubmit={createProduct} className="space-y-3">
-              <Input value={pName} onChange={(e) => setPName(e.target.value)} placeholder="Название товара *" required />
-              <Select value={pCat} onChange={(e) => setPCat(e.target.value)}>
-                <option value="">— без категории —</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
-              <Select value={pUnit} onChange={(e) => setPUnit(e.target.value)}><option value="">ед. изм.</option>{units.map((u) => <option key={u.id} value={u.id}>{u.shortName}</option>)}</Select>
-              <div className="grid grid-cols-3 gap-2">
-                <Input value={pPrice} onChange={(e) => setPPrice(e.target.value)} type="number" placeholder="Цена продажи" />
-                <Input value={pPurchase} onChange={(e) => setPPurchase(e.target.value)} type="number" placeholder="Закупочная" title="Себестоимость — для отчёта прибыли" />
-                <Input value={pMin} onChange={(e) => setPMin(e.target.value)} type="number" placeholder="Мин. остаток" title="Оповещение когда меньше" />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Input value={pSku} onChange={(e) => setPSku(e.target.value)} placeholder="Артикул" />
-                <Input value={pBarcode} onChange={(e) => setPBarcode(e.target.value)} placeholder="Штрихкод" />
-                <Input value={pSize} onChange={(e) => setPSize(e.target.value)} placeholder="Размер (610×860 мм)" />
-                <Input value={pWeight} onChange={(e) => setPWeight(e.target.value)} placeholder="Вес (2.5 кг)" />
-              </div>
-              <ImageUpload value={pImage} onChange={setPImage} label="Фото товара" />
-              <Button type="submit" variant="emerald" className="w-full">Добавить товар</Button>
-              {pMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{pMsg}</p>}
-            </form>
-
-            <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-700">
-              <div className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">Категории</div>
-              <div className="flex flex-wrap items-center gap-2">
-                {categories.map((c) => (
-                  <span key={c.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                    {c.name}<button type="button" onClick={() => removeCategory(c.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
-                  </span>
-                ))}
-                {categories.length === 0 && <span className="text-xs text-slate-400">Нет категорий.</span>}
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <Input value={catName} onChange={(e) => setCatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCategory()} placeholder="Новая категория (напр. Бумага)" />
-                <Button type="button" variant="ghost" onClick={addCategory} className="shrink-0">+ Категория</Button>
-              </div>
+            <SectionTitle>Категории</SectionTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              {categories.map((c) => (
+                <span key={c.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  {c.name}<button type="button" onClick={() => removeCategory(c.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
+                </span>
+              ))}
+              {categories.length === 0 && <span className="text-xs text-slate-400">Нет категорий.</span>}
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <Input value={catName} onChange={(e) => setCatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCategory()} placeholder="Новая категория (напр. Бумага)" />
+              <Button type="button" variant="ghost" onClick={addCategory} className="shrink-0">+ Категория</Button>
             </div>
           </Card>
 
@@ -764,6 +770,82 @@ export default function WarehousePage() {
               {uMsg && <span className="text-sm text-slate-500">{uMsg}</span>}
             </form>
           </Card>
+        </div>
+      )}
+
+      {/* ===================== НОВЫЙ ТОВАР (модальное окно) ===================== */}
+      {productModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={() => setProductModalOpen(false)} />
+          <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Новый товар</h3>
+              <button onClick={() => setProductModalOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+            </div>
+
+            <form onSubmit={createProduct} className="space-y-3">
+              <Field label="Название *">
+                <Input value={pName} onChange={(e) => setPName(e.target.value)} placeholder="Например: Бумага A4 80г" required autoFocus />
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Категория">
+                  <Select value={pCat} onChange={(e) => setPCat(e.target.value)}>
+                    <option value="">— без категории —</option>
+                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Единица измерения">
+                  <Select value={pUnit} onChange={(e) => setPUnit(e.target.value)}>
+                    <option value="">— ед. —</option>
+                    {units.map((u) => <option key={u.id} value={u.id}>{u.shortName}</option>)}
+                  </Select>
+                </Field>
+              </div>
+
+              <Field label="Продажная цена *">
+                <Input value={pPrice} onChange={(e) => setPPrice(e.target.value)} type="number" min="0" placeholder="0" required />
+              </Field>
+
+              <Field label="Штрихкод">
+                <div className="flex gap-2">
+                  <Input value={pBarcode} onChange={(e) => setPBarcode(e.target.value)} placeholder="Отсканируйте или сгенерируйте" className="flex-1" />
+                  <Button type="button" variant="ghost" onClick={generateBarcode} disabled={genBusy} className="shrink-0">
+                    <NavIcon name="refresh" className="h-4 w-4" />{genBusy ? '…' : 'Сгенерировать'}
+                  </Button>
+                </div>
+              </Field>
+
+              <ImageUpload value={pImage} onChange={setPImage} label="Фото товара" />
+
+              {/* Дополнительно (свёрнуто) */}
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen((v) => !v)}
+                className="flex items-center gap-1.5 pt-1 text-sm font-medium text-indigo-600 hover:text-indigo-700"
+              >
+                <NavIcon name={advancedOpen ? 'close' : 'plus'} className="h-3.5 w-3.5" />
+                Дополнительно
+              </button>
+              {advancedOpen && (
+                <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/40">
+                  <Field label="Мин. остаток">
+                    <Input value={pMin} onChange={(e) => setPMin(e.target.value)} type="number" min="0" placeholder="0" title="Оповещение когда меньше" />
+                  </Field>
+                  <Field label="Артикул">
+                    <Input value={pSku} onChange={(e) => setPSku(e.target.value)} placeholder="напр. БУМ-А4-80" />
+                  </Field>
+                </div>
+              )}
+
+              {pMsg && <p className="text-sm text-rose-600">{pMsg}</p>}
+
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="ghost" onClick={() => setProductModalOpen(false)} className="flex-1">Отмена</Button>
+                <Button type="submit" variant="emerald" className="flex-1">Добавить товар</Button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -820,15 +902,27 @@ export default function WarehousePage() {
                   <div className="grid grid-cols-2 gap-2">
                     <Field label="Категория"><Select value={editP.categoryId} onChange={(e) => setEditP((f: any) => ({ ...f, categoryId: e.target.value }))}><option value="">— нет —</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
                     <Field label="Ед."><Select value={editP.unitId} onChange={(e) => setEditP((f: any) => ({ ...f, unitId: e.target.value }))}><option value="">—</option>{units.map((u) => <option key={u.id} value={u.id}>{u.shortName}</option>)}</Select></Field>
-                    <Field label="Цена продажи"><Input type="number" value={editP.salePrice} onChange={(e) => setEditP((f: any) => ({ ...f, salePrice: e.target.value }))} /></Field>
-                    <Field label="Закупочная (себест.)"><Input type="number" value={editP.purchasePrice} onChange={(e) => setEditP((f: any) => ({ ...f, purchasePrice: e.target.value }))} /></Field>
-                    <Field label="Мин. остаток"><Input type="number" value={editP.minStock} onChange={(e) => setEditP((f: any) => ({ ...f, minStock: e.target.value }))} /></Field>
-                    <Field label="Артикул"><Input value={editP.sku} onChange={(e) => setEditP((f: any) => ({ ...f, sku: e.target.value }))} /></Field>
-                    <Field label="Штрихкод"><Input value={editP.barcode} onChange={(e) => setEditP((f: any) => ({ ...f, barcode: e.target.value }))} /></Field>
-                    <Field label="Размер"><Input value={editP.size} onChange={(e) => setEditP((f: any) => ({ ...f, size: e.target.value }))} /></Field>
-                    <Field label="Вес"><Input value={editP.weight} onChange={(e) => setEditP((f: any) => ({ ...f, weight: e.target.value }))} /></Field>
                   </div>
+                  <Field label="Продажная цена"><Input type="number" value={editP.salePrice} onChange={(e) => setEditP((f: any) => ({ ...f, salePrice: e.target.value }))} /></Field>
+                  <Field label="Штрихкод">
+                    <div className="flex gap-2">
+                      <Input value={editP.barcode} onChange={(e) => setEditP((f: any) => ({ ...f, barcode: e.target.value }))} className="flex-1" />
+                      <Button type="button" variant="ghost" onClick={generateEditBarcode} disabled={genBusy} className="shrink-0"><NavIcon name="refresh" className="h-4 w-4" />{genBusy ? '…' : 'Сгенерировать'}</Button>
+                    </div>
+                  </Field>
                   <ImageUpload value={editP.imageUrl} onChange={(url) => setEditP((f: any) => ({ ...f, imageUrl: url }))} label="Фото товара" />
+
+                  <button type="button" onClick={() => setEditAdvOpen((v) => !v)} className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700">
+                    <NavIcon name={editAdvOpen ? 'close' : 'plus'} className="h-3.5 w-3.5" />Дополнительно
+                  </button>
+                  {editAdvOpen && (
+                    <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/40">
+                      <Field label="Мин. остаток"><Input type="number" value={editP.minStock} onChange={(e) => setEditP((f: any) => ({ ...f, minStock: e.target.value }))} /></Field>
+                      <Field label="Артикул"><Input value={editP.sku} onChange={(e) => setEditP((f: any) => ({ ...f, sku: e.target.value }))} /></Field>
+                      <Field label="Закупочная (себест.)"><Input type="number" value={editP.purchasePrice} onChange={(e) => setEditP((f: any) => ({ ...f, purchasePrice: e.target.value }))} title="Обычно берётся из прихода — здесь для ручной корректировки" /></Field>
+                    </div>
+                  )}
+
                   <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                     <input type="checkbox" checked={editP.isActive} onChange={(e) => setEditP((f: any) => ({ ...f, isActive: e.target.checked }))} className="h-4 w-4 rounded" /> Активен
                   </label>
