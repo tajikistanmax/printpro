@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
@@ -91,6 +91,29 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
   }, [loading, user, router]);
+
+  // Право на раздел по URL (не только скрытие пункта меню): если у роли нет
+  // права на текущую страницу — уводим на «Главную», чтобы по прямой ссылке
+  // не открывалась пустая/битая страница.
+  const routePerm = useMemo(() => {
+    const m: Record<string, string | null> = {};
+    for (const g of NAV_GROUPS) for (const it of g.items) m[it.href] = it.perm;
+    // страницы вне бокового меню
+    m['/orders/new'] = 'orders.view';
+    m['/order-card'] = 'orders.view';
+    m['/price-labels'] = 'stock.view';
+    m['/audit'] = 'settings.manage';
+    return m;
+  }, []);
+
+  useEffect(() => {
+    if (loading || !user) return;
+    const match = Object.keys(routePerm)
+      .filter((p) => pathname === p || pathname.startsWith(p + '/'))
+      .sort((a, b) => b.length - a.length)[0];
+    const perm = match ? routePerm[match] : null;
+    if (perm && !can(perm)) router.replace('/dashboard');
+  }, [pathname, loading, user, can, router, routePerm]);
 
   if (loading || !user) {
     return (
