@@ -331,23 +331,26 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
     ),
   ).slice(0, 3);
 
-  // Поиск клиента для оплаты «в долг»
+  // Поиск клиента для оплаты «в долг» (в отдельном окне)
+  const [showClientPicker, setShowClientPicker] = useState(false);
   const [clientQuery, setClientQuery] = useState('');
   const [clientResults, setClientResults] = useState<any[]>([]);
   const [pickedClient, setPickedClient] = useState<any | null>(null);
+  const [newClientPhone, setNewClientPhone] = useState('');
+  const [newClientName, setNewClientName] = useState('');
   useEffect(() => {
-    if (c.method !== 'DEBT' || clientQuery.trim().length < 2) {
+    if (clientQuery.trim().length < 2) {
       setClientResults([]);
       return;
     }
     const t = setTimeout(() => {
       api
-        .get(`/clients?companyId=${DEFAULT_COMPANY_ID}&search=${encodeURIComponent(clientQuery.trim())}&pageSize=6`)
+        .get(`/clients?companyId=${DEFAULT_COMPANY_ID}&search=${encodeURIComponent(clientQuery.trim())}&pageSize=8`)
         .then((r) => setClientResults(r?.items ?? (Array.isArray(r) ? r : [])))
         .catch(() => setClientResults([]));
     }, 250);
     return () => clearTimeout(t);
-  }, [clientQuery, c.method]);
+  }, [clientQuery]);
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm xl:sticky xl:top-4 xl:self-start dark:border-slate-700/60">
       <div className="mb-4 flex items-center justify-between">
@@ -551,67 +554,31 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
           </div>
         )}
 
-        {/* В долг — выбор клиента, кому даём */}
+        {/* В долг — клиент выбирается в отдельном окне */}
         {c.method === 'DEBT' && (
           <div className="mt-3 space-y-2 rounded-xl bg-amber-50 p-3 dark:bg-amber-500/10">
             <p className="text-xs text-amber-700 dark:text-amber-300">
               Заказ запишется <b>в долг</b> — укажите клиента, кому даём.
             </p>
-            {pickedClient ? (
+            {c.phone ? (
               <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm dark:bg-slate-800">
                 <span className="font-medium text-slate-700 dark:text-slate-200">
-                  {pickedClient.fullName ?? 'Клиент'} · {pickedClient.phone}
+                  {c.clientName || 'Клиент'} · {c.phone}
                 </span>
                 <button
-                  onClick={() => { setPickedClient(null); c.setPhone(''); c.setClientName(''); }}
+                  onClick={() => { c.setPhone(''); c.setClientName(''); setPickedClient(null); }}
                   className="text-xs text-rose-500 hover:text-rose-600"
                 >
                   Сменить
                 </button>
               </div>
             ) : (
-              <>
-                <input
-                  value={clientQuery}
-                  onChange={(e) => setClientQuery(e.target.value)}
-                  placeholder="Поиск клиента по имени или телефону…"
-                  className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 dark:border-amber-500/30 dark:bg-slate-800 dark:text-slate-200"
-                />
-                {clientResults.length > 0 && (
-                  <div className="max-h-40 overflow-auto rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-                    {clientResults.map((cl) => (
-                      <button
-                        key={cl.id}
-                        onClick={() => {
-                          setPickedClient(cl);
-                          c.setPhone(cl.phone);
-                          c.setClientName(cl.fullName ?? '');
-                          setClientResults([]);
-                          setClientQuery('');
-                        }}
-                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-700/60"
-                      >
-                        <span className="font-medium text-slate-700 dark:text-slate-200">{cl.fullName ?? 'Без имени'}</span>
-                        <span className="text-xs text-slate-400">{cl.phone}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    value={c.phone}
-                    onChange={(e) => c.setPhone(e.target.value)}
-                    placeholder="или новый: телефон"
-                    className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 dark:border-amber-500/30 dark:bg-slate-800 dark:text-slate-200"
-                  />
-                  <input
-                    value={c.clientName}
-                    onChange={(e) => c.setClientName(e.target.value)}
-                    placeholder="имя"
-                    className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 dark:border-amber-500/30 dark:bg-slate-800 dark:text-slate-200"
-                  />
-                </div>
-              </>
+              <button
+                onClick={() => { setClientQuery(''); setClientResults([]); setNewClientPhone(''); setNewClientName(''); setShowClientPicker(true); }}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white py-2 text-sm font-medium text-amber-700 transition hover:bg-amber-50 dark:border-amber-500/40 dark:bg-slate-800 dark:text-amber-300"
+              >
+                <IcoPlus className="h-4 w-4" /> Выбрать клиента
+              </button>
             )}
           </div>
         )}
@@ -664,6 +631,83 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
         <span className="text-xs text-slate-400">F3</span>
       </button>
       {c.msg && <p className="mt-2 text-sm text-rose-600">{c.msg}</p>}
+
+      {/* ====== Окно выбора клиента для долга ====== */}
+      {showClientPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowClientPicker(false)} />
+          <div className="relative flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Клиент для долга</h3>
+              <button onClick={() => setShowClientPicker(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">✕</button>
+            </div>
+
+            <input
+              value={clientQuery}
+              onChange={(e) => setClientQuery(e.target.value)}
+              autoFocus
+              placeholder="Поиск по имени или телефону…"
+              className="mb-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            />
+            <div className="mb-4 max-h-56 flex-1 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
+              {clientResults.length === 0 ? (
+                <div className="py-8 text-center text-sm text-slate-400">
+                  {clientQuery.trim().length < 2 ? 'Введите имя или телефон' : 'Ничего не найдено'}
+                </div>
+              ) : (
+                clientResults.map((cl) => (
+                  <button
+                    key={cl.id}
+                    onClick={() => {
+                      c.setPhone(cl.phone);
+                      c.setClientName(cl.fullName ?? '');
+                      setPickedClient(cl);
+                      setShowClientPicker(false);
+                      setClientQuery('');
+                      setClientResults([]);
+                    }}
+                    className="flex w-full items-center justify-between border-b border-slate-100 px-3 py-2.5 text-left text-sm last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"
+                  >
+                    <span className="font-medium text-slate-700 dark:text-slate-200">{cl.fullName ?? 'Без имени'}</span>
+                    <span className="text-xs text-slate-400">{cl.phone}</span>
+                  </button>
+                ))
+              )}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+              <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">Новый клиент</div>
+              <div className="flex gap-2">
+                <input
+                  value={newClientPhone}
+                  onChange={(e) => setNewClientPhone(e.target.value)}
+                  placeholder="Телефон"
+                  className="w-1/2 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                />
+                <input
+                  value={newClientName}
+                  onChange={(e) => setNewClientName(e.target.value)}
+                  placeholder="Имя"
+                  className="w-1/2 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  if (!newClientPhone.trim()) return;
+                  c.setPhone(newClientPhone.trim());
+                  c.setClientName(newClientName.trim());
+                  setPickedClient(null);
+                  setShowClientPicker(false);
+                }}
+                disabled={!newClientPhone.trim()}
+                className="mt-2 w-full rounded-lg bg-indigo-600 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+              >
+                Дать в долг этому клиенту
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ====== Окно оплаты наличными: получено + сдача ====== */}
       {showCashPay && (
