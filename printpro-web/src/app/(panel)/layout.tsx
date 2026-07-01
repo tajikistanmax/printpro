@@ -57,7 +57,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Аналитика',
     items: [
       { href: '/reports', label: 'Отчёты', icon: 'reports', perm: 'reports.view' },
-      { href: '/audit', label: 'Журнал', icon: 'audit', perm: 'audit.view' },
     ],
   },
   {

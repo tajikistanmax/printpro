@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
@@ -8,8 +8,6 @@ import {
   PageHeader,
   StatGrid,
   StatCard,
-  Tabs,
-  TabItem,
   Card,
   TableCard,
   SectionTitle,
@@ -24,21 +22,11 @@ import NavIcon from '@/lib/NavIcons';
 
 export default function StaffPage() {
   const cid = DEFAULT_COMPANY_ID;
-  const { can } = useAuth();
-  const [tab, setTab] = useState<'users' | 'roles'>('users');
-
-  const tabs: TabItem[] = [
-    { key: 'users', label: 'Сотрудники' },
-    ...(can('roles.manage') ? [{ key: 'roles', label: 'Роли и права' }] : []),
-  ];
 
   return (
     <div>
-      <PageHeader icon="staff" title="Сотрудники и роли" subtitle="Учётные записи, роли и права доступа" />
-
-      <Tabs tabs={tabs} active={tab} onChange={(k) => setTab(k as 'users' | 'roles')} />
-
-      {tab === 'users' ? <UsersTab cid={cid} /> : <RolesTab cid={cid} />}
+      <PageHeader icon="staff" title="Сотрудники" subtitle="Учётные записи и доступ. Роли и права — в Настройках." />
+      <UsersTab cid={cid} />
     </div>
   );
 }
@@ -265,144 +253,6 @@ function UsersTab({ cid }: { cid: string }) {
           </div>
         )}
       </TableCard>
-    </div>
-  );
-}
-
-// ---------------- Роли и права ----------------
-function RolesTab({ cid }: { cid: string }) {
-  const [roles, setRoles] = useState<any[]>([]);
-  const [permissions, setPermissions] = useState<any[]>([]);
-  const [selectedRole, setSelectedRole] = useState<any | null>(null);
-  const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [msg, setMsg] = useState('');
-  const [newRole, setNewRole] = useState('');
-
-  function load() {
-    api.get(`/roles?companyId=${cid}`).then(setRoles).catch(() => {});
-    api.get('/permissions').then(setPermissions).catch(() => {});
-  }
-  useEffect(load, [cid]);
-
-  function selectRole(role: any) {
-    setSelectedRole(role);
-    setMsg('');
-    const codes = new Set<string>(
-      role.permissions?.map((p: any) => p.permission.code) ?? [],
-    );
-    setChecked(codes);
-  }
-
-  function togglePerm(code: string) {
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
-  }
-
-  async function save() {
-    if (!selectedRole) return;
-    setMsg('');
-    try {
-      await api.put(`/roles/${selectedRole.id}/permissions`, {
-        permissionCodes: Array.from(checked),
-      });
-      setMsg('✓ Права сохранены');
-      load();
-    } catch (err: any) {
-      setMsg('Ошибка: ' + err.message);
-    }
-  }
-
-  async function createRole(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newRole.trim()) return;
-    await api.post('/roles', { companyId: cid, name: newRole });
-    setNewRole('');
-    load();
-  }
-
-  // Группируем права по разделам
-  const grouped = useMemo(() => {
-    const g: Record<string, any[]> = {};
-    for (const p of permissions) {
-      (g[p.group ?? 'Прочее'] ??= []).push(p);
-    }
-    return g;
-  }, [permissions]);
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      {/* Список ролей */}
-      <Card>
-        <SectionTitle>Роли</SectionTitle>
-        <div className="space-y-1">
-          {roles.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => selectRole(r)}
-              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${
-                selectedRole?.id === r.id ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-slate-50 dark:hover:bg-slate-800'
-              }`}
-            >
-              <span className="font-medium text-slate-700 dark:text-slate-200">{r.name}</span>
-              <span className="text-xs text-slate-400 dark:text-slate-500">
-                {r.permissions?.length ?? 0} прав
-              </span>
-            </button>
-          ))}
-        </div>
-        <form onSubmit={createRole} className="mt-4 flex gap-2">
-          <Input
-            value={newRole}
-            onChange={(e) => setNewRole(e.target.value)}
-            placeholder="Новая роль"
-            className="flex-1"
-          />
-          <Button type="submit" variant="ghost" className="shrink-0">+</Button>
-        </form>
-      </Card>
-
-      {/* Права роли — галочки */}
-      <Card className="lg:col-span-2">
-        {!selectedRole ? (
-          <EmptyState icon="settings" title="Выберите роль слева, чтобы настроить права." />
-        ) : (
-          <>
-            <SectionTitle right={<Button variant="emerald" onClick={save}>Сохранить</Button>}>
-              Права роли: {selectedRole.name}
-            </SectionTitle>
-
-            <div className="space-y-4">
-              {Object.entries(grouped).map(([group, perms]) => (
-                <div key={group}>
-                  <div className="mb-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                    {group}
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {perms.map((p) => (
-                      <label
-                        key={p.code}
-                        className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-slate-200"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked.has(p.code)}
-                          onChange={() => togglePerm(p.code)}
-                        />
-                        {p.label}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {msg && <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{msg}</p>}
-          </>
-        )}
-      </Card>
     </div>
   );
 }

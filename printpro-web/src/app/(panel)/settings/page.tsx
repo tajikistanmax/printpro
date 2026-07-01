@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
@@ -53,6 +53,7 @@ type Section =
   | 'profile'
   | 'branches'
   | 'catalog'
+  | 'roles'
   | 'orders'
   | 'pos'
   | 'display'
@@ -237,6 +238,7 @@ export default function SettingsPage() {
     profile: 'Компания и профиль',
     branches: 'Филиалы и склады',
     catalog: 'Справочники',
+    roles: 'Роли и права',
     orders: 'Заказы',
     pos: 'Касса и оплата',
     display: 'Дисплей покупателя',
@@ -247,7 +249,8 @@ export default function SettingsPage() {
   const subtitles: Record<string, string> = {
     profile: 'Реквизиты, контакты, логотип и общие параметры',
     branches: 'Точки обслуживания и склады',
-    catalog: 'Категории товаров и единицы измерения',
+    catalog: 'Категории товаров, услуг и единицы измерения',
+    roles: 'Роли доступа и права сотрудников',
     orders: 'Нумерация и сроки заказов',
     pos: 'Оформление экрана продажи',
     display: 'Второй экран: графический монитор и текстовый VFD-дисплей',
@@ -261,9 +264,8 @@ export default function SettingsPage() {
     { key: 'profile',       icon: 'staff',      title: 'Компания и профиль',  tone: 'indigo' },
     { key: 'branches',      icon: 'warehouse',  title: 'Филиалы и склады',    tone: 'sky' },
     { key: 'catalog',       icon: 'barcode',    title: 'Справочники',         tone: 'amber' },
-    { href: '/staff',       icon: 'clients',    title: 'Пользователи и роли', tone: 'violet' },
+    { key: 'roles',         icon: 'clients',    title: 'Роли и права',        tone: 'violet' },
     { key: 'orders',        icon: 'orders',     title: 'Заказы',              tone: 'amber' },
-    { href: '/services',    icon: 'services',   title: 'Цены и услуги',       tone: 'emerald' },
     { key: 'notifications', icon: 'complaints', title: 'Уведомления',         tone: 'rose' },
     { key: 'pos',           icon: 'pos',        title: 'Касса и оплата',      tone: 'sky' },
     { key: 'display',       icon: 'production', title: 'Дисплей покупателя',  tone: 'violet' },
@@ -363,6 +365,7 @@ export default function SettingsPage() {
             />
           )}
           {section === 'catalog' && <CatalogSection cid={cid} />}
+          {section === 'roles' && <RolesSection cid={cid} />}
           {section === 'orders' && <OrdersSection s={s} set={set} />}
           {section === 'pos' && <PosSection s={s} set={set} />}
           {section === 'display' && <DisplaySection s={s} set={set} setMsg={setMsg} />}
@@ -387,7 +390,7 @@ export default function SettingsPage() {
             <h3 className="mb-3 px-1 text-sm font-bold text-slate-800 dark:text-slate-100">Быстрые действия</h3>
             <div className="space-y-1">
               <QuickAction icon="download" tone="emerald" title="Экспорт данных" sub="Выгрузить всё в JSON" onClick={downloadBackup} />
-              <QuickAction icon="clients" tone="violet" title="Пользователи и роли" sub="Доступ сотрудников" onClick={() => router.push('/staff')} />
+              <QuickAction icon="clients" tone="violet" title="Сотрудники" sub="Учётные записи и доступ" onClick={() => router.push('/staff')} />
               <QuickAction icon="audit" tone="sky" title="Журнал системы" sub="История действий" onClick={() => router.push('/audit')} />
             </div>
           </div>
@@ -634,14 +637,17 @@ function BranchesSection({
 // Справочники: категории товаров и единицы измерения
 function CatalogSection({ cid }: { cid: string }) {
   const [categories, setCategories] = useState<any[]>([]);
+  const [serviceCats, setServiceCats] = useState<any[]>([]);
   const [units, setUnits] = useState<any[]>([]);
   const [catName, setCatName] = useState('');
+  const [scatName, setScatName] = useState('');
   const [uName, setUName] = useState('');
   const [uShort, setUShort] = useState('');
   const [msg, setMsg] = useState('');
 
   function load() {
     api.get(`/product-categories?companyId=${cid}`).then(setCategories).catch(() => {});
+    api.get(`/service-categories?companyId=${cid}`).then(setServiceCats).catch(() => {});
     api.get(`/units?companyId=${cid}`).then(setUnits).catch(() => {});
   }
   useEffect(load, [cid]);
@@ -657,6 +663,18 @@ function CatalogSection({ cid }: { cid: string }) {
   async function delCategory(id: string) {
     if (!confirm('Удалить категорию? Товары останутся без категории.')) return;
     try { await api.del(`/product-categories/${id}`); load(); } catch (e: any) { setMsg('Ошибка: ' + e.message); }
+  }
+  async function addServiceCat() {
+    const n = scatName.trim();
+    if (!n) return;
+    try {
+      await api.post('/service-categories', { companyId: cid, name: n });
+      setScatName(''); setMsg(''); load();
+    } catch (e: any) { setMsg('Ошибка: ' + e.message); }
+  }
+  async function delServiceCat(id: string) {
+    if (!confirm('Удалить категорию услуг? Услуги останутся без категории.')) return;
+    try { await api.del(`/service-categories/${id}`); load(); } catch (e: any) { setMsg('Ошибка: ' + e.message); }
   }
   async function addUnit(e: React.FormEvent) {
     e.preventDefault();
@@ -693,6 +711,23 @@ function CatalogSection({ cid }: { cid: string }) {
       </Card>
 
       <Card>
+        <SectionTitle>Категории услуг</SectionTitle>
+        <div className="flex flex-wrap items-center gap-2">
+          {serviceCats.map((c) => (
+            <span key={c.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              {c.name}
+              <button type="button" onClick={() => delServiceCat(c.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
+            </span>
+          ))}
+          {serviceCats.length === 0 && <span className="text-xs text-slate-400">Нет категорий услуг.</span>}
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <Input value={scatName} onChange={(e) => setScatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addServiceCat())} placeholder="Новая категория услуг (напр. Печать)" />
+          <Button type="button" variant="ghost" onClick={addServiceCat} className="shrink-0">+ Категория</Button>
+        </div>
+      </Card>
+
+      <Card>
         <SectionTitle>Единицы измерения</SectionTitle>
         <div className="mb-3 flex flex-wrap gap-2">
           {units.map((u) => (
@@ -712,6 +747,110 @@ function CatalogSection({ cid }: { cid: string }) {
       </Card>
 
       {msg && <p className="text-sm text-slate-600 dark:text-slate-300">{msg}</p>}
+    </div>
+  );
+}
+
+// Роли и права доступа (перенесено из «Сотрудники»)
+function RolesSection({ cid }: { cid: string }) {
+  const [roles, setRoles] = useState<any[]>([]);
+  const [permissions, setPermissions] = useState<any[]>([]);
+  const [selectedRole, setSelectedRole] = useState<any | null>(null);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [msg, setMsg] = useState('');
+  const [newRole, setNewRole] = useState('');
+
+  function load() {
+    api.get(`/roles?companyId=${cid}`).then(setRoles).catch(() => {});
+    api.get('/permissions').then(setPermissions).catch(() => {});
+  }
+  useEffect(load, [cid]);
+
+  function selectRole(role: any) {
+    setSelectedRole(role);
+    setMsg('');
+    setChecked(new Set<string>(role.permissions?.map((p: any) => p.permission.code) ?? []));
+  }
+  function togglePerm(code: string) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }
+  async function save() {
+    if (!selectedRole) return;
+    setMsg('');
+    try {
+      await api.put(`/roles/${selectedRole.id}/permissions`, { permissionCodes: Array.from(checked) });
+      setMsg('✓ Права сохранены');
+      load();
+    } catch (err: any) { setMsg('Ошибка: ' + err.message); }
+  }
+  async function createRole(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newRole.trim()) return;
+    await api.post('/roles', { companyId: cid, name: newRole });
+    setNewRole('');
+    load();
+  }
+
+  const grouped = useMemo(() => {
+    const g: Record<string, any[]> = {};
+    for (const p of permissions) (g[p.group ?? 'Прочее'] ??= []).push(p);
+    return g;
+  }, [permissions]);
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-3">
+      <Card>
+        <SectionTitle>Роли</SectionTitle>
+        <div className="space-y-1">
+          {roles.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => selectRole(r)}
+              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${selectedRole?.id === r.id ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+            >
+              <span className="font-medium text-slate-700 dark:text-slate-200">{r.name}</span>
+              <span className="text-xs text-slate-400 dark:text-slate-500">{r.permissions?.length ?? 0} прав</span>
+            </button>
+          ))}
+        </div>
+        <form onSubmit={createRole} className="mt-4 flex gap-2">
+          <Input value={newRole} onChange={(e) => setNewRole(e.target.value)} placeholder="Новая роль" className="flex-1" />
+          <Button type="submit" variant="ghost" className="shrink-0">+</Button>
+        </form>
+      </Card>
+
+      <Card className="lg:col-span-2">
+        {!selectedRole ? (
+          <EmptyState icon="settings" title="Выберите роль слева, чтобы настроить права." />
+        ) : (
+          <>
+            <SectionTitle right={<Button variant="emerald" onClick={save}>Сохранить</Button>}>
+              Права роли: {selectedRole.name}
+            </SectionTitle>
+            <div className="space-y-4">
+              {Object.entries(grouped).map(([group, perms]) => (
+                <div key={group}>
+                  <div className="mb-2 text-sm font-semibold text-slate-500 dark:text-slate-400">{group}</div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {perms.map((p) => (
+                      <label key={p.code} className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                        <input type="checkbox" checked={checked.has(p.code)} onChange={() => togglePerm(p.code)} />
+                        {p.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {msg && <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{msg}</p>}
+          </>
+        )}
+      </Card>
     </div>
   );
 }

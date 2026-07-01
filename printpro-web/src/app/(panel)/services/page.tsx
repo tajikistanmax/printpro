@@ -80,10 +80,6 @@ export default function ServicesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [filterCat, setFilterCat] = useState('ALL');
-  const [showCats, setShowCats] = useState(false);
-
-  // Категории
-  const [catName, setCatName] = useState('');
 
   // Добавление услуги
   const [showAddForm, setShowAddForm] = useState(false);
@@ -130,18 +126,6 @@ export default function ServicesPage() {
       .catch(() => setMonthRevenue(null));
   }, [cid]);
 
-  // ---- категории ----
-  async function addCategory() {
-    if (!catName.trim()) return;
-    await api.post('/service-categories', { companyId: cid, name: catName.trim() });
-    setCatName(''); load();
-  }
-  async function removeCategory(id: string) {
-    if (!confirm('Удалить категорию?')) return;
-    await api.del(`/service-categories/${id}`);
-    if (filterCat === id) setFilterCat('ALL');
-    load();
-  }
 
   // ---- создать услугу ----
   async function createService(e: React.FormEvent) {
@@ -502,32 +486,6 @@ export default function ServicesPage() {
               </div>
             </form>
           </div>
-        </div>
-      )}
-
-      {/* Категории (управление) — сворачиваемое */}
-      {canManage && (
-        <div className="mb-4">
-          <button onClick={() => setShowCats((v) => !v)} className="text-sm font-medium text-slate-500 hover:text-indigo-600 dark:text-slate-400">
-            {showCats ? '▾' : '▸'} Управление категориями ({categories.length})
-          </button>
-          {showCats && (
-            <Card className="mt-2">
-              <div className="flex flex-wrap items-center gap-2">
-                {categories.map((c) => (
-                  <span key={c.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                    {c.name}
-                    <button onClick={() => removeCategory(c.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
-                  </span>
-                ))}
-                {categories.length === 0 && <span className="text-sm text-slate-400">Категорий нет</span>}
-              </div>
-              <div className="mt-3 flex items-center gap-2">
-                <Input value={catName} onChange={(e) => setCatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCategory()} placeholder="Новая категория" className="sm:max-w-xs" />
-                <Button variant="ghost" onClick={addCategory} className="shrink-0">+ Категория</Button>
-              </div>
-            </Card>
-          )}
         </div>
       )}
 
