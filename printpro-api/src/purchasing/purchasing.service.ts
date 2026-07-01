@@ -42,9 +42,13 @@ export class PurchasingService {
       });
       const newDebt = Number(Math.max(0, Number(supplier.debt) - pay).toFixed(2));
       await tx.supplier.update({ where: { id }, data: { debt: newDebt } });
+      // Расход из кассы, привязанный к открытой смене кассира — иначе оплата
+      // поставщику не попадёт в Z-отчёт и завысит остаток наличных.
+      const shiftId = await this.openShiftId(tx, supplier.companyId, userId);
       await tx.cashMovement.create({
         data: {
           companyId: supplier.companyId,
+          shiftId,
           type: 'OUT',
           amount: pay,
           category: 'Поставщики',
@@ -53,6 +57,19 @@ export class PurchasingService {
       });
       return tx.supplier.findUnique({ where: { id } });
     });
+  }
+
+  // Открытая смена кассира — для привязки расходов кассы к Z-отчёту.
+  private async openShiftId(
+    tx: any,
+    companyId: string,
+    userId?: string,
+  ): Promise<string | undefined> {
+    if (!userId) return undefined;
+    const shift = await tx.cashShift.findFirst({
+      where: { companyId, userId, closedAt: null },
+    });
+    return shift?.id;
   }
 
   listSuppliers(companyId: string) {
@@ -68,7 +85,7 @@ export class PurchasingService {
   }
 
   // ---------- Приёмка товара (приход на склад) ----------
-  async createReceipt(dto: CreateReceiptDto) {
+  async createReceipt(dto: CreateReceiptDto, userId?: string) {
     if (!dto.items?.length) {
       throw new BadRequestException('Добавьте хотя бы одну позицию');
     }
@@ -165,6 +182,24 @@ export class PurchasingService {
         await tx.supplier.update({
           where: { id: dto.supplierId },
           data: { debt: { increment: debt } },
+        });
+      }
+
+      // 4. Оплата поставщику при приёмке — расход из кассы, привязанный к смене.
+      // Без этого деньги, отданные поставщику, не отражаются в учёте кассы.
+      if (paidAmount > 0) {
+        const shiftId = await this.openShiftId(tx, dto.companyId, userId);
+        await tx.cashMovement.create({
+          data: {
+            companyId: dto.companyId,
+            shiftId,
+            type: 'OUT',
+            amount: paidAmount,
+            category: 'Поставщики',
+            reason: receipt.supplier
+              ? `Оплата при приёмке №${receipt.number} («${receipt.supplier.name}»)`
+              : `Оплата при приёмке №${receipt.number}`,
+          },
         });
       }
 

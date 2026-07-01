@@ -18,6 +18,7 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('purchasing')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -45,8 +46,12 @@ export class PurchasingController {
 
   @Post('suppliers/:id/pay-debt')
   @RequirePermissions('stock.manage')
-  paySupplierDebt(@Param('id') id: string, @Body() dto: PaySupplierDebtDto) {
-    return this.purchasing.paySupplierDebt(id, dto);
+  paySupplierDebt(
+    @Param('id') id: string,
+    @Body() dto: PaySupplierDebtDto,
+    @CurrentUser() user: { sub: string },
+  ) {
+    return this.purchasing.paySupplierDebt(id, dto, user.sub);
   }
 
   // ----- Приёмка -----
@@ -64,7 +69,10 @@ export class PurchasingController {
 
   @Post('receipts')
   @RequirePermissions('stock.manage')
-  createReceipt(@Body() dto: CreateReceiptDto) {
-    return this.purchasing.createReceipt(dto);
+  createReceipt(
+    @Body() dto: CreateReceiptDto,
+    @CurrentUser() user: { sub: string },
+  ) {
+    return this.purchasing.createReceipt(dto, user.sub);
   }
 }

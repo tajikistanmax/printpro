@@ -586,7 +586,12 @@ export default function WarehousePage() {
               <Button type="submit" className="w-full">Принять на склад</Button>
               {receiveMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{receiveMsg}</p>}
             </form>
-            <p className="mt-2 text-xs text-slate-400">Для приёмки с поставщиком, накладной и себестоимостью — раздел «Закупки».</p>
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+              Это быстрый приход <b>одного</b> товара без учёта денег.
+              Чтобы принять <b>несколько позиций по накладной</b>, указать поставщика,
+              закупочную цену и оплату (полностью / частично / в долг) —{' '}
+              <a href="/purchasing" className="font-semibold underline">перейдите в «Закупки»</a>.
+            </div>
           </Card>
 
           {branches.length > 1 && (

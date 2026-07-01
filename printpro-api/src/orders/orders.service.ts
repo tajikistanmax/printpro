@@ -265,6 +265,20 @@ export class OrdersService {
       const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order) throw new NotFoundException('Заказ не найден');
 
+      // Защита от переплаты: нельзя внести больше, чем осталось к оплате.
+      // Долговая оплата (method DEBT) здесь не проводится — это отдельный сценарий POS.
+      const balanceBefore = Number(
+        (Number(order.total) - Number(order.paid)).toFixed(2),
+      );
+      if (balanceBefore <= 0) {
+        throw new BadRequestException('Заказ уже полностью оплачен');
+      }
+      if (dto.amount > balanceBefore + 0.01) {
+        throw new BadRequestException(
+          `Сумма оплаты (${dto.amount} c.) превышает остаток к оплате (${balanceBefore} c.)`,
+        );
+      }
+
       const cashierId = userId ?? dto.userId;
 
       // Привязка к открытой смене: явный shiftId или текущая смена кассира
@@ -422,6 +436,33 @@ export class OrdersService {
           );
         }
       }
+    } else if (isDebt && total > 0) {
+      // Продажа «в долг»: деньги не внесены, весь итог — задолженность клиента.
+      // Помечаем статусом DEBT, чтобы отличать от забытой неоплаты (UNPAID).
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { paymentStatus: PaymentStatus.DEBT },
+      });
+      // Запись оплаты со способом DEBT (сумма = итог), привязанная к смене кассира.
+      // Она НЕ меняет paid/balanceDue (долг остаётся), но отражает продажу «в долг»
+      // в строке «в долг» Z-отчёта и отчёта выручки (реальные деньги её исключают).
+      const debtShiftId = userId
+        ? (
+            await this.prisma.cashShift.findFirst({
+              where: { companyId: dto.companyId, userId, closedAt: null },
+            })
+          )?.id
+        : undefined;
+      await this.prisma.payment.create({
+        data: {
+          companyId: dto.companyId,
+          orderId: order.id,
+          amount: total,
+          method: PaymentMethod.DEBT,
+          userId,
+          shiftId: debtShiftId,
+        },
+      });
     } else if (total <= 0) {
       await this.prisma.order.update({
         where: { id: order.id },
@@ -472,7 +513,7 @@ export class OrdersService {
 
   // ---------- Возврат заказа ----------
   // Отменяет заказ, возвращает деньги из кассы и возвращает товар на склад.
-  async refund(orderId: string) {
+  async refund(orderId: string, userId?: string) {
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
@@ -485,13 +526,17 @@ export class OrdersService {
 
       const paid = Number(order.paid);
 
-      // 1. Возврат денег из кассы (расход)
+      // 1. Возврат денег из кассы (расход) — привязываем к открытой смене кассира,
+      // иначе расход не попадёт в Z-отчёт и завысит остаток наличных.
       if (paid > 0) {
+        const shiftId = await this.openShiftId(tx, order.companyId, userId);
         await tx.cashMovement.create({
           data: {
             companyId: order.companyId,
+            shiftId,
             type: 'OUT',
             amount: paid,
+            category: 'Возвраты',
             reason: `Возврат по заказу №${order.orderNumber}`,
           },
         });
@@ -618,10 +663,13 @@ export class OrdersService {
         throw new BadRequestException('Нечего возвращать');
       }
 
-      // Деньги обратно — расход из кассы
+      // Деньги обратно — расход из кассы, привязанный к открытой смене кассира
+      // (иначе возврат не отразится в Z-отчёте и завысит наличные).
+      const shiftId = await this.openShiftId(tx, order.companyId, userId);
       await tx.cashMovement.create({
         data: {
           companyId: order.companyId,
+          shiftId,
           type: 'OUT',
           amount,
           category: 'Возвраты',
@@ -870,6 +918,20 @@ export class OrdersService {
       paid: Number(o.paid),
       debt: Number(o.balanceDue),
     }));
+  }
+
+  // Открытая смена кассира (для привязки движений кассы к Z-отчёту).
+  // Без неё расход/возврат не попадёт в отчёт кассы и исказит остаток наличных.
+  private async openShiftId(
+    tx: Prisma.TransactionClient,
+    companyId: string,
+    userId?: string,
+  ): Promise<string | undefined> {
+    if (!userId) return undefined;
+    const shift = await tx.cashShift.findFirst({
+      where: { companyId, userId, closedAt: null },
+    });
+    return shift?.id;
   }
 
   // Загрузка заказа со всеми связями

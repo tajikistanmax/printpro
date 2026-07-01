@@ -25,6 +25,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/orders', label: 'Заказы', icon: 'orders', perm: 'orders.view' },
       { href: '/pos', label: 'Продажа', icon: 'pos', perm: 'cash.operate' },
       { href: '/cash', label: 'Касса', icon: 'cash', perm: 'cash.view' },
+      { href: '/debts', label: 'Долги', icon: 'alert', perm: 'orders.view' },
       { href: '/quotes', label: 'КП', icon: 'quotes', perm: 'orders.view' },
       { href: '/promocodes', label: 'Промокоды', icon: 'promo', perm: 'orders.view' },
     ],

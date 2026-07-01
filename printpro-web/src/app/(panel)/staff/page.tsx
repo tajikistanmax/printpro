@@ -8,9 +8,7 @@ import {
   PageHeader,
   StatGrid,
   StatCard,
-  Card,
   TableCard,
-  SectionTitle,
   Field,
   Input,
   Select,
@@ -45,6 +43,18 @@ function UsersTab({ cid }: { cid: string }) {
   const [roleId, setRoleId] = useState('');
   const [branchId, setBranchId] = useState('');
   const [msg, setMsg] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+
+  function openModal() {
+    setFullName('');
+    setLogin('');
+    setPassword('');
+    setPin('');
+    setRoleId('');
+    setBranchId('');
+    setMsg('');
+    setModalOpen(true);
+  }
 
   function load() {
     api.get(`/users?companyId=${cid}`).then(setUsers).catch(() => {});
@@ -70,7 +80,9 @@ function UsersTab({ cid }: { cid: string }) {
       setLogin('');
       setPassword('');
       setPin('');
-      setMsg('✓ Сотрудник добавлен');
+      setRoleId('');
+      setBranchId('');
+      setModalOpen(false);
       load();
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
@@ -125,60 +137,9 @@ function UsersTab({ cid }: { cid: string }) {
       </StatGrid>
 
       {can('users.manage') && (
-        <Card>
-          <SectionTitle>Новый сотрудник</SectionTitle>
-          <form onSubmit={create} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Input
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Ф.И.О."
-              required
-            />
-            <Input
-              value={login}
-              onChange={(e) => setLogin(e.target.value)}
-              placeholder="Логин"
-              required
-            />
-            <Input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              placeholder="Пароль (мин. 4)"
-              required
-            />
-            <Input
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              inputMode="numeric"
-              placeholder="PIN кассира (4–6 цифр, необязательно)"
-            />
-            <Select
-              value={roleId}
-              onChange={(e) => setRoleId(e.target.value)}
-            >
-              <option value="">— роль —</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
-            >
-              <option value="">— филиал —</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </Select>
-            <Button type="submit">Добавить</Button>
-          </form>
-          {msg && <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{msg}</p>}
-        </Card>
+        <div className="flex justify-end">
+          <Button onClick={openModal}>+ Новый сотрудник</Button>
+        </div>
       )}
 
       <TableCard>
@@ -253,6 +214,77 @@ function UsersTab({ cid }: { cid: string }) {
           </div>
         )}
       </TableCard>
+
+      {/* ===================== НОВЫЙ СОТРУДНИК (модальное окно) ===================== */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+            onClick={() => setModalOpen(false)}
+          />
+          <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Новый сотрудник</h3>
+              <button
+                onClick={() => setModalOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <NavIcon name="close" className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={create} className="space-y-3">
+              <Field label="Ф.И.О. *">
+                <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Например: Иванов Иван" required autoFocus />
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Логин *">
+                  <Input value={login} onChange={(e) => setLogin(e.target.value)} placeholder="ivan" required />
+                </Field>
+                <Field label="Пароль *">
+                  <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="мин. 4 символа" required />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Роль">
+                  <Select value={roleId} onChange={(e) => setRoleId(e.target.value)}>
+                    <option value="">— роль —</option>
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Филиал">
+                  <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+                    <option value="">— филиал —</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+
+              <Field label="PIN кассира (4–6 цифр, необязательно)">
+                <Input
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  placeholder="Для быстрого входа на кассе"
+                />
+              </Field>
+
+              {msg && <p className="text-sm text-rose-600">{msg}</p>}
+
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="ghost" onClick={() => setModalOpen(false)} className="flex-1">Отмена</Button>
+                <Button type="submit" variant="emerald" className="flex-1">Добавить сотрудника</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

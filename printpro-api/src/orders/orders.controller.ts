@@ -83,8 +83,8 @@ export class OrdersController {
   // Возврат заказа
   @Post(':id/refund')
   @RequirePermissions('cash.operate')
-  refund(@Param('id') id: string) {
-    return this.orders.refund(id);
+  refund(@Param('id') id: string, @CurrentUser() user: { sub: string }) {
+    return this.orders.refund(id, user.sub);
   }
 
   // Повторить заказ (создать копию)

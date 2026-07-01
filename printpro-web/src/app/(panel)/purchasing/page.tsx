@@ -60,6 +60,11 @@ export default function PurchasingPage() {
   const [paidAmount, setPaidAmount] = useState('');
   const [rMsg, setRMsg] = useState('');
 
+  // Оплата долга поставщику (модальное окно)
+  const [payTarget, setPayTarget] = useState<any | null>(null);
+  const [payAmount, setPayAmount] = useState('');
+  const [payMsg, setPayMsg] = useState('');
+
   function load() {
     Promise.all([
       api.get(`/purchasing/suppliers?companyId=${cid}`),
@@ -98,19 +103,31 @@ export default function PurchasingPage() {
     }
   }
 
-  async function payDebt(s: any) {
-    const v = window.prompt(
-      `Оплата долга поставщику «${s.name}». Текущий долг: ${money(Number(s.debt))}.\nСумма оплаты:`,
-      String(Number(s.debt) || ''),
-    );
-    if (v == null) return;
-    const amount = Number(v);
-    if (!amount || amount <= 0) return;
+  function openPay(s: any) {
+    setPayTarget(s);
+    setPayAmount(String(Number(s.debt) || ''));
+    setPayMsg('');
+  }
+
+  async function submitPay(e: React.FormEvent) {
+    e.preventDefault();
+    if (!payTarget) return;
+    const amount = Number(payAmount);
+    const debt = Number(payTarget.debt) || 0;
+    if (!amount || amount <= 0) {
+      setPayMsg('Введите сумму больше нуля');
+      return;
+    }
+    if (amount > debt + 0.01) {
+      setPayMsg(`Сумма больше долга (${money(debt)})`);
+      return;
+    }
     try {
-      await api.post(`/purchasing/suppliers/${s.id}/pay-debt`, { amount });
+      await api.post(`/purchasing/suppliers/${payTarget.id}/pay-debt`, { amount });
+      setPayTarget(null);
       load();
     } catch (err: any) {
-      alert('Ошибка: ' + err.message);
+      setPayMsg('Ошибка: ' + err.message);
     }
   }
 
@@ -234,7 +251,7 @@ export default function PurchasingPage() {
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="text-slate-400 dark:text-slate-500">{s.phone}</span>
                     {canManage && Number(s.debt) > 0 && (
-                      <Button size="sm" variant="ghost" onClick={() => payDebt(s)}>
+                      <Button size="sm" variant="ghost" onClick={() => openPay(s)}>
                         Оплатить
                       </Button>
                     )}
@@ -409,6 +426,58 @@ export default function PurchasingPage() {
           </div>
         )}
       </TableCard>
+
+      {/* ===================== ОПЛАТА ДОЛГА ПОСТАВЩИКУ (модальное окно) ===================== */}
+      {payTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+            onClick={() => setPayTarget(null)}
+          />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Оплата поставщику</h3>
+              <button
+                onClick={() => setPayTarget(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <NavIcon name="close" className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mb-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800/40">
+              <div className="font-medium text-slate-700 dark:text-slate-200">{payTarget.name}</div>
+              <div className="mt-0.5 text-rose-600 dark:text-rose-400">
+                Текущий долг: <b>{money(Number(payTarget.debt) || 0)}</b>
+              </div>
+            </div>
+
+            <form onSubmit={submitPay} className="space-y-3">
+              <Field label="Сумма оплаты">
+                <Input
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  autoFocus
+                  required
+                />
+              </Field>
+              <p className="-mt-1 text-xs text-slate-400">
+                Спишется из кассы (расход) и уменьшит долг поставщику.
+              </p>
+
+              {payMsg && <p className="text-sm text-rose-600">{payMsg}</p>}
+
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="ghost" onClick={() => setPayTarget(null)} className="flex-1">Отмена</Button>
+                <Button type="submit" variant="emerald" className="flex-1">Оплатить</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
