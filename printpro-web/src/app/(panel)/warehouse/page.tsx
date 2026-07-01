@@ -91,14 +91,6 @@ export default function WarehousePage() {
   const [invResult, setInvResult] = useState('');
   const [invSearch, setInvSearch] = useState('');
 
-  // Единицы измерения
-  const [uName, setUName] = useState('');
-  const [uShort, setUShort] = useState('');
-  const [uMsg, setUMsg] = useState('');
-
-  // Категории
-  const [catName, setCatName] = useState('');
-
   // Новый товар (модальное окно)
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -172,31 +164,6 @@ export default function WarehousePage() {
     return rows[0]?.branch?.name ?? '—';
   };
 
-  // ---- единицы ----
-  async function addUnit(e: React.FormEvent) {
-    e.preventDefault(); setUMsg('');
-    if (!uName.trim() || !uShort.trim()) { setUMsg('Заполните оба поля'); return; }
-    try {
-      await api.post('/units', { companyId: cid, name: uName.trim(), shortName: uShort.trim() });
-      setUName(''); setUShort(''); setUMsg('✓ Добавлено'); load();
-    } catch (err: any) { setUMsg('Ошибка: ' + err.message); }
-  }
-  async function removeUnit(id: string) {
-    if (!confirm('Удалить единицу измерения?')) return;
-    try { await api.del(`/units/${id}`); load(); } catch (err: any) { setUMsg('Ошибка: ' + err.message); }
-  }
-
-  // ---- категории ----
-  async function addCategory() {
-    if (!catName.trim()) return;
-    await api.post('/product-categories', { companyId: cid, name: catName.trim() });
-    setCatName(''); load();
-  }
-  async function removeCategory(id: string) {
-    if (!confirm('Удалить категорию?')) return;
-    if (pCat === id) setPCat('');
-    await api.del(`/product-categories/${id}`); load();
-  }
 
   // ---- новый товар ----
   function resetProductForm() {
@@ -483,7 +450,6 @@ export default function WarehousePage() {
     ...(canManage ? [{ key: 'inv', label: 'Инвентаризация' }] : []),
     ...(canManage ? [{ key: 'writeoff', label: 'Списания' }] : []),
     { key: 'moves', label: 'Движения' },
-    ...(canProducts ? [{ key: 'ref', label: 'Справочники' }] : []),
   ];
 
   return (
@@ -549,7 +515,7 @@ export default function WarehousePage() {
             {loading ? (
               <EmptyState title="Загрузка…" />
             ) : filtered.length === 0 ? (
-              <EmptyState icon="warehouse" title="Товаров нет" hint={q || filterCat !== 'ALL' ? 'Ничего не найдено.' : 'Добавьте товар во вкладке «Справочники».'} />
+              <EmptyState icon="warehouse" title="Товаров нет" hint={q || filterCat !== 'ALL' ? 'Ничего не найдено.' : 'Добавьте товар кнопкой «+ Новый товар».'} />
             ) : (
               <div className="pp-table-scroll">
                 <table className="pp-table">
@@ -738,47 +704,6 @@ export default function WarehousePage() {
             </div>
           )}
         </TableCard>
-      )}
-
-      {/* ============ СПРАВОЧНИКИ ============ */}
-      {tab === 'ref' && canProducts && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
-            <SectionTitle>Категории</SectionTitle>
-            <div className="flex flex-wrap items-center gap-2">
-              {categories.map((c) => (
-                <span key={c.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                  {c.name}<button type="button" onClick={() => removeCategory(c.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
-                </span>
-              ))}
-              {categories.length === 0 && <span className="text-xs text-slate-400">Нет категорий.</span>}
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <Input value={catName} onChange={(e) => setCatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCategory()} placeholder="Новая категория (напр. Бумага)" />
-              <Button type="button" variant="ghost" onClick={addCategory} className="shrink-0">+ Категория</Button>
-            </div>
-          </Card>
-
-          <Card>
-            <SectionTitle>Единицы измерения</SectionTitle>
-            <div className="mb-3 flex flex-wrap gap-2">
-              {units.map((u) => (
-                <span key={u.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-sm dark:bg-slate-800">
-                  <span className="font-medium text-slate-700 dark:text-slate-200">{u.shortName}</span>
-                  <span className="text-slate-400">({u.name})</span>
-                  <button onClick={() => removeUnit(u.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
-                </span>
-              ))}
-              {units.length === 0 && <span className="text-sm text-slate-400">Нет единиц. Добавьте: шт, м², рул и т.д.</span>}
-            </div>
-            <form onSubmit={addUnit} className="flex flex-wrap items-end gap-2">
-              <Field label="Полное название"><Input value={uName} onChange={(e) => setUName(e.target.value)} placeholder="Штука" className="w-36" /></Field>
-              <Field label="Сокращение"><Input value={uShort} onChange={(e) => setUShort(e.target.value)} placeholder="шт" className="w-24" /></Field>
-              <Button type="submit" variant="ghost">+ Единица</Button>
-              {uMsg && <span className="text-sm text-slate-500">{uMsg}</span>}
-            </form>
-          </Card>
-        </div>
       )}
 
       {/* ===================== НОВЫЙ ТОВАР (модальное окно) ===================== */}
