@@ -522,19 +522,15 @@ export default function WarehousePage() {
       {/* ============ ОСТАТКИ (материалы) ============ */}
       {tab === 'stock' && (
         <>
-          {/* Категории-чипы */}
-          {categories.length > 0 && (
-            <div className="mb-3 flex flex-wrap gap-2">
-              <button onClick={() => setFilterCat('ALL')} className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${filterCat === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 shadow-sm hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300'}`}>Все категории</button>
-              {categories.map((c) => (
-                <button key={c.id} onClick={() => setFilterCat(c.id)} className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${filterCat === c.id ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 shadow-sm hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300'}`}>{c.name}</button>
-              ))}
-            </div>
-          )}
-
           <TableCard>
             <Toolbar>
               <SearchInput value={q} onChange={setQ} placeholder="Поиск по товарам, артикулу, штрихкоду…" />
+              {categories.length > 0 && (
+                <Select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="w-auto">
+                  <option value="ALL">Все категории</option>
+                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              )}
               {branches.length > 1 && (
                 <Select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className="w-auto">
                   <option value="">Все склады</option>

@@ -11,7 +11,6 @@ import {
   TableCard,
   Toolbar,
   SearchInput,
-  Tabs,
   Card,
   Field,
   Input,
@@ -261,15 +260,6 @@ export default function ServicesPage() {
   const activeCount = services.filter((s) => s.isActive !== false).length;
   const inactiveCount = services.filter((s) => s.isActive === false).length;
 
-  const catTabs = [
-    { key: 'ALL', label: 'Все услуги', count: services.length },
-    ...categories.map((c) => ({
-      key: c.id,
-      label: c.name,
-      count: services.filter((s) => s.categoryId === c.id).length,
-    })),
-  ];
-
   // ---- форма редактирования (используется в таблице и в карточках) ----
   function renderEditForm(s: any) {
     return (
@@ -489,12 +479,15 @@ export default function ServicesPage() {
         </div>
       )}
 
-      {/* Вкладки-категории */}
-      <Tabs tabs={catTabs} active={filterCat} onChange={setFilterCat} />
-
       <TableCard>
         <Toolbar>
           <SearchInput value={search} onChange={setSearch} placeholder="Поиск по услугам…" />
+          {categories.length > 0 && (
+            <Select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="w-auto">
+              <option value="ALL">Все категории</option>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          )}
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-auto">
             <option value="ALL">Все статусы</option>
             <option value="active">Активные</option>
