@@ -619,7 +619,7 @@ function BranchesSection({
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => openEditB(b)}><NavIcon name="edit" className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => openEditB(b)} aria-label="Изменить"><NavIcon name="edit" className="h-4 w-4" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => toggleBranch(b)}>
                       {b.isActive ? 'Отключить' : 'Включить'}
                     </Button>
@@ -732,6 +732,7 @@ function CatalogSection({ cid }: { cid: string }) {
                 type="button"
                 onClick={() => setDefault(kind, it.id)}
                 title={it.isDefault ? 'По умолчанию' : 'Сделать по умолчанию'}
+                aria-label={it.isDefault ? 'По умолчанию' : 'Сделать по умолчанию'}
                 className={it.isDefault ? 'text-amber-500' : 'text-slate-300 hover:text-amber-400'}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill={it.isDefault ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round">
@@ -742,10 +743,10 @@ function CatalogSection({ cid }: { cid: string }) {
               {it.isDefault && <Badge tone="amber">по умолчанию</Badge>}
             </div>
             <div className="flex shrink-0 gap-1">
-              <Button variant="ghost" size="sm" onClick={() => setEdit(kind === 'unit' ? { kind, id: it.id, name: it.name, shortName: it.shortName } : { kind, id: it.id, name: it.name })}>
+              <Button variant="ghost" size="sm" aria-label="Изменить" onClick={() => setEdit(kind === 'unit' ? { kind, id: it.id, name: it.name, shortName: it.shortName } : { kind, id: it.id, name: it.name })}>
                 <NavIcon name="edit" className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => (kind === 'unit' ? delUnit(it.id) : kind === 'scat' ? delServiceCat(it.id) : delCategory(it.id))}>
+              <Button variant="ghost" size="sm" aria-label="Удалить" className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => (kind === 'unit' ? delUnit(it.id) : kind === 'scat' ? delServiceCat(it.id) : delCategory(it.id))}>
                 <NavIcon name="close" className="h-4 w-4" />
               </Button>
             </div>
@@ -873,7 +874,7 @@ function RolesSection({ cid }: { cid: string }) {
         </div>
         <form onSubmit={createRole} className="mt-4 flex gap-2">
           <Input value={newRole} onChange={(e) => setNewRole(e.target.value)} placeholder="Новая роль" className="flex-1" />
-          <Button type="submit" variant="ghost" className="shrink-0">+</Button>
+          <Button type="submit" variant="ghost" className="shrink-0" aria-label="Добавить">+</Button>
         </form>
       </Card>
 

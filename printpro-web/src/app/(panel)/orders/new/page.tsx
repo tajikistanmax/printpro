@@ -433,6 +433,7 @@ export default function NewOrderPage() {
                     <button
                       type="button"
                       onClick={() => removeLine(i)}
+                      aria-label="Удалить"
                       className="inline-flex items-center rounded px-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                     >
                       <NavIcon name="close" className="h-4 w-4" />

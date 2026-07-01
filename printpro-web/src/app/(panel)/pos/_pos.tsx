@@ -383,6 +383,7 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => c.setQty(item.key, item.quantity - 1)}
+                      aria-label="Убрать"
                       className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
                     >
                       −
@@ -392,6 +393,7 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
                     </span>
                     <button
                       onClick={() => c.setQty(item.key, item.quantity + 1)}
+                      aria-label="Добавить"
                       className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
                     >
                       +
@@ -467,6 +469,7 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
               />
               <button
                 onClick={c.checkPromo}
+                aria-label="Применить промокод"
                 className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600 hover:bg-slate-200"
               >
                 ✓
@@ -639,7 +642,7 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
           <div className="relative flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Клиент для долга</h3>
-              <button onClick={() => setShowClientPicker(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">✕</button>
+              <button onClick={() => setShowClientPicker(false)} aria-label="Закрыть" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">✕</button>
             </div>
 
             <input
@@ -716,7 +719,7 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
           <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Оплата наличными</h3>
-              <button onClick={() => setShowCashPay(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">✕</button>
+              <button onClick={() => setShowCashPay(false)} aria-label="Закрыть" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">✕</button>
             </div>
 
             <div className="mb-4 rounded-xl bg-slate-50 p-4 text-center dark:bg-slate-800/50">
@@ -1051,6 +1054,7 @@ function OrderPanelPro({ ctx }: { ctx: PosCtx }) {
                   <div className="inline-flex items-center gap-1">
                     <button
                       onClick={() => c.setQty(item.key, item.quantity - 1)}
+                      aria-label="Убрать"
                       className="h-5 w-5 rounded bg-slate-100 text-xs"
                     >
                       −
@@ -1058,6 +1062,7 @@ function OrderPanelPro({ ctx }: { ctx: PosCtx }) {
                     <span>{item.quantity}</span>
                     <button
                       onClick={() => c.setQty(item.key, item.quantity + 1)}
+                      aria-label="Добавить"
                       className="h-5 w-5 rounded bg-slate-100 text-xs"
                     >
                       +
@@ -1073,6 +1078,7 @@ function OrderPanelPro({ ctx }: { ctx: PosCtx }) {
                 <td className="pl-1 text-right">
                   <button
                     onClick={() => c.setQty(item.key, 0)}
+                    aria-label="Удалить"
                     className="text-slate-300 hover:text-rose-500"
                   >
                     ×
@@ -1462,6 +1468,7 @@ function OrderPanelMarket({ ctx }: { ctx: PosCtx }) {
                   <div className="inline-flex items-center gap-1">
                     <button
                       onClick={() => c.setQty(item.key, item.quantity - 1)}
+                      aria-label="Убрать"
                       className="h-5 w-5 rounded bg-slate-100 text-xs"
                     >
                       −
@@ -1469,6 +1476,7 @@ function OrderPanelMarket({ ctx }: { ctx: PosCtx }) {
                     <span>{item.quantity}</span>
                     <button
                       onClick={() => c.setQty(item.key, item.quantity + 1)}
+                      aria-label="Добавить"
                       className="h-5 w-5 rounded bg-slate-100 text-xs"
                     >
                       +
@@ -1484,6 +1492,7 @@ function OrderPanelMarket({ ctx }: { ctx: PosCtx }) {
                 <td className="pl-1 text-right">
                   <button
                     onClick={() => c.setQty(item.key, 0)}
+                    aria-label="Удалить"
                     className="text-slate-300 hover:text-rose-500"
                   >
                     ×

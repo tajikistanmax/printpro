@@ -41,6 +41,39 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
 }
 
+/* Видимое кольцо фокуса для клавиатурной навигации (кнопки, ссылки, роли,
+   строки-кнопки). :focus-visible срабатывает при навигации с клавиатуры,
+   но не при клике мышью — не мешает обычным пользователям. */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.dark a:focus-visible,
+.dark button:focus-visible,
+.dark [role="button"]:focus-visible,
+.dark [tabindex]:focus-visible,
+.dark summary:focus-visible {
+  outline-color: #818cf8;
+}
+
+/* Уважаем системную настройку «уменьшить движение»: убираем анимации/переходы
+   тем, кто чувствителен к движению (доступность). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Готовые классы оформления (можно использовать на страницах) */
 @layer components {
   .pp-card {

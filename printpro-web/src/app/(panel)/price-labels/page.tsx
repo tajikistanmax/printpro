@@ -206,13 +206,13 @@ export default function PriceLabelsPage() {
                     </div>
                     {n > 0 ? (
                       <div className="flex items-center gap-1">
-                        <button onClick={() => setCount(p.id, n - 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700">−</button>
+                        <button aria-label="Убрать" onClick={() => setCount(p.id, n - 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700">−</button>
                         <input
                           value={n}
                           onChange={(e) => setCount(p.id, parseInt(e.target.value.replace(/\D/g, '') || '0', 10))}
                           className="h-7 w-10 rounded-md border border-slate-200 text-center text-sm dark:border-slate-700 dark:bg-transparent"
                         />
-                        <button onClick={() => setCount(p.id, n + 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700">+</button>
+                        <button aria-label="Добавить" onClick={() => setCount(p.id, n + 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700">+</button>
                       </div>
                     ) : (
                       <Button variant="ghost" onClick={() => add(p.id)} className="!px-3 !py-1 text-xs">+ Ценник</Button>

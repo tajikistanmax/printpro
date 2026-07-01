@@ -337,7 +337,7 @@ export default function DesignPage() {
                 <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Заказ №{selected.order?.orderNumber}</h2>
                 <Badge tone={STATUS_TONES[selected.status] ?? 'slate'}>{STATUS_LABELS[selected.status]}</Badge>
               </div>
-              <button onClick={() => setSelected(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+              <button aria-label="Закрыть" onClick={() => setSelected(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
             <div className="mb-1 text-base font-semibold text-slate-800 dark:text-slate-100">{selected.title ?? 'Макет'}</div>

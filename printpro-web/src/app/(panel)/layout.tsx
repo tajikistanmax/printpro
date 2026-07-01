@@ -232,6 +232,7 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
                 router.replace('/login');
               }}
               title="Выйти"
+              aria-label="Выйти"
               className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-rose-500 dark:hover:bg-slate-800 ${hideOnRail}`}
             >
               <svg
@@ -257,6 +258,7 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
           onClick={toggleRail}
           className="mx-2.5 mb-2.5 hidden items-center justify-center rounded-lg border border-slate-200 bg-slate-50 py-1.5 text-xs font-semibold text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 lg:flex dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
           title={railCollapsed ? 'Развернуть меню' : 'Свернуть меню'}
+          aria-label={railCollapsed ? 'Развернуть меню' : 'Свернуть меню'}
         >
           {railCollapsed ? (
             <NavIcon name="arrowLeft" className="h-4 w-4 rotate-180" />

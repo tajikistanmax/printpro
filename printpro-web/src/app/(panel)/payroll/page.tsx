@@ -413,7 +413,7 @@ function SalaryRow({
           className="w-24 rounded border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 px-1 py-0.5 text-right text-xs"
         />
         {canManage && (
-          <Button size="sm" onClick={() => onSave(u, type, rate)} className="ml-2 px-2 py-0.5" title="Сохранить">
+          <Button size="sm" onClick={() => onSave(u, type, rate)} className="ml-2 px-2 py-0.5" title="Сохранить" aria-label="Сохранить">
             <NavIcon name="check" className="h-4 w-4" />
           </Button>
         )}

@@ -225,6 +225,7 @@ export default function EquipmentPage() {
                       onClick={() => remove(e.id)}
                       className="inline-flex rounded px-2 py-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                       title="Удалить"
+                      aria-label="Удалить"
                     >
                       <NavIcon name="close" className="h-4 w-4" />
                     </button>

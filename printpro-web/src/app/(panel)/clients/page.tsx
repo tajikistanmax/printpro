@@ -353,7 +353,7 @@ export default function ClientsPage() {
                     <td>{c.inactive ? <Badge tone="slate">Неактивный</Badge> : <Badge tone="emerald">Активный</Badge>}</td>
                     <td className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openClient(c.id)} title="Открыть"><NavIcon name="eye" className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => openClient(c.id)} title="Открыть" aria-label="Открыть"><NavIcon name="eye" className="h-4 w-4" /></Button>
                       </div>
                     </td>
                   </tr>
@@ -375,13 +375,13 @@ export default function ClientsPage() {
             <span className="ml-2">{total === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} из {total}</span>
           </div>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>‹</Button>
+            <Button variant="ghost" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} aria-label="Предыдущая страница">‹</Button>
             {pageList(page, pages).map((p, i) =>
               p === '…' ? <span key={`e${i}`} className="px-1 text-slate-400">…</span> : (
                 <button key={p} onClick={() => setPage(p)} className={`h-8 min-w-8 rounded-lg px-2 text-sm font-medium transition ${p === page ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{p}</button>
               ),
             )}
-            <Button variant="ghost" size="sm" onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages}>›</Button>
+            <Button variant="ghost" size="sm" onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages} aria-label="Следующая страница">›</Button>
           </div>
         </div>
       </TableCard>
@@ -404,7 +404,7 @@ export default function ClientsPage() {
                   </div>
                 </div>
               </div>
-              <button onClick={() => setSelected(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+              <button onClick={() => setSelected(null)} aria-label="Закрыть" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
             {showEditForm ? (
@@ -501,7 +501,7 @@ export default function ClientsPage() {
                     {selected.files.map((f: any) => (
                       <div key={f.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-sm dark:bg-slate-800">
                         <a href={`${SERVER_ORIGIN}${f.fileUrl}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 truncate text-indigo-600 hover:underline"><NavIcon name="paperclip" className="h-3.5 w-3.5 shrink-0" />{f.fileName ?? 'файл'}</a>
-                        {canManage && <button onClick={() => removeFile(f.id)} className="ml-2 inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>}
+                        {canManage && <button onClick={() => removeFile(f.id)} aria-label="Удалить" className="ml-2 inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>}
                       </div>
                     ))}
                   </div>

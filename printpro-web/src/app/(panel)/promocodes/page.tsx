@@ -173,6 +173,7 @@ function PromocodesInner() {
                   <Button
                     variant="ghost"
                     size="sm"
+                    aria-label="Удалить"
                     className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                     onClick={() => remove(p.id)}
                   >

@@ -325,7 +325,7 @@ export default function ServicesPage() {
                   <span className="text-xs text-slate-400">шт</span>
                   <Input value={t.price} onChange={(e) => updTier(t._k, 'price', e.target.value)} type="number" placeholder="цена" className="w-24" />
                   <span className="text-xs text-slate-400">c./шт</span>
-                  <button onClick={() => rmTier(t._k)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
+                  <button aria-label="Удалить" onClick={() => rmTier(t._k)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
                 </div>
               ))}
             </div>
@@ -344,7 +344,7 @@ export default function ServicesPage() {
                 <div key={sz._k} className="flex items-center gap-2">
                   <Input value={sz.label} onChange={(e) => updSize(sz._k, 'label', e.target.value)} placeholder="напр. A4, 10x15" className="flex-1" />
                   <Input value={sz.price} onChange={(e) => updSize(sz._k, 'price', e.target.value)} type="number" placeholder="цена c." className="w-28" />
-                  <button onClick={() => rmSize(sz._k)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
+                  <button aria-label="Удалить" onClick={() => rmSize(sz._k)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
                 </div>
               ))}
             </div>
@@ -364,7 +364,7 @@ export default function ServicesPage() {
                 <span className="text-xs text-slate-400">+</span>
                 <Input value={o.priceModifier} onChange={(e) => updOpt(o._k, 'priceModifier', e.target.value)} type="number" placeholder="0" className="w-24" />
                 <span className="text-xs text-slate-400">c.</span>
-                <button onClick={() => rmOpt(o._k)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
+                <button aria-label="Удалить" onClick={() => rmOpt(o._k)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
               </div>
             ))}
           </div>
@@ -381,7 +381,7 @@ export default function ServicesPage() {
                 {s.materials.map((m: any) => (
                   <span key={m.id} className="flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 text-xs text-slate-700 shadow-sm dark:bg-slate-700 dark:text-slate-200">
                     {m.product?.name} — {Number(m.qtyPerUnit)} {m.product?.unit?.shortName ?? ''}
-                    <button onClick={() => removeMaterial(m.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
+                    <button aria-label="Удалить" onClick={() => removeMaterial(m.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
                   </span>
                 ))}
               </div>
@@ -438,7 +438,7 @@ export default function ServicesPage() {
           <div className="relative max-h-[88vh] w-full max-w-2xl overflow-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Новая услуга</h3>
-              <button onClick={() => setShowAddForm(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+              <button aria-label="Закрыть" onClick={() => setShowAddForm(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
             <form onSubmit={createService} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -546,8 +546,8 @@ export default function ServicesPage() {
                       {canManage && (
                         <td className="text-right">
                           <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => (editId === s.id ? setEditId(null) : openEdit(s))}><NavIcon name="edit" className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="sm" className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => deleteService(s.id)}><NavIcon name="close" className="h-4 w-4" /></Button>
+                            <Button aria-label="Изменить" variant="ghost" size="sm" onClick={() => (editId === s.id ? setEditId(null) : openEdit(s))}><NavIcon name="edit" className="h-4 w-4" /></Button>
+                            <Button aria-label="Удалить" variant="ghost" size="sm" className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => deleteService(s.id)}><NavIcon name="close" className="h-4 w-4" /></Button>
                           </div>
                         </td>
                       )}

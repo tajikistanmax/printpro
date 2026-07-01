@@ -237,6 +237,7 @@ function QuotesInner() {
                   <button
                     type="button"
                     onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}
+                    aria-label="Удалить"
                     className="inline-flex px-1 text-rose-500"
                   >
                     <NavIcon name="close" className="h-4 w-4" />

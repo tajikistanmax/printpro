@@ -525,8 +525,8 @@ export default function OrdersPage() {
                       </td>
                       <td className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => openOrder(o.id)} title="Открыть"><NavIcon name="eye" className="h-4 w-4" /></Button>
-                          <Link href={`/order-card?id=${o.id}`}><Button variant="ghost" size="sm" title="Тех-карта"><NavIcon name="print" className="h-4 w-4" /></Button></Link>
+                          <Button variant="ghost" size="sm" onClick={() => openOrder(o.id)} title="Открыть" aria-label="Открыть"><NavIcon name="eye" className="h-4 w-4" /></Button>
+                          <Link href={`/order-card?id=${o.id}`}><Button variant="ghost" size="sm" title="Тех-карта" aria-label="Тех-карта"><NavIcon name="print" className="h-4 w-4" /></Button></Link>
                         </div>
                       </td>
                     </tr>
@@ -551,7 +551,7 @@ export default function OrdersPage() {
             </span>
           </div>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>‹</Button>
+            <Button variant="ghost" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} aria-label="Предыдущая страница">‹</Button>
             {pageList(page, pages).map((p, i) =>
               p === '…' ? (
                 <span key={`e${i}`} className="px-1 text-slate-400">…</span>
@@ -567,7 +567,7 @@ export default function OrdersPage() {
                 </button>
               ),
             )}
-            <Button variant="ghost" size="sm" onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages}>›</Button>
+            <Button variant="ghost" size="sm" onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages} aria-label="Следующая страница">›</Button>
           </div>
         </div>
       </TableCard>
@@ -579,7 +579,7 @@ export default function OrdersPage() {
           <div className="relative z-10 h-full w-full max-w-md overflow-y-auto border-l border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Заказ №{selected.orderNumber}</h2>
-              <button onClick={() => setSelected(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+              <button onClick={() => setSelected(null)} aria-label="Закрыть" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
             <div className="mb-3 flex flex-wrap items-center gap-2">

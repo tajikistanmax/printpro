@@ -690,6 +690,7 @@ export default function PosPage() {
                 onClick={() => deleteHeld(h.id)}
                 className="text-rose-400 transition hover:text-rose-600"
                 title="Удалить"
+                aria-label="Удалить"
               >
                 ✕
               </button>

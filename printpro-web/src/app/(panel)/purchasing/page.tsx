@@ -490,7 +490,7 @@ export default function PurchasingPage() {
           <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Новый поставщик</h3>
-              <button onClick={() => setSupplierModalOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+              <button aria-label="Закрыть" onClick={() => setSupplierModalOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
             <form onSubmit={addSupplier} className="space-y-3">
@@ -524,7 +524,7 @@ export default function PurchasingPage() {
           <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Приёмка товара на склад</h3>
-              <button onClick={() => setReceiptModalOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+              <button aria-label="Закрыть" onClick={() => setReceiptModalOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
             <form onSubmit={submitReceipt} className="space-y-3">
@@ -634,6 +634,7 @@ export default function PurchasingPage() {
                       />
                       <button
                         type="button"
+                        aria-label="Удалить"
                         onClick={() => removeRow(i)}
                         className="inline-flex w-6 shrink-0 items-center justify-center text-slate-400 dark:text-slate-500 hover:text-rose-600"
                       >
@@ -738,6 +739,7 @@ export default function PurchasingPage() {
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Оплата поставщику</h3>
               <button
+                aria-label="Закрыть"
                 onClick={() => setPayTarget(null)}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
               >

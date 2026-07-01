@@ -275,7 +275,7 @@ export default function DebtsPage() {
           <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Приём оплаты</h3>
-              <button onClick={() => setPayClient(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <button onClick={() => setPayClient(null)} aria-label="Закрыть" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <NavIcon name="close" className="h-4 w-4" />
               </button>
             </div>
@@ -313,7 +313,7 @@ export default function DebtsPage() {
           <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Срок погашения долга</h3>
-              <button onClick={() => setDueTarget(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <button onClick={() => setDueTarget(null)} aria-label="Закрыть" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <NavIcon name="close" className="h-4 w-4" />
               </button>
             </div>
@@ -345,7 +345,7 @@ export default function DebtsPage() {
           <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Оплата поставщику</h3>
-              <button onClick={() => setPaySupplier(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <button onClick={() => setPaySupplier(null)} aria-label="Закрыть" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <NavIcon name="close" className="h-4 w-4" />
               </button>
             </div>

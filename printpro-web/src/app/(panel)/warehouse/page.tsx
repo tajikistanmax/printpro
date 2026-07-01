@@ -706,7 +706,7 @@ export default function WarehousePage() {
           <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Новый товар</h3>
-              <button onClick={() => setProductModalOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+              <button aria-label="Закрыть" onClick={() => setProductModalOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
             <form
@@ -797,7 +797,7 @@ export default function WarehousePage() {
           <div className="relative w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Импорт товаров</h3>
-              <button onClick={() => setImportOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+              <button aria-label="Закрыть" onClick={() => setImportOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
             <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
               Загрузите CSV-файл (из Excel: «Сохранить как → CSV») или вставьте таблицу.
@@ -833,7 +833,7 @@ export default function WarehousePage() {
           <div className="relative z-10 h-full w-full max-w-md overflow-y-auto border-l border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Информация о товаре</h2>
-              <button onClick={() => { setMaterial(null); setEditPId(null); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
+              <button aria-label="Закрыть" onClick={() => { setMaterial(null); setEditPId(null); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><NavIcon name="close" className="h-4 w-4" /></button>
             </div>
 
             {editPId === material.id ? (
@@ -916,6 +916,7 @@ export default function WarehousePage() {
                           {a.barcode}
                           {canManage && (
                             <button
+                              aria-label="Удалить"
                               onClick={() => removeAlias(a.id)}
                               className="text-rose-400 transition hover:text-rose-600"
                               title="Удалить"

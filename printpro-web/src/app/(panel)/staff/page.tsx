@@ -227,6 +227,7 @@ function UsersTab({ cid }: { cid: string }) {
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Новый сотрудник</h3>
               <button
                 onClick={() => setModalOpen(false)}
+                aria-label="Закрыть"
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <NavIcon name="close" className="h-4 w-4" />
