@@ -32,13 +32,49 @@ async function main() {
     });
   }
 
-  const unit = await prisma.unit.findFirst({ where: { companyId: COMPANY_ID } });
-  if (!unit) {
-    await prisma.unit.create({
-      data: { companyId: COMPANY_ID, name: 'Штука', shortName: 'шт' },
+  // Единицы измерения по умолчанию (шт — основная). Идемпотентно по shortName.
+  const UNITS = [
+    { name: 'Штука', shortName: 'шт' },
+    { name: 'Килограмм', shortName: 'кг' },
+    { name: 'Грамм', shortName: 'г' },
+    { name: 'Метр', shortName: 'м' },
+    { name: 'Сантиметр', shortName: 'см' },
+    { name: 'Литр', shortName: 'л' },
+    { name: 'Упаковка', shortName: 'упак' },
+    { name: 'Рулон', shortName: 'рул' },
+    { name: 'Лист', shortName: 'лист' },
+  ];
+  for (const u of UNITS) {
+    const ex = await prisma.unit.findFirst({
+      where: { companyId: COMPANY_ID, shortName: u.shortName },
     });
+    if (!ex) await prisma.unit.create({ data: { companyId: COMPANY_ID, ...u } });
   }
-  console.log('Компания/филиал/единица готовы.');
+
+  // Категории товаров по умолчанию (пару штук — остальное добавят в Настройках)
+  const PRODUCT_CATEGORIES = ['Сувениры', 'Рамки', 'Бумага', 'Канцтовары'];
+  for (const name of PRODUCT_CATEGORIES) {
+    const ex = await prisma.productCategory.findFirst({
+      where: { companyId: COMPANY_ID, name },
+    });
+    if (!ex) await prisma.productCategory.create({ data: { companyId: COMPANY_ID, name } });
+  }
+
+  // Категории услуг по умолчанию (профиль типографии)
+  const SERVICE_CATEGORIES = [
+    'Печать документов', 'Фото на документы', 'Визитки', 'Буклеты', 'Листовки',
+    'Баннеры', 'Наклейки', 'Плакаты', 'Сувенирная продукция', 'Ксерокопия',
+    'Гравировка', 'Дизайнерские услуги', 'Реставрация', 'Полиграфия', 'Фотоуслуги',
+    'Сувенирная печать', 'Оформление в рамки', 'Дизайн', 'Ремонт принтеров',
+    'Восстановление данных',
+  ];
+  for (const name of SERVICE_CATEGORIES) {
+    const ex = await prisma.serviceCategory.findFirst({
+      where: { companyId: COMPANY_ID, name },
+    });
+    if (!ex) await prisma.serviceCategory.create({ data: { companyId: COMPANY_ID, name } });
+  }
+  console.log('Справочники (единицы/категории) готовы.');
 
   // 1. Справочник прав (глобальный) — добавляем недостающие
   for (const p of PERMISSIONS) {

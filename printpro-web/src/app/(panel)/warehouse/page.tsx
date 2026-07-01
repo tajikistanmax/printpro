@@ -151,7 +151,8 @@ export default function WarehousePage() {
         setProducts(p); setUnits(u); setBranches(b); setCategories(c);
         if (p[0]) setProductId(p[0].id);
         if (b[0]) { setBranchId(b[0].id); setTFrom(b[0].id); setInvBranch(b[0].id); setWoBranch(b[0].id); }
-        if (u[0]) setPUnit(u[0].id);
+        // «шт» — единица по умолчанию (если есть), иначе первая
+        if (u[0]) setPUnit((u.find((x: any) => x.shortName === 'шт') ?? u[0]).id);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
