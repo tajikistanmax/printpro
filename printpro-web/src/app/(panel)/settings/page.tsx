@@ -15,6 +15,13 @@ import {
   vfdTest,
   readVfdConfig,
 } from '@/lib/vfd-display';
+import {
+  ESCPOS_BAUDS,
+  ESCPOS_CODEPAGES,
+  readEscposConfig,
+  requestEscposPort,
+  escposTest,
+} from '@/lib/escpos-printer';
 import NavIcon from '@/lib/NavIcons';
 import ImageUpload from '@/lib/ImageUpload';
 import {
@@ -839,6 +846,9 @@ function DisplaySection({
   const vfdOn = s['display.vfd'] === 'true';
   const proto = VFD_PROTOCOLS.find((p) => p.k === cfg.protocol);
 
+  const prn = readEscposConfig(s);
+  const prnOn = s['escpos.enabled'] === 'true';
+
   async function connect() {
     try {
       const ok = await requestVfdPort();
@@ -853,6 +863,22 @@ function DisplaySection({
       setMsg('Отправил тест на дисплей. Пусто или «кракозябры» — смените протокол или кодировку.');
     } catch (e: any) {
       setMsg('Ошибка вывода: ' + (e?.message ?? e));
+    }
+  }
+  async function connectPrinter() {
+    try {
+      const ok = await requestEscposPort();
+      setMsg(ok ? '✓ Принтер выбран. Нажмите «Тест печати».' : 'Порт не выбран');
+    } catch (e: any) {
+      setMsg('Не удалось открыть порт: ' + (e?.message ?? e));
+    }
+  }
+  async function testPrinter() {
+    try {
+      const ok = await escposTest(prn);
+      setMsg(ok ? 'Отправил тест на принтер. Если «кракозябры» — смените кодовую страницу.' : 'Принтер не отвечает — проверьте порт/скорость.');
+    } catch (e: any) {
+      setMsg('Ошибка печати: ' + (e?.message ?? e));
     }
   }
 
@@ -965,6 +991,76 @@ function DisplaySection({
               2) нажмите «Подключить» и выберите COM-порт дисплея (обычно COM1–COM4);
               3) нажмите «Тест». Если текст не появился или нечитаем — поменяйте
               протокол / скорость / кодировку и снова «Тест». 4) Сохраните изменения.
+            </div>
+          </>
+        )}
+      </Card>
+
+      {/* Термопринтер чеков ESC/POS */}
+      <Card>
+        <SectionTitle>Чековый принтер (термо, ESC/POS)</SectionTitle>
+        <p className="-mt-1 mb-4 text-xs text-slate-400 dark:text-slate-500">
+          Печать чека прямо на термопринтер 58/80 мм по COM-порту (без окна печати браузера).
+        </p>
+
+        {!supported && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+            Нужен <b>Chrome</b> или <b>Edge</b> на Windows (прямой доступ к COM-порту).
+          </div>
+        )}
+
+        <Toggle
+          label="Печатать чек на термопринтер"
+          desc="Добавляет на кассе кнопку «Печать на термопринтер»"
+          checked={prnOn}
+          onChange={(v) => set('escpos.enabled', String(v))}
+        />
+
+        {prnOn && (
+          <>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Field label="Ширина чека">
+                <Select value={String(prn.width)} onChange={(e) => set('escpos.width', e.target.value)}>
+                  <option value="32">58 мм (32 симв.)</option>
+                  <option value="48">80 мм (48 симв.)</option>
+                </Select>
+              </Field>
+              <Field label="Скорость порта (baud)">
+                <Select value={String(prn.baud)} onChange={(e) => set('escpos.baud', e.target.value)}>
+                  {ESCPOS_BAUDS.map((b) => <option key={b} value={b}>{b}</option>)}
+                </Select>
+              </Field>
+              <Field label="Кодировка (кириллица)">
+                <Select value={prn.charset} onChange={(e) => set('escpos.charset', e.target.value)}>
+                  <option value="cp866">CP866 — русский (обычно)</option>
+                  <option value="latin">Латиница (транслит)</option>
+                </Select>
+              </Field>
+              <Field label="Кодовая страница принтера">
+                <Select value={String(prn.codepage)} onChange={(e) => set('escpos.codepage', e.target.value)}>
+                  {ESCPOS_CODEPAGES.map((c) => <option key={c.n} value={c.n}>{c.name}</option>)}
+                </Select>
+              </Field>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              <Toggle label="Обрезать чек после печати" checked={prn.cut} onChange={(v) => set('escpos.cut', String(v))} />
+              <Toggle label="Печатать автоматически после продажи" checked={prn.autoPrint} onChange={(v) => set('escpos.autoPrint', String(v))} />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button onClick={connectPrinter} disabled={!supported}>
+                <NavIcon name="plus" className="h-4 w-4" />Подключить принтер (COM-порт)
+              </Button>
+              <Button variant="ghost" onClick={testPrinter} disabled={!supported}>
+                <NavIcon name="print" className="h-4 w-4" />Тест печати
+              </Button>
+            </div>
+
+            <div className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
+              <b className="text-slate-600 dark:text-slate-300">Настройка:</b> 1) включите тумблер;
+              2) «Подключить принтер» → выберите COM-порт; 3) «Тест печати». Если русский
+              нечитаем — смените кодовую страницу (17/7/6/73). 4) Сохраните.
             </div>
           </>
         )}

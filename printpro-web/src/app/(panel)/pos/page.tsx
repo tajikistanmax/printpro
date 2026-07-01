@@ -8,6 +8,14 @@ import { SKINS, type CartItem, type PosCtx } from './_pos';
 import { useFeatureFlags } from '@/lib/feature-flags';
 import { sendDisplay, openCustomerDisplay } from '@/lib/customer-display';
 import { readVfdConfig, vfdShow, DEFAULT_VFD, type VfdConfig } from '@/lib/vfd-display';
+import {
+  readEscposConfig,
+  escposPrint,
+  escposSupported,
+  DEFAULT_ESCPOS,
+  type EscposConfig,
+  type ReceiptData,
+} from '@/lib/escpos-printer';
 import QRCode from 'qrcode';
 
 function money(n: number) {
@@ -47,6 +55,7 @@ export default function PosPage() {
   const [shopInfo, setShopInfo] = useState<{ address?: string; phone?: string; inn?: string }>({});
   const [transferPay, setTransferPay] = useState<{ qr?: string; requisite?: string }>({});
   const [qrUrl, setQrUrl] = useState('');
+  const [escposCfg, setEscposCfg] = useState<EscposConfig>(DEFAULT_ESCPOS);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState('');
@@ -102,6 +111,7 @@ export default function PosPage() {
         if (ui?.companyName) setShopName(ui.companyName);
         if (ui) {
           setVfdCfg(readVfdConfig(ui));
+          setEscposCfg(readEscposConfig(ui));
           setShopInfo({
             address: ui.companyAddress,
             phone: ui.phone,
@@ -322,6 +332,40 @@ export default function PosPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Печать чека на термопринтер (ESC/POS)
+  async function printThermal() {
+    if (!receipt) return;
+    const data: ReceiptData = {
+      shopName,
+      address: shopInfo.address,
+      phone: shopInfo.phone,
+      inn: shopInfo.inn,
+      orderNumber: receipt.orderNumber,
+      date: receipt._date,
+      items: (receipt.items ?? []).map((it: any) => ({
+        name: it.description || it.service?.name || it.product?.name || 'Позиция',
+        qty: Number(it.quantity),
+        total: Number(it.lineTotal),
+      })),
+      total: Number(receipt.total),
+      method: receipt._method,
+      onlineUrl:
+        typeof window !== 'undefined' && receipt.id
+          ? `${window.location.origin}/r/${receipt.id}`
+          : undefined,
+    };
+    const ok = await escposPrint(data, escposCfg);
+    if (!ok) setMsg('Не удалось напечатать на термопринтере — проверьте порт/настройки.');
+  }
+
+  // Авто-печать чека после продажи (если включено в настройках)
+  useEffect(() => {
+    if (receipt && escposCfg.enabled && escposCfg.autoPrint && escposSupported()) {
+      void printThermal();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receipt]);
 
   async function checkPromo() {
     setPromoMsg('');
@@ -721,6 +765,19 @@ export default function PosPage() {
             </div>
 
             <div className="no-print mt-5 flex gap-2">
+              {escposCfg.enabled && (
+                <button
+                  onClick={() => void printThermal()}
+                  title="Печать на чековый термопринтер"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                    <path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" />
+                    <rect x="7" y="14" width="10" height="7" rx="1" />
+                  </svg>
+                  Термочек
+                </button>
+              )}
               <button
                 onClick={() => window.print()}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 py-2 text-sm font-medium text-white hover:bg-indigo-700"

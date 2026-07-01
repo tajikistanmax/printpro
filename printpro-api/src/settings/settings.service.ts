@@ -37,7 +37,12 @@ export class SettingsService {
     // Настройки дисплея покупателя (display.*) — тоже публичные, чтобы касса
     // знала тип/протокол второго экрана без права settings.manage.
     for (const [k, v] of Object.entries(all)) {
-      if (k.startsWith('feature.') || k.startsWith('display.')) out[k] = v;
+      if (
+        k.startsWith('feature.') ||
+        k.startsWith('display.') ||
+        k.startsWith('escpos.')
+      )
+        out[k] = v;
     }
     return out;
   }
