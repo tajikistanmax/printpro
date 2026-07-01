@@ -64,7 +64,10 @@ export default function EquipmentPage() {
   }
   useEffect(() => {
     load();
-    api.get(`/branches?companyId=${cid}`).then(setBranches).catch(() => {});
+    api
+      .get(`/branches?companyId=${cid}`)
+      .then((b) => { setBranches(b); if (b[0]) setBranchId(b[0].id); })
+      .catch(() => {});
   }, [cid]);
 
   async function create(e: React.FormEvent) {

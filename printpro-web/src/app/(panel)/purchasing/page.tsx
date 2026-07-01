@@ -261,15 +261,17 @@ export default function PurchasingPage() {
                     ))}
                   </Select>
                 </Field>
-                <Field label="Филиал">
-                  <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
+                {branches.length > 1 && (
+                  <Field label="Филиал">
+                    <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                )}
               </div>
 
               {/* Позиции */}

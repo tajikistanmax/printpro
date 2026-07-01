@@ -150,7 +150,7 @@ export default function WarehousePage() {
       .then(([p, u, b, c]) => {
         setProducts(p); setUnits(u); setBranches(b); setCategories(c);
         if (p[0]) setProductId(p[0].id);
-        if (b[0]) { setBranchId(b[0].id); setTFrom(b[0].id); setInvBranch(b[0].id); }
+        if (b[0]) { setBranchId(b[0].id); setTFrom(b[0].id); setInvBranch(b[0].id); setWoBranch(b[0].id); }
         if (u[0]) setPUnit(u[0].id);
       })
       .catch(() => {})
@@ -534,10 +534,12 @@ export default function WarehousePage() {
           <TableCard>
             <Toolbar>
               <SearchInput value={q} onChange={setQ} placeholder="Поиск по товарам, артикулу, штрихкоду…" />
-              <Select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className="w-auto">
-                <option value="">Все склады</option>
-                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </Select>
+              {branches.length > 1 && (
+                <Select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className="w-auto">
+                  <option value="">Все склады</option>
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
+              )}
               <Select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="w-auto">
                 <option value="">Все статусы</option>
                 <option value="ok">Достаточно</option>
@@ -607,7 +609,7 @@ export default function WarehousePage() {
             <form onSubmit={receive} className="space-y-3">
               <Field label="Товар"><Select value={productId} onChange={(e) => setProductId(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Склад"><Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
+                {branches.length > 1 && <Field label="Склад"><Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>}
                 <Field label="Количество"><Input value={qty} onChange={(e) => setQty(e.target.value)} type="number" step="0.001" placeholder="0" required /></Field>
               </div>
               <Button type="submit" className="w-full">Принять на склад</Button>
@@ -616,19 +618,21 @@ export default function WarehousePage() {
             <p className="mt-2 text-xs text-slate-400">Для приёмки с поставщиком, накладной и себестоимостью — раздел «Закупки».</p>
           </Card>
 
-          <Card>
-            <SectionTitle>Перемещение между складами</SectionTitle>
-            <form onSubmit={transfer} className="space-y-3">
-              <Field label="Товар"><Select value={tProduct} onChange={(e) => setTProduct(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Откуда"><Select value={tFrom} onChange={(e) => setTFrom(e.target.value)} required><option value="">—</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
-                <Field label="Куда"><Select value={tTo} onChange={(e) => setTTo(e.target.value)} required><option value="">—</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
-              </div>
-              <Field label="Количество"><Input value={tQty} onChange={(e) => setTQty(e.target.value)} type="number" step="0.001" placeholder="0" required /></Field>
-              <Button type="submit" variant="sky" className="w-full">Переместить</Button>
-              {tMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{tMsg}</p>}
-            </form>
-          </Card>
+          {branches.length > 1 && (
+            <Card>
+              <SectionTitle>Перемещение между складами</SectionTitle>
+              <form onSubmit={transfer} className="space-y-3">
+                <Field label="Товар"><Select value={tProduct} onChange={(e) => setTProduct(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Откуда"><Select value={tFrom} onChange={(e) => setTFrom(e.target.value)} required><option value="">—</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
+                  <Field label="Куда"><Select value={tTo} onChange={(e) => setTTo(e.target.value)} required><option value="">—</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
+                </div>
+                <Field label="Количество"><Input value={tQty} onChange={(e) => setTQty(e.target.value)} type="number" step="0.001" placeholder="0" required /></Field>
+                <Button type="submit" variant="sky" className="w-full">Переместить</Button>
+                {tMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{tMsg}</p>}
+              </form>
+            </Card>
+          )}
         </div>
       )}
 
@@ -636,11 +640,13 @@ export default function WarehousePage() {
       {tab === 'inv' && canManage && (
         <TableCard>
           <div className="flex flex-wrap items-end gap-4 border-b border-slate-100 p-4 dark:border-slate-700/60">
-            <Field label="Склад">
-              <Select value={invBranch} onChange={(e) => { setInvBranch(e.target.value); setInvCounts({}); }} className="w-auto">
-                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </Select>
-            </Field>
+            {branches.length > 1 && (
+              <Field label="Склад">
+                <Select value={invBranch} onChange={(e) => { setInvBranch(e.target.value); setInvCounts({}); }} className="w-auto">
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
+              </Field>
+            )}
             <Field label="Поиск материала">
               <input value={invSearch} onChange={(e) => setInvSearch(e.target.value)} placeholder="Название…" className="w-56 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
             </Field>
@@ -696,7 +702,7 @@ export default function WarehousePage() {
             <form onSubmit={writeOff} className="space-y-3">
               <Field label="Товар"><Select value={woProduct} onChange={(e) => setWoProduct(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Склад"><Select value={woBranch} onChange={(e) => setWoBranch(e.target.value)}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
+                {branches.length > 1 && <Field label="Склад"><Select value={woBranch} onChange={(e) => setWoBranch(e.target.value)}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>}
                 <Field label="Количество"><Input value={woQty} onChange={(e) => setWoQty(e.target.value)} type="number" step="0.001" placeholder="0" required /></Field>
               </div>
               <Field label="Причина"><Input value={woReason} onChange={(e) => setWoReason(e.target.value)} placeholder="напр. повреждение" /></Field>
@@ -1044,7 +1050,7 @@ export default function WarehousePage() {
                     <SectionTitle>Быстрые действия</SectionTitle>
                     <div className="mb-4 grid grid-cols-2 gap-2">
                       <Button variant="ghost" size="sm" onClick={() => quickAction('receive')}>＋ Поступление</Button>
-                      <Button variant="ghost" size="sm" onClick={() => quickAction('transfer')}><NavIcon name="refresh" className="h-4 w-4" />Перемещение</Button>
+                      {branches.length > 1 && <Button variant="ghost" size="sm" onClick={() => quickAction('transfer')}><NavIcon name="refresh" className="h-4 w-4" />Перемещение</Button>}
                       <Button variant="ghost" size="sm" onClick={() => quickAction('recount')}><NavIcon name="check" className="h-4 w-4" />Инвентаризация</Button>
                       <Button variant="ghost" size="sm" onClick={() => printLabel(material)}><NavIcon name="print" className="h-4 w-4" />Печать этикетки</Button>
                       <Button variant="ghost" size="sm" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт в Excel</Button>
