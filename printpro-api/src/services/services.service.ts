@@ -91,6 +91,24 @@ export class ServicesService {
     });
   }
 
+  // Переименовать / назначить категорию услуг по умолчанию (одна на компанию)
+  async updateCategory(id: string, dto: { name?: string; isDefault?: boolean }) {
+    const cat = await this.prisma.serviceCategory.findUniqueOrThrow({ where: { id } });
+    if (dto.isDefault) {
+      await this.prisma.serviceCategory.updateMany({
+        where: { companyId: cat.companyId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+    return this.prisma.serviceCategory.update({
+      where: { id },
+      data: {
+        name: dto.name?.trim() || undefined,
+        isDefault: dto.isDefault,
+      },
+    });
+  }
+
   // Удалить категорию: сначала открепляем услуги, чтобы не нарушать связь
   async removeCategory(id: string) {
     await this.prisma.service.updateMany({

@@ -83,6 +83,14 @@ export class ProductsController {
     return this.products.findCategories(companyId);
   }
 
+  @Patch('product-categories/:id')
+  updateCategory(
+    @Param('id') id: string,
+    @Body() dto: { name?: string; isDefault?: boolean },
+  ) {
+    return this.products.updateCategory(id, dto);
+  }
+
   @Delete('product-categories/:id')
   removeCategory(@Param('id') id: string) {
     return this.products.removeCategory(id);
@@ -97,6 +105,14 @@ export class ProductsController {
   @Get('units')
   findUnits(@Query('companyId') companyId: string) {
     return this.products.findUnits(companyId);
+  }
+
+  @Patch('units/:id')
+  updateUnit(
+    @Param('id') id: string,
+    @Body() dto: { name?: string; shortName?: string; isDefault?: boolean },
+  ) {
+    return this.products.updateUnit(id, dto);
   }
 
   @Delete('units/:id')

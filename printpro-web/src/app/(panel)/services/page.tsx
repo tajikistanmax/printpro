@@ -103,7 +103,11 @@ export default function ServicesPage() {
       api.get(`/service-categories?companyId=${cid}`),
       api.get(`/products?companyId=${cid}`),
     ])
-      .then(([s, c, p]) => { setServices(s); setCategories(c); setProducts(p); })
+      .then(([s, c, p]) => {
+        setServices(s); setCategories(c); setProducts(p);
+        const defCat = c.find((x: any) => x.isDefault);
+        if (defCat) setNewF((f) => ({ ...f, categoryId: defCat.id }));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }
@@ -141,7 +145,7 @@ export default function ServicesPage() {
         designSurcharge: newF.designSurcharge ? Number(newF.designSurcharge) : 0,
         imageUrl: newF.imageUrl || undefined,
       });
-      setNewF({ name: '', categoryId: '', pricingType: 'FIXED', basePrice: '', costPrice: '', leadTime: '', designSurcharge: '', imageUrl: '' });
+      setNewF({ name: '', categoryId: categories.find((x: any) => x.isDefault)?.id ?? '', pricingType: 'FIXED', basePrice: '', costPrice: '', leadTime: '', designSurcharge: '', imageUrl: '' });
       setAddMsg('✓ Услуга добавлена');
       setShowAddForm(false);
       load();

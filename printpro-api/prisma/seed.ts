@@ -48,7 +48,20 @@ async function main() {
     const ex = await prisma.unit.findFirst({
       where: { companyId: COMPANY_ID, shortName: u.shortName },
     });
-    if (!ex) await prisma.unit.create({ data: { companyId: COMPANY_ID, ...u } });
+    if (!ex)
+      await prisma.unit.create({
+        data: { companyId: COMPANY_ID, ...u, isDefault: u.shortName === 'шт' },
+      });
+  }
+  // «шт» — единица по умолчанию, если ни одна ещё не назначена
+  const hasDefaultUnit = await prisma.unit.findFirst({
+    where: { companyId: COMPANY_ID, isDefault: true },
+  });
+  if (!hasDefaultUnit) {
+    const sht = await prisma.unit.findFirst({
+      where: { companyId: COMPANY_ID, shortName: 'шт' },
+    });
+    if (sht) await prisma.unit.update({ where: { id: sht.id }, data: { isDefault: true } });
   }
 
   // Категории товаров по умолчанию (пару штук — остальное добавят в Настройках)

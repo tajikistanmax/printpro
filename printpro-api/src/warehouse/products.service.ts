@@ -259,6 +259,24 @@ export class ProductsService {
     });
   }
 
+  // Переименовать / назначить категорию по умолчанию (одна на компанию)
+  async updateCategory(id: string, dto: { name?: string; isDefault?: boolean }) {
+    const cat = await this.prisma.productCategory.findUniqueOrThrow({ where: { id } });
+    if (dto.isDefault) {
+      await this.prisma.productCategory.updateMany({
+        where: { companyId: cat.companyId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+    return this.prisma.productCategory.update({
+      where: { id },
+      data: {
+        name: dto.name?.trim() || undefined,
+        isDefault: dto.isDefault,
+      },
+    });
+  }
+
   // Удалить категорию: сначала открепляем товары, чтобы не нарушать связь
   async removeCategory(id: string) {
     await this.prisma.product.updateMany({
@@ -307,6 +325,28 @@ export class ProductsService {
 
   findUnits(companyId: string) {
     return this.prisma.unit.findMany({ where: { companyId }, orderBy: { name: 'asc' } });
+  }
+
+  // Переименовать / назначить единицу по умолчанию (одна на компанию)
+  async updateUnit(
+    id: string,
+    dto: { name?: string; shortName?: string; isDefault?: boolean },
+  ) {
+    const u = await this.prisma.unit.findUniqueOrThrow({ where: { id } });
+    if (dto.isDefault) {
+      await this.prisma.unit.updateMany({
+        where: { companyId: u.companyId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+    return this.prisma.unit.update({
+      where: { id },
+      data: {
+        name: dto.name?.trim() || undefined,
+        shortName: dto.shortName?.trim() || undefined,
+        isDefault: dto.isDefault,
+      },
+    });
   }
 
   async removeUnit(id: string) {

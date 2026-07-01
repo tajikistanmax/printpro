@@ -384,6 +384,7 @@ model ServiceCategory {
   companyId String
   company   Company   @relation(fields: [companyId], references: [id])
   name      String
+  isDefault Boolean   @default(false)
   sortOrder Int       @default(0)
 
   services Service[]
@@ -482,6 +483,7 @@ model ProductCategory {
   companyId String
   company   Company   @relation(fields: [companyId], references: [id])
   name      String
+  isDefault Boolean   @default(false)
 
   products Product[]
 }
@@ -496,6 +498,7 @@ model Unit {
   company   Company   @relation(fields: [companyId], references: [id])
   name      String // штука, рулон, метр квадратный
   shortName String // шт, рул, м²
+  isDefault Boolean @default(false)
 
   products Product[]
 }

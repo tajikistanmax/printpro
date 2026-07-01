@@ -644,6 +644,8 @@ function CatalogSection({ cid }: { cid: string }) {
   const [uName, setUName] = useState('');
   const [uShort, setUShort] = useState('');
   const [msg, setMsg] = useState('');
+  // Инлайн-редактирование: { kind: 'cat'|'scat'|'unit', id, name, shortName? }
+  const [edit, setEdit] = useState<any>(null);
 
   function load() {
     api.get(`/product-categories?companyId=${cid}`).then(setCategories).catch(() => {});
@@ -651,6 +653,24 @@ function CatalogSection({ cid }: { cid: string }) {
     api.get(`/units?companyId=${cid}`).then(setUnits).catch(() => {});
   }
   useEffect(load, [cid]);
+
+  function urlFor(kind: string, id: string) {
+    return kind === 'unit' ? `/units/${id}`
+      : kind === 'scat' ? `/service-categories/${id}`
+      : `/product-categories/${id}`;
+  }
+  async function setDefault(kind: string, id: string) {
+    try { await api.patch(urlFor(kind, id), { isDefault: true }); load(); }
+    catch (e: any) { setMsg('Ошибка: ' + e.message); }
+  }
+  async function saveEdit() {
+    if (!edit) return;
+    const body = edit.kind === 'unit'
+      ? { name: edit.name, shortName: edit.shortName }
+      : { name: edit.name };
+    try { await api.patch(urlFor(edit.kind, edit.id), body); setEdit(null); load(); }
+    catch (e: any) { setMsg('Ошибка: ' + e.message); }
+  }
 
   async function addCategory() {
     const n = catName.trim();
@@ -691,19 +711,60 @@ function CatalogSection({ cid }: { cid: string }) {
     try { await api.del(`/units/${id}`); load(); } catch (e: any) { setMsg('Ошибка: ' + e.message); }
   }
 
+  const renderRow = (kind: string, it: any) => {
+    const editing = edit?.kind === kind && edit.id === it.id;
+    const label = kind === 'unit' ? `${it.shortName} — ${it.name}` : it.name;
+    return (
+      <div key={it.id} className="flex items-center justify-between gap-2 border-b border-slate-100 py-2 last:border-0 dark:border-slate-700/60">
+        {editing ? (
+          <div className="flex flex-1 flex-wrap items-center gap-2">
+            {kind === 'unit' && (
+              <Input value={edit.shortName ?? ''} onChange={(e) => setEdit({ ...edit, shortName: e.target.value })} placeholder="шт" className="w-20" />
+            )}
+            <Input value={edit.name ?? ''} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder={kind === 'unit' ? 'Штука' : 'Название'} className="min-w-[140px] flex-1" />
+            <Button size="sm" onClick={saveEdit}>OK</Button>
+            <Button size="sm" variant="ghost" onClick={() => setEdit(null)}>Отмена</Button>
+          </div>
+        ) : (
+          <>
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDefault(kind, it.id)}
+                title={it.isDefault ? 'По умолчанию' : 'Сделать по умолчанию'}
+                className={it.isDefault ? 'text-amber-500' : 'text-slate-300 hover:text-amber-400'}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill={it.isDefault ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round">
+                  <path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5-5.9-3.2-5.9 3.2 1.2-6.5L2.5 9.4l6.6-.9z" />
+                </svg>
+              </button>
+              <span className="truncate text-sm text-slate-700 dark:text-slate-200">{label}</span>
+              {it.isDefault && <Badge tone="amber">по умолчанию</Badge>}
+            </div>
+            <div className="flex shrink-0 gap-1">
+              <Button variant="ghost" size="sm" onClick={() => setEdit(kind === 'unit' ? { kind, id: it.id, name: it.name, shortName: it.shortName } : { kind, id: it.id, name: it.name })}>
+                <NavIcon name="edit" className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => (kind === 'unit' ? delUnit(it.id) : kind === 'scat' ? delServiceCat(it.id) : delCategory(it.id))}>
+                <NavIcon name="close" className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <Card>
         <SectionTitle>Категории товаров</SectionTitle>
-        <div className="flex flex-wrap items-center gap-2">
-          {categories.map((c) => (
-            <span key={c.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              {c.name}
-              <button type="button" onClick={() => delCategory(c.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
-            </span>
-          ))}
-          {categories.length === 0 && <span className="text-xs text-slate-400">Нет категорий.</span>}
-        </div>
+        <p className="-mt-1 mb-2 text-xs text-slate-400 dark:text-slate-500">★ — категория по умолчанию (подставляется в новый товар). Карандаш — переименовать.</p>
+        {categories.length === 0 ? (
+          <p className="text-xs text-slate-400">Нет категорий.</p>
+        ) : (
+          <div>{categories.map((c) => renderRow('cat', c))}</div>
+        )}
         <div className="mt-3 flex items-center gap-2">
           <Input value={catName} onChange={(e) => setCatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCategory())} placeholder="Новая категория (напр. Бумага)" />
           <Button type="button" variant="ghost" onClick={addCategory} className="shrink-0">+ Категория</Button>
@@ -712,15 +773,11 @@ function CatalogSection({ cid }: { cid: string }) {
 
       <Card>
         <SectionTitle>Категории услуг</SectionTitle>
-        <div className="flex flex-wrap items-center gap-2">
-          {serviceCats.map((c) => (
-            <span key={c.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              {c.name}
-              <button type="button" onClick={() => delServiceCat(c.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
-            </span>
-          ))}
-          {serviceCats.length === 0 && <span className="text-xs text-slate-400">Нет категорий услуг.</span>}
-        </div>
+        {serviceCats.length === 0 ? (
+          <p className="text-xs text-slate-400">Нет категорий услуг.</p>
+        ) : (
+          <div>{serviceCats.map((c) => renderRow('scat', c))}</div>
+        )}
         <div className="mt-3 flex items-center gap-2">
           <Input value={scatName} onChange={(e) => setScatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addServiceCat())} placeholder="Новая категория услуг (напр. Печать)" />
           <Button type="button" variant="ghost" onClick={addServiceCat} className="shrink-0">+ Категория</Button>
@@ -729,17 +786,13 @@ function CatalogSection({ cid }: { cid: string }) {
 
       <Card>
         <SectionTitle>Единицы измерения</SectionTitle>
-        <div className="mb-3 flex flex-wrap gap-2">
-          {units.map((u) => (
-            <span key={u.id} className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-sm dark:bg-slate-800">
-              <span className="font-medium text-slate-700 dark:text-slate-200">{u.shortName}</span>
-              <span className="text-slate-400">({u.name})</span>
-              <button type="button" onClick={() => delUnit(u.id)} className="inline-flex text-rose-400 hover:text-rose-600"><NavIcon name="close" className="h-3.5 w-3.5" /></button>
-            </span>
-          ))}
-          {units.length === 0 && <span className="text-sm text-slate-400">Нет единиц. Добавьте: шт, м², рул и т.д.</span>}
-        </div>
-        <form onSubmit={addUnit} className="flex flex-wrap items-end gap-2">
+        <p className="-mt-1 mb-2 text-xs text-slate-400 dark:text-slate-500">★ — единица по умолчанию для новых товаров (обычно «шт»).</p>
+        {units.length === 0 ? (
+          <p className="text-sm text-slate-400">Нет единиц. Добавьте: шт, м², рул и т.д.</p>
+        ) : (
+          <div>{units.map((u) => renderRow('unit', u))}</div>
+        )}
+        <form onSubmit={addUnit} className="mt-3 flex flex-wrap items-end gap-2">
           <Field label="Полное название"><Input value={uName} onChange={(e) => setUName(e.target.value)} placeholder="Штука" className="w-36" /></Field>
           <Field label="Сокращение"><Input value={uShort} onChange={(e) => setUShort(e.target.value)} placeholder="шт" className="w-24" /></Field>
           <Button type="submit" variant="ghost">+ Единица</Button>

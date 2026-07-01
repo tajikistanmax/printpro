@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ServicesService } from './services.service';
 
 // Маршруты категорий услуг: /service-categories
@@ -14,6 +14,14 @@ export class ServiceCategoriesController {
   @Get()
   findAll(@Query('companyId') companyId: string) {
     return this.servicesService.findCategories(companyId);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body() dto: { name?: string; isDefault?: boolean },
+  ) {
+    return this.servicesService.updateCategory(id, dto);
   }
 
   @Delete(':id')

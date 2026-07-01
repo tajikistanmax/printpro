@@ -143,8 +143,11 @@ export default function WarehousePage() {
         setProducts(p); setUnits(u); setBranches(b); setCategories(c);
         if (p[0]) setProductId(p[0].id);
         if (b[0]) { setBranchId(b[0].id); setTFrom(b[0].id); setInvBranch(b[0].id); setWoBranch(b[0].id); }
-        // «шт» — единица по умолчанию (если есть), иначе первая
-        if (u[0]) setPUnit((u.find((x: any) => x.shortName === 'шт') ?? u[0]).id);
+        // Единица по умолчанию: помеченная isDefault → «шт» → первая
+        if (u[0]) setPUnit((u.find((x: any) => x.isDefault) ?? u.find((x: any) => x.shortName === 'шт') ?? u[0]).id);
+        // Категория по умолчанию (если задана)
+        const defCat = c.find((x: any) => x.isDefault);
+        if (defCat) setPCat(defCat.id);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -167,7 +170,12 @@ export default function WarehousePage() {
 
   // ---- новый товар ----
   function resetProductForm() {
-    setPName(''); setPCat(''); setPPrice(''); setPMin(''); setPSku(''); setPBarcode(''); setPImage('');
+    setPName('');
+    setPCat(categories.find((x: any) => x.isDefault)?.id ?? '');
+    setPUnit(
+      (units.find((x: any) => x.isDefault) ?? units.find((x: any) => x.shortName === 'шт') ?? units[0])?.id ?? '',
+    );
+    setPPrice(''); setPMin(''); setPSku(''); setPBarcode(''); setPImage('');
     setAdvancedOpen(false); setPMsg('');
   }
   function openProductModal() {
