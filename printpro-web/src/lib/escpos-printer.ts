@@ -45,6 +45,8 @@ export type ReceiptData = {
   phone?: string;
   inn?: string;
   orderNumber: string;
+  receiptNumber?: string;
+  hasService?: boolean; // есть услуга → печатаем и номер заказа (по нему заберут готовое)
   date: string;
   items: Array<{ name: string; qty: number; total: number }>;
   total: number;
@@ -206,7 +208,11 @@ function buildReceipt(r: ReceiptData, cfg: EscposConfig): Uint8Array {
   // Реквизиты чека
   align(0);
   line();
-  text(twoCols('Заказ', '№' + r.orderNumber, cfg.width)); nl();
+  if (r.receiptNumber) { text(twoCols('Чек', r.receiptNumber, cfg.width)); nl(); }
+  // Номер заказа — только если есть услуга (изготовление) или нет номера чека
+  if (r.hasService || !r.receiptNumber) {
+    text(twoCols('Заказ', '№' + r.orderNumber, cfg.width)); nl();
+  }
   text(twoCols('Дата', r.date, cfg.width)); nl();
   line();
 

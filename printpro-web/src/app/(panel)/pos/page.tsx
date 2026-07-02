@@ -366,6 +366,8 @@ export default function PosPage() {
       phone: shopInfo.phone,
       inn: shopInfo.inn,
       orderNumber: receipt.orderNumber,
+      receiptNumber: receipt.receiptNumber,
+      hasService: receipt._hasService,
       date: receipt._date,
       items: (receipt.items ?? []).map((it: any) => ({
         name: it.description || it.service?.name || it.product?.name || 'Позиция',
@@ -478,6 +480,9 @@ export default function PosPage() {
           : METHOD_LABEL[useMethod] ?? useMethod,
         _change: useMethod === 'CASH' && Number(cashReceived) > 0 ? change : 0,
         _date: new Date().toLocaleString('ru-RU'),
+        // Номер заказа показываем на чеке только если есть услуга (изготовление):
+        // по нему клиент заберёт готовое. Для чистой продажи товара — только № чека.
+        _hasService: cart.some((c) => c.itemType === 'SERVICE'),
       });
       setCart([]);
       setDiscount('');
@@ -742,10 +747,12 @@ export default function PosPage() {
                     <span>{receipt.receiptNumber}</span>
                   </div>
                 )}
-                <div className="flex justify-between">
-                  <span>Заказ</span>
-                  <span>№{receipt.orderNumber}</span>
-                </div>
+                {(receipt._hasService || !receipt.receiptNumber) && (
+                  <div className="flex justify-between">
+                    <span>Заказ</span>
+                    <span>№{receipt.orderNumber}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Дата</span>
                   <span>{receipt._date}</span>
