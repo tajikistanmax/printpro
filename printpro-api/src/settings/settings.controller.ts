@@ -1,25 +1,28 @@
-import { Body, Controller, Get, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
 import { SettingsService } from './settings.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('settings')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SettingsController {
   constructor(private readonly settings: SettingsService) {}
 
+  // companyId — строго из токена: нельзя читать/перезаписывать настройки чужой компании.
   @Get()
   @RequirePermissions('settings.manage')
-  getAll(@Query('companyId') companyId: string) {
-    return this.settings.getAll(companyId);
+  getAll(@CurrentUser() user: { companyId: string }) {
+    return this.settings.getAll(user.companyId);
   }
 
   @Put()
   @RequirePermissions('settings.manage')
   setMany(
-    @Body() body: { companyId: string; values: Record<string, string> },
+    @CurrentUser() user: { companyId: string },
+    @Body() body: { values: Record<string, string> },
   ) {
-    return this.settings.setMany(body.companyId, body.values ?? {});
+    return this.settings.setMany(user.companyId, body.values ?? {});
   }
 }

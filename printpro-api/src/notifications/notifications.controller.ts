@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { EmailService } from '../email/email.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
@@ -13,17 +14,18 @@ export class NotificationsController {
     private readonly email: EmailService,
   ) {}
 
-  // Достаточно быть авторизованным сотрудником
+  // Достаточно быть авторизованным сотрудником. companyId — из токена.
   @Get()
-  list(@Query('companyId') companyId: string) {
-    return this.notifications.list(companyId);
+  list(@CurrentUser() user: { companyId: string }) {
+    return this.notifications.list(user.companyId);
   }
 
-  // Проверка Telegram: отправляет тестовое сообщение по настройкам компании
+  // Проверка Telegram: отправляет тестовое сообщение по настройкам СВОЕЙ компании
+  // (companyId из токена — нельзя слать через чужой Telegram/SMTP).
   @Post('telegram/test')
-  async telegramTest(@Body() body: { companyId: string }) {
+  async telegramTest(@CurrentUser() user: { companyId: string }) {
     const ok = await this.telegram.send(
-      body.companyId,
+      user.companyId,
       '🔔 PrintPro: проверка уведомлений прошла успешно.',
     );
     return { ok };
@@ -31,9 +33,12 @@ export class NotificationsController {
 
   // Проверка Email: отправляет тестовое письмо на указанный адрес
   @Post('email/test')
-  async emailTest(@Body() body: { companyId: string; to: string }) {
+  async emailTest(
+    @CurrentUser() user: { companyId: string },
+    @Body() body: { to: string },
+  ) {
     return this.email.send(
-      body.companyId,
+      user.companyId,
       body.to,
       'PrintPro — проверка почты',
       'Проверка email-уведомлений прошла успешно. Это тестовое письмо PrintPro.',

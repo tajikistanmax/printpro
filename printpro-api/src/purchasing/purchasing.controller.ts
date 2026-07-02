@@ -5,7 +5,6 @@ import {
   Param,
   Patch,
   Post,
-  Query,
   UseGuards,
 } from '@nestjs/common';
 import { PurchasingService } from './purchasing.service';
@@ -27,22 +26,30 @@ export class PurchasingController {
   constructor(private readonly purchasing: PurchasingService) {}
 
   // ----- Поставщики -----
+  // companyId — из токена; операции по :id проверяют владельца в сервисе.
   @Get('suppliers')
   @RequirePermissions('stock.view')
-  listSuppliers(@Query('companyId') companyId: string) {
-    return this.purchasing.listSuppliers(companyId);
+  listSuppliers(@CurrentUser() user: { companyId: string }) {
+    return this.purchasing.listSuppliers(user.companyId);
   }
 
   @Post('suppliers')
   @RequirePermissions('stock.manage')
-  createSupplier(@Body() dto: CreateSupplierDto) {
-    return this.purchasing.createSupplier(dto);
+  createSupplier(
+    @Body() dto: CreateSupplierDto,
+    @CurrentUser() user: { companyId: string },
+  ) {
+    return this.purchasing.createSupplier({ ...dto, companyId: user.companyId });
   }
 
   @Patch('suppliers/:id')
   @RequirePermissions('stock.manage')
-  updateSupplier(@Param('id') id: string, @Body() dto: UpdateSupplierDto) {
-    return this.purchasing.updateSupplier(id, dto);
+  updateSupplier(
+    @Param('id') id: string,
+    @Body() dto: UpdateSupplierDto,
+    @CurrentUser() user: { companyId: string },
+  ) {
+    return this.purchasing.updateSupplier(id, dto, user.companyId);
   }
 
   @Post('suppliers/:id/pay-debt')
@@ -50,31 +57,34 @@ export class PurchasingController {
   paySupplierDebt(
     @Param('id') id: string,
     @Body() dto: PaySupplierDebtDto,
-    @CurrentUser() user: { sub: string },
+    @CurrentUser() user: { sub: string; companyId: string },
   ) {
-    return this.purchasing.paySupplierDebt(id, dto, user.sub);
+    return this.purchasing.paySupplierDebt(id, dto, user.sub, user.companyId);
   }
 
   // ----- Приёмка -----
   @Get('receipts')
   @RequirePermissions('stock.view')
-  listReceipts(@Query('companyId') companyId: string) {
-    return this.purchasing.listReceipts(companyId);
+  listReceipts(@CurrentUser() user: { companyId: string }) {
+    return this.purchasing.listReceipts(user.companyId);
   }
 
   @Get('receipts/:id')
   @RequirePermissions('stock.view')
-  findReceipt(@Param('id') id: string) {
-    return this.purchasing.findReceipt(id);
+  findReceipt(@Param('id') id: string, @CurrentUser() user: { companyId: string }) {
+    return this.purchasing.findReceipt(id, user.companyId);
   }
 
   @Post('receipts')
   @RequirePermissions('stock.manage')
   createReceipt(
     @Body() dto: CreateReceiptDto,
-    @CurrentUser() user: { sub: string },
+    @CurrentUser() user: { sub: string; companyId: string },
   ) {
-    return this.purchasing.createReceipt(dto, user.sub);
+    return this.purchasing.createReceipt(
+      { ...dto, companyId: user.companyId },
+      user.sub,
+    );
   }
 
   // ----- Заявки на закупку -----

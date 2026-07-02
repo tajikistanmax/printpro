@@ -102,4 +102,19 @@ export class PromocodesService {
     }
     return res.discount;
   }
+
+  // Вернуть использование кода — компенсация при откате незавершённой продажи,
+  // чтобы отменённый чек не «съедал» лимит промокода. Ниже нуля не опускаем.
+  async release(companyId: string, code: string) {
+    const normalizedCode = code.trim().toUpperCase();
+    await this.prisma.promoCode.updateMany({
+      where: {
+        companyId,
+        code: normalizedCode,
+        deletedAt: null,
+        usedCount: { gt: 0 },
+      },
+      data: { usedCount: { decrement: 1 } },
+    });
+  }
 }

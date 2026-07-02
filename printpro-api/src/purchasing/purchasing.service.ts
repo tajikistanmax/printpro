@@ -29,8 +29,13 @@ export class PurchasingService {
   }
 
   // Оплата нашего долга поставщику: запись оплаты + уменьшение долга + расход из кассы
-  async paySupplierDebt(id: string, dto: PaySupplierDebtDto, userId?: string) {
-    const supplier = await this.ensureSupplier(id);
+  async paySupplierDebt(
+    id: string,
+    dto: PaySupplierDebtDto,
+    userId?: string,
+    companyId?: string,
+  ) {
+    const supplier = await this.ensureSupplier(id, companyId);
     const outstanding = Number(supplier.debt) || 0;
     // Нельзя заплатить больше долга: иначе из кассы уйдёт лишнее, а долг всё равно 0.
     const pay = Number(Math.min(dto.amount, outstanding).toFixed(2));
@@ -84,8 +89,8 @@ export class PurchasingService {
     });
   }
 
-  async updateSupplier(id: string, dto: UpdateSupplierDto) {
-    await this.ensureSupplier(id);
+  async updateSupplier(id: string, dto: UpdateSupplierDto, companyId?: string) {
+    await this.ensureSupplier(id, companyId);
     return this.prisma.supplier.update({ where: { id }, data: dto });
   }
 
@@ -232,9 +237,12 @@ export class PurchasingService {
     });
   }
 
-  async findReceipt(id: string) {
+  async findReceipt(id: string, companyId?: string) {
     const receipt = await this.loadReceipt(this.prisma, id);
     if (!receipt) throw new NotFoundException('Приёмка не найдена');
+    if (companyId && receipt.companyId !== companyId) {
+      throw new NotFoundException('Приёмка не найдена');
+    }
     return receipt;
   }
 
@@ -280,9 +288,13 @@ export class PurchasingService {
     });
   }
 
-  private async ensureSupplier(id: string) {
+  // companyId (из токена) — поставщик чужой компании считается «не найден».
+  private async ensureSupplier(id: string, companyId?: string) {
     const s = await this.prisma.supplier.findUnique({ where: { id } });
     if (!s) throw new NotFoundException('Поставщик не найден');
+    if (companyId && s.companyId !== companyId) {
+      throw new NotFoundException('Поставщик не найден');
+    }
     return s;
   }
 }

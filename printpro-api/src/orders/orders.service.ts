@@ -273,10 +273,26 @@ export class OrdersService {
   // ---------- Добавить оплату (касса) ----------
   // userId — кассир из токена; если смена не указана явно, привязываем
   // оплату к его текущей открытой смене, чтобы она попала в отчёт кассы.
-  async addPayment(orderId: string, dto: AddPaymentDto, userId?: string) {
+  async addPayment(
+    orderId: string,
+    dto: AddPaymentDto,
+    userId?: string,
+    companyId?: string,
+  ) {
+    // «В долг» — это НЕ внесение денег: такой платёж нельзя проводить как оплату,
+    // иначе paid вырастет и заказ станет PAID без реальных денег (долг «испарится»).
+    // Долговая продажа оформляется отдельным сценарием в quickSale.
+    if (dto.method === PaymentMethod.DEBT) {
+      throw new BadRequestException(
+        'Способ «В долг» нельзя провести как оплату — заказ остаётся долгом',
+      );
+    }
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order) throw new NotFoundException('Заказ не найден');
+      if (companyId && order.companyId !== companyId) {
+        throw new NotFoundException('Заказ не найден');
+      }
 
       // Защита от переплаты: нельзя внести больше, чем осталось к оплате.
       // Долговая оплата (method DEBT) здесь не проводится — это отдельный сценарий POS.
@@ -368,12 +384,25 @@ export class OrdersService {
       throw new BadRequestException('Для продажи «в долг» укажите клиента');
     }
 
+    // «В долг» нельзя смешивать с обычной оплатой: DEBT-часть не является деньгами,
+    // и её проведение как платежа закрыло бы заказ без реальной оплаты.
+    if (dto.payments?.some((p) => p.method === PaymentMethod.DEBT)) {
+      throw new BadRequestException(
+        'Способ «В долг» нельзя использовать в смешанной оплате',
+      );
+    }
+
     // Идемпотентность: повтор той же продажи (двойной клик / обрыв сети) не создаёт дубль.
+    // Отменённый заказ (откат неудавшейся продажи) НЕ считаем результатом — иначе
+    // повтор вернул бы отменённый чек как «успешный». При откате ключ и так очищается,
+    // это дополнительная защита на случай гонки.
     if (dto.idempotencyKey) {
       const existing = await this.prisma.order.findUnique({
         where: { idempotencyKey: dto.idempotencyKey },
       });
-      if (existing) return this.findOne(existing.id);
+      if (existing && existing.status !== OrderStatus.CANCELLED) {
+        return this.findOne(existing.id);
+      }
     }
 
     let order: Awaited<ReturnType<typeof this.create>>;
@@ -397,14 +426,18 @@ export class OrdersService {
         const ex = await this.prisma.order.findUnique({
           where: { idempotencyKey: dto.idempotencyKey },
         });
-        if (ex) return this.findOne(ex.id);
+        if (ex && ex.status !== OrderStatus.CANCELLED) return this.findOne(ex.id);
       }
       throw e;
     }
 
     // Всё после создания заказа оборачиваем в откат: при любой ошибке
-    // (неверная скидка/промокод, недоплата, сбой) возвращаем товар на склад и
-    // отменяем заказ, чтобы не осталось «недооформленной» продажи.
+    // (неверная скидка/промокод, недоплата, сбой) возвращаем товар на склад,
+    // отменяем заказ И компенсируем побочные эффекты (бонусы, промокод),
+    // чтобы клиент не потерял списанные баллы, а промокод — использование.
+    // bonusUsed/promoConsumed объявлены вне try — нужны в блоке отката.
+    let bonusUsed = 0;
+    let promoConsumed = false;
     try {
       // Скидка (абсолютная) — уменьшаем итог
       let total = Number(order.total);
@@ -417,11 +450,11 @@ export class OrdersService {
           dto.promoCode,
           total,
         );
+        promoConsumed = true;
         discount += promoDisc;
       }
 
       // Списание бонусов (п. 8.6) — не более 30% от суммы и не больше остатка
-      let bonusUsed = 0;
       if (dto.useBonus && dto.useBonus > 0 && order.clientId) {
         const client = await this.prisma.client.findUnique({
           where: { id: order.clientId },
@@ -529,8 +562,43 @@ export class OrdersService {
         },
       });
     } catch (e) {
-      // Откат частичной продажи: вернуть товар на склад и отменить заказ.
-      await this.refund(order.id, userId).catch(() => {});
+      // Откат частичной продажи: вернуть товар на склад, отменить заказ и
+      // компенсировать побочные эффекты, чтобы ничего не «сгорело» безвозвратно.
+      // 1) Вернуть списанные бонусы клиенту.
+      if (bonusUsed > 0 && order.clientId) {
+        await this.prisma.client
+          .update({
+            where: { id: order.clientId },
+            data: { bonusPoints: { increment: bonusUsed } },
+          })
+          .catch((err) =>
+            console.error('quickSale rollback: не удалось вернуть бонусы', err),
+          );
+      }
+      // 2) Откатить использование промокода.
+      if (promoConsumed && dto.promoCode) {
+        await this.promocodes
+          .release(dto.companyId, dto.promoCode)
+          .catch((err) =>
+            console.error('quickSale rollback: не удалось откатить промокод', err),
+          );
+      }
+      // 3) Вернуть товар на склад и отменить заказ.
+      await this.refund(order.id, userId).catch((err) =>
+        console.error('quickSale rollback: не удалось отменить заказ', err),
+      );
+      // 4) Освободить ключ идемпотентности: иначе повтор оплаты вернул бы
+      // ОТМЕНЁННЫЙ заказ как «успешный чек» (деньги не проведены, товар не списан).
+      if (dto.idempotencyKey) {
+        await this.prisma.order
+          .update({
+            where: { id: order.id },
+            data: { idempotencyKey: null },
+          })
+          .catch((err) =>
+            console.error('quickSale rollback: не удалось очистить ключ', err),
+          );
+      }
       throw e;
     }
 
@@ -559,19 +627,29 @@ export class OrdersService {
     });
   }
 
-  deleteHeld(id: string) {
+  // companyId (из токена) — удаляем только свой отложенный чек.
+  async deleteHeld(id: string, companyId?: string) {
+    if (companyId) {
+      const res = await this.prisma.heldSale.deleteMany({ where: { id, companyId } });
+      if (res.count === 0) throw new NotFoundException('Чек не найден');
+      return { ok: true };
+    }
     return this.prisma.heldSale.delete({ where: { id } });
   }
 
   // ---------- Возврат заказа ----------
   // Отменяет заказ, возвращает деньги из кассы и возвращает товар на склад.
-  async refund(orderId: string, userId?: string) {
+  // companyId (из токена) — нельзя вернуть чужой заказ.
+  async refund(orderId: string, userId?: string, companyId?: string) {
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
         include: { items: true, payments: true },
       });
       if (!order) throw new NotFoundException('Заказ не найден');
+      if (companyId && order.companyId !== companyId) {
+        throw new NotFoundException('Заказ не найден');
+      }
       if (order.status === OrderStatus.CANCELLED) {
         throw new BadRequestException('Заказ уже отменён');
       }
@@ -635,7 +713,29 @@ export class OrdersService {
         }
       }
 
-      // 3. Помечаем заказ отменённым и обнуляем долг (деньги возвращены,
+      // 3. Сторнируем начисленные бонусы (1% с каждой реальной оплаты, см. addPayment).
+      //    Иначе клиент циклом «купил-вернул» бесплатно копил бы баллы.
+      if (order.clientId) {
+        const earned = order.payments
+          .filter((p) => p.method !== PaymentMethod.DEBT)
+          .reduce((s, p) => s + Number((Number(p.amount) * 0.01).toFixed(2)), 0);
+        if (earned > 0) {
+          const client = await tx.client.findUnique({
+            where: { id: order.clientId },
+            select: { bonusPoints: true },
+          });
+          const newBonus = Math.max(
+            0,
+            Number((Number(client?.bonusPoints ?? 0) - earned).toFixed(2)),
+          );
+          await tx.client.update({
+            where: { id: order.clientId },
+            data: { bonusPoints: newBonus },
+          });
+        }
+      }
+
+      // 4. Помечаем заказ отменённым и обнуляем долг (деньги возвращены,
       //    отменённый заказ не должен висеть в долгах клиента).
       await tx.order.update({
         where: { id: orderId },
@@ -649,7 +749,12 @@ export class OrdersService {
   // ---------- Частичный возврат по чеку ----------
   // Возвращает выбранные позиции (товары — обратно на склад), деньги — из кассы,
   // фиксирует документ возврата и корректирует оплату заказа.
-  async createReturn(orderId: string, dto: CreateReturnDto, userId?: string) {
+  async createReturn(
+    orderId: string,
+    dto: CreateReturnDto,
+    userId?: string,
+    companyId?: string,
+  ) {
     if (!dto.items?.length) {
       throw new BadRequestException('Выберите позиции для возврата');
     }
@@ -659,6 +764,9 @@ export class OrdersService {
         include: { items: true },
       });
       if (!order) throw new NotFoundException('Заказ не найден');
+      if (companyId && order.companyId !== companyId) {
+        throw new NotFoundException('Заказ не найден');
+      }
 
       let amount = 0;
       let returnedCost = 0;
@@ -776,6 +884,26 @@ export class OrdersService {
         },
       });
 
+      // Сторнируем начисленные бонусы пропорционально реально возвращённым деньгам
+      // (1% — как при начислении в addPayment), чтобы возврат не оставлял «лишних» баллов.
+      if (order.clientId && cashRefund > 0) {
+        const earned = Number((cashRefund * 0.01).toFixed(2));
+        if (earned > 0) {
+          const client = await tx.client.findUnique({
+            where: { id: order.clientId },
+            select: { bonusPoints: true },
+          });
+          const newBonus = Math.max(
+            0,
+            Number((Number(client?.bonusPoints ?? 0) - earned).toFixed(2)),
+          );
+          await tx.client.update({
+            where: { id: order.clientId },
+            data: { bonusPoints: newBonus },
+          });
+        }
+      }
+
       return ret;
     });
   }
@@ -790,12 +918,15 @@ export class OrdersService {
 
   // ---------- Повторить заказ ----------
   // Создаёт новый заказ-копию по позициям и характеристикам существующего.
-  async reorder(orderId: string) {
+  async reorder(orderId: string, companyId?: string) {
     const src = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { items: true },
     });
     if (!src) throw new NotFoundException('Заказ не найден');
+    if (companyId && src.companyId !== companyId) {
+      throw new NotFoundException('Заказ не найден');
+    }
 
     return this.create({
       companyId: src.companyId,
@@ -828,9 +959,13 @@ export class OrdersService {
     status: OrderStatus,
     userId?: string,
     reason?: string,
+    companyId?: string,
   ) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Заказ не найден');
+    if (companyId && order.companyId !== companyId) {
+      throw new NotFoundException('Заказ не найден');
+    }
     if (order.status === status) return this.findOne(orderId);
 
     await this.prisma.$transaction([
@@ -949,9 +1084,13 @@ export class OrdersService {
     };
   }
 
-  async findOne(id: string) {
+  // companyId (из токена) — проверка владельца: заказ чужой компании не отдаём.
+  async findOne(id: string, companyId?: string) {
     const order = await this.loadFull(this.prisma, id);
     if (!order) throw new NotFoundException('Заказ не найден');
+    if (companyId && order.companyId !== companyId) {
+      throw new NotFoundException('Заказ не найден');
+    }
 
     // Резолвим имена пользователей в истории статусов
     const hist = order.statusHistory ?? [];
@@ -1001,9 +1140,12 @@ export class OrdersService {
   }
 
   // Установить/изменить срок погашения долга по заказу
-  async setDebtDue(orderId: string, dueDate: string | null) {
+  async setDebtDue(orderId: string, dueDate: string | null, companyId?: string) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Заказ не найден');
+    if (companyId && order.companyId !== companyId) {
+      throw new NotFoundException('Заказ не найден');
+    }
     return this.prisma.order.update({
       where: { id: orderId },
       data: { debtDueDate: dueDate ? new Date(dueDate) : null },

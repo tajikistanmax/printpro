@@ -6,7 +6,6 @@ import {
   Param,
   Patch,
   Post,
-  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
@@ -15,6 +14,14 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+
+// companyId берём из токена, не из тела/query — иначе можно работать с каталогом
+// чужой компании. (Проверка владельца по :id-товару — отдельная доработка.)
+interface JwtUser {
+  sub: string;
+  companyId: string;
+}
 
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -23,27 +30,28 @@ export class ProductsController {
 
   // ---- Товары ----
   @Post('products')
-  createProduct(@Body() dto: CreateProductDto) {
-    return this.products.createProduct(dto);
+  createProduct(@Body() dto: CreateProductDto, @CurrentUser() user: JwtUser) {
+    return this.products.createProduct({ ...dto, companyId: user.companyId });
   }
 
   @Get('products')
-  findAllProducts(@Query('companyId') companyId: string) {
-    return this.products.findAllProducts(companyId);
+  findAllProducts(@CurrentUser() user: JwtUser) {
+    return this.products.findAllProducts(user.companyId);
   }
 
   // Сгенерировать свободный штрихкод для нового товара
   @Get('products/generate-barcode')
-  generateBarcode(@Query('companyId') companyId: string) {
-    return this.products.generateBarcode(companyId);
+  generateBarcode(@CurrentUser() user: JwtUser) {
+    return this.products.generateBarcode(user.companyId);
   }
 
   // Импорт каталога из CSV/Excel (массив строк)
   @Post('products/import')
   importProducts(
-    @Body() body: { companyId: string; rows: Array<Record<string, any>> },
+    @CurrentUser() user: JwtUser,
+    @Body() body: { rows: Array<Record<string, any>> },
   ) {
-    return this.products.importProducts(body.companyId, body.rows ?? []);
+    return this.products.importProducts(user.companyId, body.rows ?? []);
   }
 
   @Get('products/:id')
@@ -74,13 +82,13 @@ export class ProductsController {
 
   // ---- Категории товаров ----
   @Post('product-categories')
-  createCategory(@Body() dto: CreateCategoryDto) {
-    return this.products.createCategory(dto);
+  createCategory(@Body() dto: CreateCategoryDto, @CurrentUser() user: JwtUser) {
+    return this.products.createCategory({ ...dto, companyId: user.companyId });
   }
 
   @Get('product-categories')
-  findCategories(@Query('companyId') companyId: string) {
-    return this.products.findCategories(companyId);
+  findCategories(@CurrentUser() user: JwtUser) {
+    return this.products.findCategories(user.companyId);
   }
 
   @Patch('product-categories/:id')
@@ -98,13 +106,13 @@ export class ProductsController {
 
   // ---- Единицы измерения ----
   @Post('units')
-  createUnit(@Body() dto: CreateUnitDto) {
-    return this.products.createUnit(dto);
+  createUnit(@Body() dto: CreateUnitDto, @CurrentUser() user: JwtUser) {
+    return this.products.createUnit({ ...dto, companyId: user.companyId });
   }
 
   @Get('units')
-  findUnits(@Query('companyId') companyId: string) {
-    return this.products.findUnits(companyId);
+  findUnits(@CurrentUser() user: JwtUser) {
+    return this.products.findUnits(user.companyId);
   }
 
   @Patch('units/:id')
