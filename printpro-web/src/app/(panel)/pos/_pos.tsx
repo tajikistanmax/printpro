@@ -125,6 +125,23 @@ function initial(name: string) {
   return t ? t[0].toUpperCase() : '?';
 }
 
+// Множество id категории + всех её подкатегорий (двухуровневые категории) —
+// чтобы фильтр по родительской категории показывал и товары из подкатегорий.
+function catWithDescendants(cats: any[], id: string): Set<string> {
+  const set = new Set<string>([id]);
+  let added = true;
+  while (added) {
+    added = false;
+    for (const c of cats) {
+      if (c.parentId && set.has(c.parentId) && !set.has(c.id)) {
+        set.add(c.id);
+        added = true;
+      }
+    }
+  }
+  return set;
+}
+
 // ===== Спокойные тинты плиток (вместо радужных градиентов) =====
 const SOFT_TILES = [
   'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
@@ -773,12 +790,16 @@ const SkinShop: FC<{ ctx: PosCtx }> = ({ ctx }) => {
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [q, setQ] = useState('');
 
-  const countFor = (catId: string) =>
-    items.filter((i) => i.categoryId === catId).length;
+  const countFor = (catId: string) => {
+    const set = catWithDescendants(allCats, catId);
+    return items.filter((i) => set.has(i.categoryId)).length;
+  };
+  const activeCatSet =
+    activeCat === 'ALL' ? null : catWithDescendants(allCats, activeCat);
   const ql = q.trim().toLowerCase();
   const shown = items.filter(
     (i) =>
-      (activeCat === 'ALL' || i.categoryId === activeCat) &&
+      (!activeCatSet || activeCatSet.has(i.categoryId)) &&
       (!ql ||
         String(i.name ?? '').toLowerCase().includes(ql) ||
         String(i.sku ?? '').toLowerCase().includes(ql) ||
@@ -1224,8 +1245,10 @@ const SkinPro: FC<{ ctx: PosCtx }> = ({ ctx }) => {
   const c = ctx;
   const { items, allCats } = useCombined(c);
   const [activeCat, setActiveCat] = useState('ALL');
+  const activeCatSet =
+    activeCat === 'ALL' ? null : catWithDescendants(allCats, activeCat);
   const shown = items.filter(
-    (i) => activeCat === 'ALL' || i.categoryId === activeCat,
+    (i) => !activeCatSet || activeCatSet.has(i.categoryId),
   );
   const quick = c.services.slice(0, 5);
 
@@ -1661,8 +1684,10 @@ const SkinMarket: FC<{ ctx: PosCtx }> = ({ ctx }) => {
   const c = ctx;
   const { items, allCats } = useCombined(c);
   const [activeCat, setActiveCat] = useState('ALL');
+  const activeCatSet =
+    activeCat === 'ALL' ? null : catWithDescendants(allCats, activeCat);
   const shown = items.filter(
-    (i) => activeCat === 'ALL' || i.categoryId === activeCat,
+    (i) => !activeCatSet || activeCatSet.has(i.categoryId),
   );
   const quick = c.services.slice(0, 5);
 

@@ -82,7 +82,7 @@ export class ProductsService {
     });
   }
 
-  async findOneProduct(id: string) {
+  async findOneProduct(id: string, companyId?: string) {
     const product = await this.prisma.product.findUnique({
       where: { id },
       include: {
@@ -98,6 +98,9 @@ export class ProductsService {
       },
     });
     if (!product) throw new NotFoundException('Товар не найден');
+    if (companyId && product.companyId !== companyId) {
+      throw new NotFoundException('Товар не найден');
+    }
 
     // Последняя закупка (поставщик, дата, цена)
     const lastItem = await this.prisma.stockReceiptItem.findFirst({
@@ -380,8 +383,11 @@ export class ProductsService {
     return { ok: true };
   }
 
-  async updateProduct(id: string, dto: Partial<CreateProductDto>) {
+  async updateProduct(id: string, dto: Partial<CreateProductDto>, companyId?: string) {
     const current = await this.prisma.product.findUniqueOrThrow({ where: { id } });
+    if (companyId && current.companyId !== companyId) {
+      throw new NotFoundException('Товар не найден');
+    }
     if (dto.barcode != null && dto.barcode.trim() !== (current.barcode ?? '')) {
       await this.assertBarcodeFree(current.companyId, dto.barcode, id);
     }
@@ -389,8 +395,11 @@ export class ProductsService {
       where: { id },
       data: {
         name: dto.name,
-        categoryId: dto.categoryId ?? null,
-        unitId: dto.unitId ?? null,
+        // Не сбрасываем категорию/единицу при частичном обновлении: поле, которого
+        // нет в запросе (undefined), Prisma пропускает; пустая строка → снять связь.
+        categoryId:
+          dto.categoryId === undefined ? undefined : dto.categoryId || null,
+        unitId: dto.unitId === undefined ? undefined : dto.unitId || null,
         salePrice: dto.salePrice,
         purchasePrice: dto.purchasePrice,
         minStock: dto.minStock,
@@ -405,8 +414,11 @@ export class ProductsService {
     });
   }
 
-  async removeProduct(id: string) {
-    await this.prisma.product.findUniqueOrThrow({ where: { id } });
+  async removeProduct(id: string, companyId?: string) {
+    const current = await this.prisma.product.findUniqueOrThrow({ where: { id } });
+    if (companyId && current.companyId !== companyId) {
+      throw new NotFoundException('Товар не найден');
+    }
     // Мягкое удаление: сохраняем историю продаж/движений, но убираем из каталога
     return this.prisma.product.update({
       where: { id },

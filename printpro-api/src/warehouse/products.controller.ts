@@ -55,18 +55,22 @@ export class ProductsController {
   }
 
   @Get('products/:id')
-  findOneProduct(@Param('id') id: string) {
-    return this.products.findOneProduct(id);
+  findOneProduct(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.products.findOneProduct(id, user.companyId);
   }
 
   @Patch('products/:id')
-  updateProduct(@Param('id') id: string, @Body() dto: Partial<CreateProductDto>) {
-    return this.products.updateProduct(id, dto);
+  updateProduct(
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateProductDto>,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.products.updateProduct(id, dto, user.companyId);
   }
 
   @Delete('products/:id')
-  removeProduct(@Param('id') id: string) {
-    return this.products.removeProduct(id);
+  removeProduct(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.products.removeProduct(id, user.companyId);
   }
 
   // ---- Доп. штрихкоды (алиасы) ----

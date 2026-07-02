@@ -591,6 +591,9 @@ export default function OrdersPage() {
                 <Badge tone={STATUS_TONES[selected.status] ?? 'slate'}>{STATUS_LABELS[selected.status]}</Badge>
               )}
               {canManage && <Button variant="ghost" size="sm" onClick={reorder}><NavIcon name="refresh" className="h-4 w-4" />Повторить</Button>}
+              <a href={`/r/${selected.id}`} target="_blank" rel="noopener noreferrer">
+                <Button variant="ghost" size="sm"><NavIcon name="pos" className="h-4 w-4" />Чек</Button>
+              </a>
               <Link href={`/order-card?id=${selected.id}`}><Button variant="ghost" size="sm"><NavIcon name="print" className="h-4 w-4" />Тех-карта</Button></Link>
               {can('cash.operate') && Number(selected.paid) > 0 && selected.status !== 'CANCELLED' && (
                 <Button variant="ghost" size="sm" className="text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => { setReturnMode((v) => !v); setReturnQty({}); }}>

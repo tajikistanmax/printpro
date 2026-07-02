@@ -13,6 +13,12 @@ export interface ClientFilters {
 
 const INACTIVE_MS = 30 * 24 * 3600 * 1000;
 
+// Единый вид телефона: убираем пробелы, скобки, дефисы (сохраняя «+»), чтобы
+// «+992 93-555-55-55» и «+992935555555» не создавали двух разных клиентов.
+function normalizePhone(phone: string): string {
+  return (phone ?? '').replace(/[\s()\-]/g, '');
+}
+
 @Injectable()
 export class ClientsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -24,12 +30,13 @@ export class ClientsService {
     fullName?: string,
     note?: string,
   ) {
+    const norm = normalizePhone(phone);
     const existing = await this.prisma.client.findFirst({
-      where: { companyId, phone, deletedAt: null },
+      where: { companyId, phone: norm, deletedAt: null },
     });
     if (existing) return existing;
     return this.prisma.client.create({
-      data: { companyId, phone, fullName, note },
+      data: { companyId, phone: norm, fullName, note },
     });
   }
 
@@ -38,7 +45,7 @@ export class ClientsService {
     return this.prisma.client.create({
       data: {
         companyId: dto.companyId,
-        phone: dto.phone,
+        phone: normalizePhone(dto.phone),
         fullName: dto.fullName,
         type: dto.type,
         email: dto.email,

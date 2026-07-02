@@ -172,14 +172,32 @@ export default function PosPage() {
   const priceOf = (item: any, type: 'SERVICE' | 'PRODUCT') =>
     Number(type === 'SERVICE' ? item.basePrice : item.salePrice) || 0;
 
+  // Множество id категории + всех её подкатегорий — чтобы фильтр по родительской
+  // категории показывал и товары из подкатегорий (двухуровневые категории).
+  const catSet = useMemo(() => {
+    if (catFilter === 'ALL') return null;
+    const set = new Set<string>([catFilter]);
+    let added = true;
+    while (added) {
+      added = false;
+      for (const c of cats) {
+        if (c.parentId && set.has(c.parentId) && !set.has(c.id)) {
+          set.add(c.id);
+          added = true;
+        }
+      }
+    }
+    return set;
+  }, [catFilter, cats]);
+
   const filtered = useMemo(
     () =>
       catalog.filter(
         (c) =>
           c.name.toLowerCase().includes(search.toLowerCase()) &&
-          (catFilter === 'ALL' || c.categoryId === catFilter),
+          (!catSet || catSet.has(c.categoryId)),
       ),
-    [catalog, search, catFilter, tab],
+    [catalog, search, catSet],
   );
 
   function switchTab(t: 'SERVICE' | 'PRODUCT') {

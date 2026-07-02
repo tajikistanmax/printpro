@@ -666,6 +666,24 @@ function OrderPanelPrime({ ctx }: { ctx: PosCtx }) {
 /* ============================ Каталог (левая часть) ============================ */
 type TypeFilter = 'ALL' | 'SERVICE' | 'PRODUCT';
 
+// Множество id категории + всех её подкатегорий (двухуровневые категории).
+// Нужно, чтобы при выборе родительской категории показывались товары из её
+// подкатегорий, а не пустой список.
+function catWithDescendants(cats: any[], id: string): Set<string> {
+  const set = new Set<string>([id]);
+  let added = true;
+  while (added) {
+    added = false;
+    for (const c of cats) {
+      if (c.parentId && set.has(c.parentId) && !set.has(c.id)) {
+        set.add(c.id);
+        added = true;
+      }
+    }
+  }
+  return set;
+}
+
 export const SkinPrime: FC<{ ctx: PosCtx }> = ({ ctx }) => {
   const c = ctx;
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
@@ -685,12 +703,18 @@ export const SkinPrime: FC<{ ctx: PosCtx }> = ({ ctx }) => {
     typeFilter === 'SERVICE' ? c.serviceCats : typeFilter === 'PRODUCT' ? c.productCats : [...c.serviceCats, ...c.productCats];
 
   const byType = items.filter((i) => typeFilter === 'ALL' || i._type === typeFilter);
-  const countFor = (catId: string) => byType.filter((i) => i.categoryId === catId).length;
+  // Счётчик по категории включает подкатегории (чтобы цифра на родителе не была 0).
+  const countFor = (catId: string) => {
+    const set = catWithDescendants(cats, catId);
+    return byType.filter((i) => set.has(i.categoryId)).length;
+  };
 
+  const activeCatSet =
+    activeCat === 'ALL' ? null : catWithDescendants(cats, activeCat);
   const ql = q.trim().toLowerCase();
   const shown = byType.filter(
     (i) =>
-      (activeCat === 'ALL' || i.categoryId === activeCat) &&
+      (!activeCatSet || activeCatSet.has(i.categoryId)) &&
       (!ql ||
         String(i.name ?? '').toLowerCase().includes(ql) ||
         String(i.sku ?? '').toLowerCase().includes(ql) ||
