@@ -303,19 +303,110 @@ const QrPlaceholder: FC<IcoProps> = ({ className }) => (
   </div>
 );
 
-/* -------------------- фото (реальное из /public/display или заглушка) --------------------
- * Положите файл (напр. /public/display/showcase.jpg) — он покажется поверх заглушки.
- * Если файла нет, останется брендовый градиент с логотипом. */
-const PhotoBlock: FC<{ className?: string; label?: string; src?: string }> = ({
+/* -------------------- векторные иллюстрации-заглушки (в стиле макетов) -------------------- */
+const LogoMark: FC<{ x: number; y: number; s?: number; grad: string }> = ({ x, y, s = 1, grad }) => (
+  <g transform={`translate(${x} ${y}) scale(${s})`}>
+    <polygon points="0,26 14,0 28,26" fill={`url(#${grad})`} />
+    <circle cx="34" cy="24" r="3" fill="#e879f9" />
+    <circle cx="42" cy="24" r="3" fill="#38bdf8" />
+    <circle cx="50" cy="24" r="3" fill="#fbbf24" />
+  </g>
+);
+
+// Стопки визиток (для «Витрины»)
+const CardArt: FC = () => (
+  <svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" className="h-full w-full" aria-hidden="true">
+    <defs>
+      <linearGradient id="caBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#f5f3ff" /><stop offset="1" stopColor="#e0e7ff" /></linearGradient>
+      <linearGradient id="caVio" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#8b5cf6" /><stop offset="1" stopColor="#6366f1" /></linearGradient>
+    </defs>
+    <rect width="400" height="300" fill="url(#caBg)" />
+    <g transform="translate(205 90) rotate(-10)">
+      {[24, 18, 12, 6, 0].map((o, i) => (
+        <rect key={i} x={0} y={o} width={164} height={98} rx={12} fill={i === 4 ? '#0f172a' : '#334155'} />
+      ))}
+      <LogoMark x={22} y={40} grad="caVio" />
+    </g>
+    <g transform="translate(40 135) rotate(7)">
+      {[24, 18, 12, 6, 0].map((o, i) => (
+        <rect key={i} x={0} y={o} width={164} height={98} rx={12} fill="#ffffff" stroke="#e2e8f0" />
+      ))}
+      <LogoMark x={22} y={40} grad="caVio" />
+    </g>
+  </svg>
+);
+
+// Креативная композиция: постер + стакан + визитки (для «Каталога»)
+const CreativeArt: FC = () => (
+  <svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" className="h-full w-full" aria-hidden="true">
+    <defs>
+      <linearGradient id="crBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#faf5ff" /><stop offset="1" stopColor="#eef2ff" /></linearGradient>
+      <linearGradient id="crPoster" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ec4899" /><stop offset="0.5" stopColor="#8b5cf6" /><stop offset="1" stopColor="#4f46e5" /></linearGradient>
+      <linearGradient id="crVio" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#8b5cf6" /><stop offset="1" stopColor="#6366f1" /></linearGradient>
+    </defs>
+    <rect width="400" height="300" fill="url(#crBg)" />
+    <g transform="translate(215 35)">
+      <rect width="150" height="205" rx="10" fill="url(#crPoster)" />
+      <text x="18" y="62" fill="#fff" fontSize="30" fontWeight="800">BE</text>
+      <text x="18" y="96" fill="#fff" fontSize="30" fontWeight="800">CREATIVE</text>
+      <rect x="18" y="120" width="70" height="6" rx="3" fill="#ffffff" opacity="0.7" />
+    </g>
+    <g transform="translate(120 150)">
+      <rect x="6" y="26" width="64" height="104" rx="8" fill="#ffffff" stroke="#e2e8f0" />
+      <rect x="0" y="12" width="76" height="20" rx="6" fill="#1e293b" />
+      <LogoMark x={20} y={64} s={0.7} grad="crVio" />
+    </g>
+    <g transform="translate(35 205) rotate(-6)">
+      <rect width="130" height="78" rx="10" fill="#ffffff" stroke="#e2e8f0" />
+      <LogoMark x={16} y={26} s={0.85} grad="crVio" />
+    </g>
+  </svg>
+);
+
+// Рабочий стол типографии: кружка + брошюры + визитки (для «Промо»)
+const DeskArt: FC = () => (
+  <svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" className="h-full w-full" aria-hidden="true">
+    <defs>
+      <linearGradient id="dkBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#f5f3ff" /><stop offset="1" stopColor="#e0e7ff" /></linearGradient>
+      <linearGradient id="dkPoster" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#6366f1" /><stop offset="1" stopColor="#ec4899" /></linearGradient>
+      <linearGradient id="dkVio" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#8b5cf6" /><stop offset="1" stopColor="#6366f1" /></linearGradient>
+    </defs>
+    <rect width="400" height="300" fill="url(#dkBg)" />
+    <g transform="translate(210 70) rotate(6)">
+      <rect width="150" height="150" rx="10" fill="url(#dkPoster)" />
+      <rect x="18" y="24" width="90" height="8" rx="4" fill="#ffffff" opacity="0.85" />
+      <rect x="18" y="42" width="60" height="8" rx="4" fill="#ffffff" opacity="0.6" />
+    </g>
+    <g transform="translate(70 130)">
+      <rect x="0" y="0" width="92" height="92" rx="14" fill="#ffffff" stroke="#e2e8f0" />
+      <path d="M92 24 q30 0 30 22 q0 22 -30 22" fill="none" stroke="#cbd5e1" strokeWidth="8" />
+      <LogoMark x={22} y={34} grad="dkVio" />
+    </g>
+    <g transform="translate(150 210) rotate(-8)">
+      <rect width="120" height="72" rx="10" fill="#ffffff" stroke="#e2e8f0" />
+      <LogoMark x={16} y={24} s={0.8} grad="dkVio" />
+    </g>
+  </svg>
+);
+
+/* -------------------- фото-контейнер: иллюстрация → реальное фото (если есть) --------------------
+ * Базой рисуется векторная иллюстрация в стиле макета. Если положить файл
+ * (напр. /public/display/showcase.jpg), он покажется поверх и заменит иллюстрацию. */
+const PhotoBlock: FC<{ className?: string; label?: string; src?: string; art?: ReactNode }> = ({
   className,
   label,
   src,
+  art,
 }) => (
   <div
     className={`relative flex items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-violet-100 via-fuchsia-50 to-indigo-100 ${className ?? ''}`}
   >
-    {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img src="/logo.svg" alt="" className="h-20 w-20 opacity-70" />
+    {art ? (
+      <div className="absolute inset-0">{art}</div>
+    ) : (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src="/logo.svg" alt="" className="h-20 w-20 opacity-70" />
+    )}
     {src && (
       // eslint-disable-next-line @next/next/no-img-element
       <img
@@ -328,7 +419,7 @@ const PhotoBlock: FC<{ className?: string; label?: string; src?: string }> = ({
       />
     )}
     {label && (
-      <span className="absolute bottom-3 left-4 z-10 text-sm font-semibold uppercase tracking-wide text-violet-500">
+      <span className="absolute bottom-3 left-4 z-10 rounded-md bg-white/70 px-2 py-0.5 text-sm font-semibold uppercase tracking-wide text-violet-600 backdrop-blur-sm">
         {label}
       </span>
     )}
@@ -436,7 +527,7 @@ const SkinShowcase: FC<SkinProps> = ({ state, shop, now }) => {
           <section className="min-h-0 flex-1 rounded-3xl bg-white p-6 shadow-sm">
             <div className="grid h-full grid-cols-1 gap-6 md:grid-cols-[1fr_240px]">
               <div className="flex flex-col">
-                <PhotoBlock className="min-h-[240px] flex-1" label="Print your vision" src="/display/showcase.jpg" />
+                <PhotoBlock className="min-h-[240px] flex-1" label="Print your vision" src="/display/showcase.jpg" art={<CardArt />} />
                 <Dots active={0} />
                 <div className="mt-3 flex items-center gap-3">
                   <h1 className="text-3xl font-black tracking-tight">Визитки</h1>
@@ -524,7 +615,7 @@ const SkinCatalog: FC<SkinProps> = ({ state, shop, now }) => {
               </div>
             ))}
           </div>
-          <PhotoBlock className="mt-4 h-40 bg-white/50" label="Be creative" src="/display/catalog-hero.jpg" />
+          <PhotoBlock className="mt-4 h-40 bg-white/50" label="Be creative" src="/display/catalog-hero.jpg" art={<CreativeArt />} />
           <Dots active={0} />
         </section>
         <CartAside state={state} />
@@ -564,7 +655,7 @@ const SkinPromo: FC<SkinProps> = ({ state, shop, now }) => {
               </div>
             ))}
           </div>
-          <PhotoBlock className="mt-6 h-48" label="Print your success" src="/display/promo-hero.jpg" />
+          <PhotoBlock className="mt-6 h-48" label="Print your success" src="/display/promo-hero.jpg" art={<DeskArt />} />
         </section>
         {/* Справа: услуги или заказ (когда есть корзина) */}
         {hasCart ? (
