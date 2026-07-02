@@ -3,6 +3,7 @@
 import type { FC, ReactNode } from 'react';
 import type { DisplayState } from '@/lib/customer-display';
 import { fileUrl } from '@/lib/api';
+import { SkinLux } from './skin-lux';
 
 /* ================================================================== *
  *  Дополнительные оформления второго экрана (дисплей покупателя).
@@ -688,6 +689,7 @@ const SkinPromo: FC<SkinProps> = ({ state, shop, now }) => {
 
 // Реестр дополнительных скинов (мержится с базовым в page.tsx).
 export const EXTRA_SKINS: Record<string, FC<SkinProps>> = {
+  lux: SkinLux,
   showcase: SkinShowcase,
   catalog: SkinCatalog,
   promo: SkinPromo,

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction, FC } from 'react';
 import { api, fileUrl } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
+import { SkinPrime } from './_pos-prime';
 
 // ===== Общий тип данных, который контейнер кассы передаёт в любой «скин» =====
 export interface CartItem {
@@ -1764,6 +1765,7 @@ const SkinMarket: FC<{ ctx: PosCtx }> = ({ ctx }) => {
 
 // ===== Реестр скинов: ключ настройки → компонент =====
 export const SKINS: Record<string, FC<{ ctx: PosCtx }>> = {
+  prime: SkinPrime,
   shop: SkinShop,
   pro: SkinPro,
   classic: SkinClassic,

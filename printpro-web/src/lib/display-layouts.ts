@@ -8,6 +8,11 @@ export interface DisplayLayoutOption {
 
 export const DISPLAY_LAYOUTS: DisplayLayoutOption[] = [
   {
+    k: 'lux',
+    name: 'Люкс (тёмный)',
+    desc: 'Тёмный премиум-экран: неоновое свечение, стеклянные карточки, подсветка добавленной позиции, анимация успешной оплаты и шаги оплаты по QR.',
+  },
+  {
     k: 'aurora',
     name: 'Аврора',
     desc: 'Фиолетово-индиговый градиент, часы, приветствие с категориями, крупные суммы. (простой)',
@@ -29,4 +34,4 @@ export const DISPLAY_LAYOUTS: DisplayLayoutOption[] = [
   },
 ];
 
-export const DEFAULT_DISPLAY_LAYOUT = 'aurora';
+export const DEFAULT_DISPLAY_LAYOUT = 'lux';

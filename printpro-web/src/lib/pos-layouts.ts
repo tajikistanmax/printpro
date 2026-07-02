@@ -8,6 +8,11 @@ export interface PosLayoutOption {
 
 export const POS_LAYOUTS: PosLayoutOption[] = [
   {
+    k: 'prime',
+    name: 'Премиум',
+    desc: 'Современный терминал: крупный поиск со штрихкодом, фильтр «Все/Услуги/Товары», чипы категорий со счётчиками, фото-плитки. Корзина с клиентом, бонусами и способами оплаты с иконками.',
+  },
+  {
     k: 'shop',
     name: 'Витрина',
     desc: 'Категории-список со счётчиками, карточки-витрина, недавние заказы и быстрые действия. Чек справа с миниатюрами.',
@@ -29,4 +34,4 @@ export const POS_LAYOUTS: PosLayoutOption[] = [
   },
 ];
 
-export const DEFAULT_POS_LAYOUT = 'shop';
+export const DEFAULT_POS_LAYOUT = 'prime';
