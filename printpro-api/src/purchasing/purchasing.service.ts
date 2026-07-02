@@ -246,13 +246,11 @@ export class PurchasingService {
     const totalQty = Number(
       dto.items.reduce((s, it) => s + (Number(it.quantity) || 0), 0).toFixed(3),
     );
-    const count = await this.prisma.purchaseRequest.count({
-      where: { companyId: dto.companyId },
-    });
+    const zakSeq = await nextSeq(this.prisma, dto.companyId, 'ZAK');
     return this.prisma.purchaseRequest.create({
       data: {
         companyId: dto.companyId,
-        number: docNumber('ZAK', count + 1),
+        number: docNumber('ZAK', zakSeq),
         supplierName: dto.supplierName,
         note: dto.note,
         items: dto.items as any,
