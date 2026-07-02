@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FC } from 'react';
 import { subscribeDisplay, type DisplayState } from '@/lib/customer-display';
+import { DEFAULT_DISPLAY_LAYOUT } from '@/lib/display-layouts';
 import { fileUrl } from '@/lib/api';
 
 function money(n: number) {
@@ -29,25 +30,10 @@ function Wordmark({ shop }: { shop: string }) {
   return <>{shop}</>;
 }
 
-export default function CustomerDisplayPage() {
-  const [state, setState] = useState<DisplayState>({ type: 'welcome' });
-  const [now, setNow] = useState('');
+type SkinProps = { state: DisplayState; shop: string; now: string };
 
-  useEffect(() => subscribeDisplay(setState), []);
-
-  // Часы в шапке — приятная деталь для экрана у кассы
-  useEffect(() => {
-    const tick = () =>
-      setNow(
-        new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-      );
-    tick();
-    const id = setInterval(tick, 15000);
-    return () => clearInterval(id);
-  }, []);
-
-  const shop = state.shopName || 'PrintPro';
-
+/* =========================== Скин «Аврора» (по умолчанию) =========================== */
+const SkinAurora: FC<SkinProps> = ({ state, shop, now }) => {
   return (
     <div className="flex min-h-screen w-full flex-col bg-gradient-to-br from-violet-50 via-white to-indigo-50 text-slate-900">
       {/* Шапка */}
@@ -220,4 +206,33 @@ export default function CustomerDisplayPage() {
       )}
     </div>
   );
+};
+
+// Реестр оформлений второго экрана. Новые дизайны добавляем сюда по ключу.
+const SKINS: Record<string, FC<SkinProps>> = {
+  aurora: SkinAurora,
+};
+
+export default function CustomerDisplayPage() {
+  const [state, setState] = useState<DisplayState>({ type: 'welcome' });
+  const [now, setNow] = useState('');
+
+  useEffect(() => subscribeDisplay(setState), []);
+
+  // Часы в шапке — приятная деталь для экрана у кассы
+  useEffect(() => {
+    const tick = () =>
+      setNow(
+        new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+      );
+    tick();
+    const id = setInterval(tick, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  const shop = state.shopName || 'PrintPro';
+  const layout = state.layout || DEFAULT_DISPLAY_LAYOUT;
+  const Skin = SKINS[layout] ?? SKINS[DEFAULT_DISPLAY_LAYOUT];
+
+  return <Skin state={state} shop={shop} now={now} />;
 }

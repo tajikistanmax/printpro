@@ -19,6 +19,7 @@ export class SettingsService {
     const all = await this.getAll(companyId);
     const PUBLIC_KEYS = [
       'posLayout',
+      'customerDisplayLayout',
       'companyName',
       'currency',
       'language',

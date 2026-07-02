@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { POS_LAYOUTS, DEFAULT_POS_LAYOUT } from '@/lib/pos-layouts';
+import { DISPLAY_LAYOUTS, DEFAULT_DISPLAY_LAYOUT } from '@/lib/display-layouts';
 import { FEATURE_GROUPS, clearFeatureFlagsCache } from '@/lib/feature-flags';
 import { openCustomerDisplay } from '@/lib/customer-display';
 import {
@@ -950,6 +951,38 @@ function PosSection({ s, set }: { s: Record<string, string>; set: (k: string, v:
               key={opt.k}
               type="button"
               onClick={() => set('posLayout', opt.k)}
+              className={`rounded-xl border-2 p-4 text-left transition ${
+                active
+                  ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20'
+                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-slate-800 dark:text-slate-100">{opt.name}</span>
+                <span className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${active ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-300 dark:border-slate-600'}`}>
+                  {active && '✓'}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{opt.desc}</p>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+
+    <Card>
+      <SectionTitle>Дизайн второго экрана (экран клиента)</SectionTitle>
+      <p className="-mt-1 mb-4 text-xs text-slate-400 dark:text-slate-500">
+        Как выглядит дисплей покупателя (второй экран). Применится после сохранения — переоткройте второй экран.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {DISPLAY_LAYOUTS.map((opt) => {
+          const active = (s.customerDisplayLayout ?? DEFAULT_DISPLAY_LAYOUT) === opt.k;
+          return (
+            <button
+              key={opt.k}
+              type="button"
+              onClick={() => set('customerDisplayLayout', opt.k)}
               className={`rounded-xl border-2 p-4 text-left transition ${
                 active
                   ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20'

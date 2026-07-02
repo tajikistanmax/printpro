@@ -18,10 +18,11 @@ export type DisplayLine = {
 };
 
 export type DisplayState =
-  | { type: 'welcome'; shopName?: string }
+  | { type: 'welcome'; shopName?: string; layout?: string }
   | {
       type: 'cart';
       shopName?: string;
+      layout?: string;
       lines: DisplayLine[];
       subtotal: number;
       discount: number;
@@ -30,6 +31,7 @@ export type DisplayState =
   | {
       type: 'total';
       shopName?: string;
+      layout?: string;
       total: number;
       method: string;
       change?: number;
@@ -38,6 +40,7 @@ export type DisplayState =
       // Экран оплаты переводом: показываем клиенту QR для сканирования
       type: 'pay-qr';
       shopName?: string;
+      layout?: string;
       total: number;
       qr?: string; // путь /uploads/... (резолвится через fileUrl на дисплее)
       requisite?: string;

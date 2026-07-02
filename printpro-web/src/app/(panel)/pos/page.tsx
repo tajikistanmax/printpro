@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { DEFAULT_POS_LAYOUT } from '@/lib/pos-layouts';
+import { DEFAULT_DISPLAY_LAYOUT } from '@/lib/display-layouts';
 import { SKINS, type CartItem, type PosCtx } from './_pos';
 import { useFeatureFlags } from '@/lib/feature-flags';
 import { sendDisplay, openCustomerDisplay } from '@/lib/customer-display';
@@ -58,6 +59,7 @@ export default function PosPage() {
   const [branchId, setBranchId] = useState('');
   const [search, setSearch] = useState('');
   const [layout, setLayout] = useState<string>(DEFAULT_POS_LAYOUT);
+  const [displayLayout, setDisplayLayout] = useState<string>(DEFAULT_DISPLAY_LAYOUT);
   const [vfdCfg, setVfdCfg] = useState<VfdConfig>(DEFAULT_VFD);
   const [scanMsg, setScanMsg] = useState('');
   const scanRef = useRef<(code: string) => void>(() => {});
@@ -118,6 +120,7 @@ export default function PosPage() {
       .get(`/settings/ui?companyId=${cid}`)
       .then((ui) => {
         if (ui?.posLayout) setLayout(ui.posLayout);
+        if (ui?.customerDisplayLayout) setDisplayLayout(ui.customerDisplayLayout);
         if (ui?.companyName) setShopName(ui.companyName);
         if (ui) {
           setVfdCfg(readVfdConfig(ui));
@@ -237,12 +240,13 @@ export default function PosPage() {
     }
     if (!displayOn) return;
     if (cart.length === 0) {
-      sendDisplay({ type: 'welcome', shopName });
+      sendDisplay({ type: 'welcome', shopName, layout: displayLayout });
     } else if (method === 'TRANSFER') {
       // Оплата переводом — показываем клиенту QR для сканирования
       sendDisplay({
         type: 'pay-qr',
         shopName,
+        layout: displayLayout,
         total,
         qr: transferPay.qr,
         requisite: transferPay.requisite,
@@ -251,6 +255,7 @@ export default function PosPage() {
       sendDisplay({
         type: 'cart',
         shopName,
+        layout: displayLayout,
         lines: cart.map((c) => ({
           name: c.name,
           qty: c.quantity,
@@ -262,7 +267,7 @@ export default function PosPage() {
         total,
       });
     }
-  }, [cart, subtotal, total, totalDiscount, shopName, receipt, displayOn, vfdCfg, cartCount, method, transferPay]);
+  }, [cart, subtotal, total, totalDiscount, shopName, receipt, displayOn, vfdCfg, cartCount, method, transferPay, displayLayout]);
 
   // После оплаты показываем итог/«спасибо» на дисплее
   useEffect(() => {
@@ -274,10 +279,11 @@ export default function PosPage() {
     sendDisplay({
       type: 'total',
       shopName,
+      layout: displayLayout,
       total: Number(receipt.total),
       method: receipt._method,
     });
-  }, [receipt, shopName, displayOn, vfdCfg]);
+  }, [receipt, shopName, displayOn, vfdCfg, displayLayout]);
 
   // Сканер штрихкодов: «невидимый» захват. Кассир сканирует где угодно на кассе —
   // товар сам падает в корзину. Поиск по штрихкоду или SKU среди загруженных товаров.
