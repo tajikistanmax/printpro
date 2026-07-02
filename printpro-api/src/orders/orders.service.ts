@@ -448,9 +448,13 @@ export class OrdersService {
     let bonusUsed = 0;
     let promoConsumed = false;
     try {
-      // Скидка (абсолютная) — уменьшаем итог
+      // Скидка (абсолютная) — уменьшаем итог. Зажимаем сверху стоимостью
+      // товаров: ручная скидка не может превышать сумму заказа (защита от
+      // абсурдных/отрицательных значений с фронта). Полноценный лимит по %
+      // и права на скидку — отдельная настройка компании.
       let total = Number(order.total);
-      let discount = dto.discount && dto.discount > 0 ? dto.discount : 0;
+      const rawDiscount = dto.discount && dto.discount > 0 ? dto.discount : 0;
+      let discount = Math.min(rawDiscount, total);
 
       // Промокод (п. 8.7) — добавляем к скидке
       if (dto.promoCode) {

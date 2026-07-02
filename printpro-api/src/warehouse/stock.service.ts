@@ -80,6 +80,14 @@ export class StockService {
 
   // Списание / корректировка (уменьшаем остаток)
   async adjust(dto: AdjustStockDto) {
+    // Эта операция только СПИСЫВАЕТ остаток. Приходные типы (IN/RETURN) молча
+    // уменьшили бы склад — отклоняем их с подсказкой, куда идти за приходом.
+    if (dto.type === StockMovementType.IN || dto.type === StockMovementType.RETURN) {
+      throw new BadRequestException(
+        'Приход товара — через «Закупки», перемещение — через transfer, ' +
+          'инвентаризация — через пересчёт. Здесь только списание/корректировка.',
+      );
+    }
     return this.prisma.$transaction(async (tx) => {
       // Условное списание: атомарно уменьшаем, только если остатка хватает.
       const dec = await tx.stock.updateMany({

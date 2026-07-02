@@ -163,7 +163,7 @@ export class ClientsService {
 
   async findOne(id: string, companyId: string) {
     const client = await this.prisma.client.findFirst({
-      where: { id, companyId },
+      where: { id, companyId, deletedAt: null },
       include: {
         orders: {
           orderBy: { createdAt: 'desc' },
@@ -255,7 +255,7 @@ export class ClientsService {
 
   private async ensure(id: string, companyId: string) {
     const c = await this.prisma.client.findFirst({
-      where: { id, companyId },
+      where: { id, companyId, deletedAt: null },
     });
     if (!c) throw new NotFoundException('Клиент не найден');
     return c;
