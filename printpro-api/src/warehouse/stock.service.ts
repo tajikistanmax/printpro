@@ -294,7 +294,10 @@ export class StockService {
     if (!branchId) throw new BadRequestException('Не указан филиал');
     let applied = 0;
     let unchanged = 0;
-    await this.prisma.$transaction(async (tx) => {
+    // Инвентаризация — атомарно (всё или ничего), но на 300+ позиций дефолтный
+    // 5-сек таймаут транзакции Prisma мал: поднимаем окно до 2 минут.
+    await this.prisma.$transaction(
+      async (tx) => {
       for (const it of items) {
         const counted = Number(it.countedQuantity);
         if (!Number.isFinite(counted) || counted < 0) continue;
@@ -327,7 +330,9 @@ export class StockService {
         });
         applied++;
       }
-    });
+      },
+      { timeout: 120000, maxWait: 10000 },
+    );
     return { applied, unchanged };
   }
 
