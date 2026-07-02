@@ -58,6 +58,21 @@ function downloadCSV(filename: string, headers: string[], rows: (string | number
   URL.revokeObjectURL(url);
 }
 
+// Категории в иерархическом порядке: родитель, затем его подкатегории (с отступом «—»).
+function orderCats(categories: any[]): { id: string; label: string }[] {
+  const out: { id: string; label: string }[] = [];
+  const tops = categories.filter(
+    (c) => !c.parentId || !categories.some((p) => p.id === c.parentId),
+  );
+  for (const t of tops) {
+    out.push({ id: t.id, label: t.name });
+    for (const ch of categories.filter((c) => c.parentId === t.id)) {
+      out.push({ id: ch.id, label: '— ' + ch.name });
+    }
+  }
+  return out;
+}
+
 export default function WarehousePage() {
   const cid = DEFAULT_COMPANY_ID;
   const router = useRouter();
@@ -425,7 +440,12 @@ export default function WarehousePage() {
   // ---- фильтрация ----
   const ql = q.trim().toLowerCase();
   const filtered = products.filter((p) => {
-    if (filterCat !== 'ALL' && p.categoryId !== filterCat) return false;
+    if (
+      filterCat !== 'ALL' &&
+      p.categoryId !== filterCat &&
+      !categories.some((c) => c.id === p.categoryId && c.parentId === filterCat)
+    )
+      return false;
     if (fBranch && !(p.stock ?? []).some((r: any) => r.branchId === fBranch)) return false;
     if (fStatus) {
       const st = matStatus(stockOf(p), Number(p.minStock));
@@ -491,7 +511,7 @@ export default function WarehousePage() {
               {categories.length > 0 && (
                 <Select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="w-auto">
                   <option value="ALL">Все категории</option>
-                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {orderCats(categories).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                 </Select>
               )}
               {branches.length > 1 && (
@@ -727,7 +747,7 @@ export default function WarehousePage() {
                 <Field label="Категория">
                   <Select value={pCat} onChange={(e) => setPCat(e.target.value)}>
                     <option value="">— без категории —</option>
-                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {orderCats(categories).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                   </Select>
                 </Field>
                 <Field label="Единица измерения">
@@ -841,7 +861,7 @@ export default function WarehousePage() {
                 <div className="grid gap-3">
                   <Field label="Название"><Input value={editP.name} onChange={(e) => setEditP((f: any) => ({ ...f, name: e.target.value }))} /></Field>
                   <div className="grid grid-cols-2 gap-2">
-                    <Field label="Категория"><Select value={editP.categoryId} onChange={(e) => setEditP((f: any) => ({ ...f, categoryId: e.target.value }))}><option value="">— нет —</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
+                    <Field label="Категория"><Select value={editP.categoryId} onChange={(e) => setEditP((f: any) => ({ ...f, categoryId: e.target.value }))}><option value="">— нет —</option>{orderCats(categories).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</Select></Field>
                     <Field label="Ед."><Select value={editP.unitId} onChange={(e) => setEditP((f: any) => ({ ...f, unitId: e.target.value }))}><option value="">—</option>{units.map((u) => <option key={u.id} value={u.id}>{u.shortName}</option>)}</Select></Field>
                   </div>
                   <Field label="Продажная цена"><Input type="number" value={editP.salePrice} onChange={(e) => setEditP((f: any) => ({ ...f, salePrice: e.target.value }))} /></Field>

@@ -324,7 +324,13 @@ export class ProductsService {
 
   // ---------- Категории товаров ----------
   createCategory(dto: CreateCategoryDto) {
-    return this.prisma.productCategory.create({ data: dto });
+    return this.prisma.productCategory.create({
+      data: {
+        companyId: dto.companyId,
+        name: dto.name,
+        parentId: dto.parentId || undefined, // пусто → верхний уровень
+      },
+    });
   }
 
   findCategories(companyId: string) {
@@ -334,8 +340,11 @@ export class ProductsService {
     });
   }
 
-  // Переименовать / назначить категорию по умолчанию (одна на компанию)
-  async updateCategory(id: string, dto: { name?: string; isDefault?: boolean }) {
+  // Переименовать / назначить по умолчанию / сменить родителя (подкатегория)
+  async updateCategory(
+    id: string,
+    dto: { name?: string; isDefault?: boolean; parentId?: string | null },
+  ) {
     const cat = await this.prisma.productCategory.findUniqueOrThrow({ where: { id } });
     if (dto.isDefault) {
       await this.prisma.productCategory.updateMany({
@@ -343,13 +352,22 @@ export class ProductsService {
         data: { isDefault: false },
       });
     }
-    return this.prisma.productCategory.update({
-      where: { id },
-      data: {
-        name: dto.name?.trim() || undefined,
-        isDefault: dto.isDefault,
-      },
-    });
+    const data: {
+      name?: string;
+      isDefault?: boolean;
+      parentId?: string | null;
+    } = {
+      name: dto.name?.trim() || undefined,
+      isDefault: dto.isDefault,
+    };
+    if (dto.parentId !== undefined) {
+      const pid = dto.parentId || null;
+      if (pid === id) {
+        throw new BadRequestException('Категория не может быть своим родителем');
+      }
+      data.parentId = pid;
+    }
+    return this.prisma.productCategory.update({ where: { id }, data });
   }
 
   // Удалить категорию: сначала открепляем товары, чтобы не нарушать связь

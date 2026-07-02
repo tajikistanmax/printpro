@@ -485,7 +485,14 @@ model ProductCategory {
   name      String
   isDefault Boolean   @default(false)
 
+  // Подкатегории: напр. «Сувениры» → «Кружки», «Кепки». parentId = null — верхний уровень.
+  parentId String?
+  parent   ProductCategory?  @relation("ProductCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children ProductCategory[] @relation("ProductCategoryTree")
+
   products Product[]
+
+  @@index([parentId])
 }
 
 model Unit {

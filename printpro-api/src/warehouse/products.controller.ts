@@ -86,7 +86,7 @@ export class ProductsController {
   @Patch('product-categories/:id')
   updateCategory(
     @Param('id') id: string,
-    @Body() dto: { name?: string; isDefault?: boolean },
+    @Body() dto: { name?: string; isDefault?: boolean; parentId?: string | null },
   ) {
     return this.products.updateCategory(id, dto);
   }

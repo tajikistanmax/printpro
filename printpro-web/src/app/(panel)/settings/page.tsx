@@ -641,6 +641,7 @@ function CatalogSection({ cid }: { cid: string }) {
   const [serviceCats, setServiceCats] = useState<any[]>([]);
   const [units, setUnits] = useState<any[]>([]);
   const [catName, setCatName] = useState('');
+  const [catParent, setCatParent] = useState(''); // родитель для новой подкатегории
   const [scatName, setScatName] = useState('');
   const [uName, setUName] = useState('');
   const [uShort, setUShort] = useState('');
@@ -677,8 +678,8 @@ function CatalogSection({ cid }: { cid: string }) {
     const n = catName.trim();
     if (!n) return;
     try {
-      await api.post('/product-categories', { companyId: cid, name: n });
-      setCatName(''); setMsg(''); load();
+      await api.post('/product-categories', { companyId: cid, name: n, parentId: catParent || undefined });
+      setCatName(''); setCatParent(''); setMsg(''); load();
     } catch (e: any) { setMsg('Ошибка: ' + e.message); }
   }
   async function delCategory(id: string) {
@@ -761,15 +762,38 @@ function CatalogSection({ cid }: { cid: string }) {
     <div className="space-y-6">
       <Card>
         <SectionTitle>Категории товаров</SectionTitle>
-        <p className="-mt-1 mb-2 text-xs text-slate-400 dark:text-slate-500">★ — категория по умолчанию (подставляется в новый товар). Карандаш — переименовать.</p>
+        <p className="-mt-1 mb-2 text-xs text-slate-400 dark:text-slate-500">
+          Можно создавать подкатегории: напр. «Сувениры» → «Кружки», «Кепки». ★ — категория по умолчанию.
+        </p>
         {categories.length === 0 ? (
           <p className="text-xs text-slate-400">Нет категорий.</p>
         ) : (
-          <div>{categories.map((c) => renderRow('cat', c))}</div>
+          <div>
+            {categories
+              .filter((c) => !c.parentId || !categories.some((p: any) => p.id === c.parentId))
+              .map((c) => (
+                <div key={c.id}>
+                  {renderRow('cat', c)}
+                  {categories
+                    .filter((ch) => ch.parentId === c.id)
+                    .map((ch) => (
+                      <div key={ch.id} className="ml-5 border-l-2 border-slate-100 pl-2 dark:border-slate-700/60">
+                        {renderRow('cat', ch)}
+                      </div>
+                    ))}
+                </div>
+              ))}
+          </div>
         )}
-        <div className="mt-3 flex items-center gap-2">
-          <Input value={catName} onChange={(e) => setCatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCategory())} placeholder="Новая категория (напр. Бумага)" />
-          <Button type="button" variant="ghost" onClick={addCategory} className="shrink-0">+ Категория</Button>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Input value={catName} onChange={(e) => setCatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCategory())} placeholder="Категория или подкатегория" className="min-w-[160px] flex-1" />
+          <Select value={catParent} onChange={(e) => setCatParent(e.target.value)} className="w-auto">
+            <option value="">— верхний уровень —</option>
+            {categories.filter((c) => !c.parentId).map((c) => (
+              <option key={c.id} value={c.id}>в «{c.name}»</option>
+            ))}
+          </Select>
+          <Button type="button" variant="ghost" onClick={addCategory} className="shrink-0">+ Добавить</Button>
         </div>
       </Card>
 
