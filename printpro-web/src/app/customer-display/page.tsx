@@ -3,6 +3,7 @@
 import { useEffect, useState, type FC } from 'react';
 import { subscribeDisplay, type DisplayState } from '@/lib/customer-display';
 import { DEFAULT_DISPLAY_LAYOUT } from '@/lib/display-layouts';
+import { EXTRA_SKINS } from './skins';
 import { fileUrl } from '@/lib/api';
 
 function money(n: number) {
@@ -211,6 +212,7 @@ const SkinAurora: FC<SkinProps> = ({ state, shop, now }) => {
 // Реестр оформлений второго экрана. Новые дизайны добавляем сюда по ключу.
 const SKINS: Record<string, FC<SkinProps>> = {
   aurora: SkinAurora,
+  ...EXTRA_SKINS,
 };
 
 export default function CustomerDisplayPage() {
