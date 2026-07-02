@@ -218,8 +218,8 @@ function QuotesInner() {
                   <Input
                     type="number"
                     value={l.quantity}
-                    min={0.001}
-                    step="0.001"
+                    min={1}
+                    step="1"
                     onChange={(e) => updateLine(i, { quantity: Number(e.target.value) })}
                     className="w-16"
                   />

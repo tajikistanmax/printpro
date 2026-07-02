@@ -393,7 +393,7 @@ export default function ServicesPage() {
                 <option value="">— материал —</option>
                 {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
-              <Input value={matForm[s.id]?.qty ?? ''} onChange={(e) => setMatForm((m) => ({ ...m, [s.id]: { productId: m[s.id]?.productId ?? '', qty: e.target.value } }))} type="number" step="0.001" placeholder="расход" className="w-24" />
+              <Input value={matForm[s.id]?.qty ?? ''} onChange={(e) => setMatForm((m) => ({ ...m, [s.id]: { productId: m[s.id]?.productId ?? '', qty: e.target.value } }))} type="number" step="1" placeholder="расход" className="w-24" />
               <Button variant="ghost" size="sm" onClick={() => addMaterial(s.id)}>+ Добавить</Button>
             </div>
           </div>

@@ -583,7 +583,7 @@ export default function WarehousePage() {
                   <Field label="Откуда"><Select value={tFrom} onChange={(e) => setTFrom(e.target.value)} required><option value="">—</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
                   <Field label="Куда"><Select value={tTo} onChange={(e) => setTTo(e.target.value)} required><option value="">—</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
                 </div>
-                <Field label="Количество"><Input value={tQty} onChange={(e) => setTQty(e.target.value)} type="number" step="0.001" placeholder="0" required /></Field>
+                <Field label="Количество"><Input value={tQty} onChange={(e) => setTQty(e.target.value)} type="number" step="1" placeholder="0" required /></Field>
                 <Button type="submit" variant="sky" className="w-full">Переместить</Button>
                 {tMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{tMsg}</p>}
               </form>
@@ -659,7 +659,7 @@ export default function WarehousePage() {
               <Field label="Товар"><Select value={woProduct} onChange={(e) => setWoProduct(e.target.value)}>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
               <div className="grid grid-cols-2 gap-2">
                 {branches.length > 1 && <Field label="Склад"><Select value={woBranch} onChange={(e) => setWoBranch(e.target.value)}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>}
-                <Field label="Количество"><Input value={woQty} onChange={(e) => setWoQty(e.target.value)} type="number" step="0.001" placeholder="0" required /></Field>
+                <Field label="Количество"><Input value={woQty} onChange={(e) => setWoQty(e.target.value)} type="number" step="1" placeholder="0" required /></Field>
               </div>
               <Field label="Причина"><Input value={woReason} onChange={(e) => setWoReason(e.target.value)} placeholder="напр. повреждение" /></Field>
               <Button type="submit" variant="danger" className="w-full">Списать</Button>

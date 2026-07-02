@@ -343,7 +343,12 @@ export default function PosPage() {
       if (e.key === 'Enter') {
         const code = buf;
         buf = '';
-        if (code.length >= 4) scanRef.current(code);
+        if (code.length >= 4) {
+          // Не даём Enter от сканера «нажать» кнопку в фокусе (напр. «+» последней
+          // позиции в корзине) — иначе увеличится и та позиция, и отсканированная.
+          e.preventDefault();
+          scanRef.current(code);
+        }
         return;
       }
       if (e.key.length === 1) buf += e.key;

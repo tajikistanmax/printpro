@@ -1039,7 +1039,7 @@ export default function PurchasingPage() {
                         value={r.quantity}
                         onChange={(e) => setRow(i, { quantity: e.target.value })}
                         type="number"
-                        step="0.001"
+                        step="1"
                         placeholder="0"
                         className="w-20 text-right"
                       />
