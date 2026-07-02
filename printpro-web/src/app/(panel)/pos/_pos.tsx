@@ -204,9 +204,6 @@ const IcoGrid = svg(<>
   <rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" />
 </>);
 const IcoList = svg(<><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></>);
-const IcoBarcode = svg(<>
-  <path d="M3 5v14M7 5v14M11 5v10M11 18v1M15 5v14M19 5v9M19 17v2" />
-</>);
 const IcoPlus = svg(<><path d="M12 5v14M5 12h14" /></>);
 const IcoStar = (props: PIcon) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={props.className ?? 'h-4 w-4'} aria-hidden="true">
@@ -773,12 +770,18 @@ const SkinShop: FC<{ ctx: PosCtx }> = ({ ctx }) => {
   const { items, allCats } = useCombined(c);
   const [activeCat, setActiveCat] = useState('ALL');
   const [view, setView] = useState<'grid' | 'list'>('grid');
-  const [scanInput, setScanInput] = useState('');
+  const [q, setQ] = useState('');
 
   const countFor = (catId: string) =>
     items.filter((i) => i.categoryId === catId).length;
+  const ql = q.trim().toLowerCase();
   const shown = items.filter(
-    (i) => activeCat === 'ALL' || i.categoryId === activeCat,
+    (i) =>
+      (activeCat === 'ALL' || i.categoryId === activeCat) &&
+      (!ql ||
+        String(i.name ?? '').toLowerCase().includes(ql) ||
+        String(i.sku ?? '').toLowerCase().includes(ql) ||
+        String(i.barcode ?? '').includes(ql)),
   );
 
   return (
@@ -818,21 +821,34 @@ const SkinShop: FC<{ ctx: PosCtx }> = ({ ctx }) => {
             </div>
 
             <div>
-              <div className="mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm dark:border-slate-700">
-                  <IcoBarcode className="h-4 w-4 text-slate-400" />
+              <div className="mb-3 flex items-center gap-2">
+                <div className="flex flex-1 items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm dark:border-slate-700">
+                  <IcoSearch className="h-4 w-4 text-slate-400" />
                   <input
-                    value={scanInput}
-                    onChange={(e) => setScanInput(e.target.value)}
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && scanInput.trim()) {
-                        c.scan(scanInput.trim());
-                        setScanInput('');
+                      // Enter = штрихкод: если код точно совпал — товар уйдёт в корзину,
+                      // поле очистим. Обычный ввод текста просто фильтрует список ниже.
+                      if (e.key === 'Enter' && q.trim()) {
+                        c.scan(q.trim());
+                        setQ('');
                       }
                     }}
-                    placeholder="Сканировать или ввести штрихкод"
-                    className="w-56 bg-transparent text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200"
+                    placeholder="Поиск товара или услуги · или штрихкод"
+                    aria-label="Поиск товара или услуги, или штрихкод"
+                    className="w-full bg-transparent text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200"
                   />
+                  {q && (
+                    <button
+                      type="button"
+                      aria-label="Очистить поиск"
+                      onClick={() => setQ('')}
+                      className="text-lg leading-none text-slate-400 hover:text-slate-600"
+                    >
+                      ×
+                    </button>
+                  )}
                   {c.scanMsg && <span className="whitespace-nowrap text-xs text-slate-400">{c.scanMsg}</span>}
                 </div>
                 <div className="flex gap-1 rounded-lg border border-slate-200 p-0.5 dark:border-slate-700">
