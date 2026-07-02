@@ -12,6 +12,8 @@ import {
   TableCard,
   Toolbar,
   SearchInput,
+  Card,
+  SectionTitle,
   Field,
   Input,
   Select,
@@ -44,6 +46,32 @@ interface Row {
 function dateInput(d: Date) {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// Суммарный остаток товара по всем складам
+function stockTotal(p: any) {
+  return (p.stock ?? []).reduce((s: number, r: any) => s + Number(r.quantity), 0);
+}
+// Сколько предложить к заказу: чтобы дотянуть до минимума (но не меньше 1)
+function suggestQty(stock: number, minStock: number) {
+  return Math.max((minStock || 0) - stock, 1);
+}
+function escapeHtml(s: string) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Строка заявки на закупку
+interface ReqRow {
+  productId: string;
+  name: string;
+  unit: string;
+  stock: number;
+  minStock: number;
+  quantity: string;
 }
 
 export default function PurchasingPage() {
@@ -82,6 +110,13 @@ export default function PurchasingPage() {
   const [payTarget, setPayTarget] = useState<any | null>(null);
   const [payAmount, setPayAmount] = useState('');
   const [payMsg, setPayMsg] = useState('');
+
+  // Заявка на закупку (что нужно докупить) + печать накладной-заявки
+  const [reqRows, setReqRows] = useState<ReqRow[]>([]);
+  const [reqQuery, setReqQuery] = useState('');
+  const [reqFilter, setReqFilter] = useState<'all' | 'low' | 'out'>('all');
+  const [reqSupplierId, setReqSupplierId] = useState('');
+  const [reqNote, setReqNote] = useState('');
 
   function load() {
     Promise.all([
@@ -280,6 +315,98 @@ export default function PurchasingPage() {
   );
   const supplierDebt = suppliers.reduce((s, x) => s + Number(x.debt || 0), 0);
 
+  // ---- Заявка на закупку ----
+  // Дефицит: товар отсутствует (остаток ≤ 0) или заканчивается (остаток ≤ минимума).
+  const deficit = products
+    .map((p) => ({ p, st: stockTotal(p), min: Number(p.minStock) || 0 }))
+    .filter((x) => x.st <= 0 || (x.min > 0 && x.st <= x.min));
+  const deficitFiltered = deficit.filter((x) =>
+    reqFilter === 'all' ? true : reqFilter === 'out' ? x.st <= 0 : x.st > 0 && x.st <= x.min,
+  );
+  const reqInList = (id: string) => reqRows.some((r) => r.productId === id);
+  const rq = reqQuery.trim().toLowerCase();
+  const reqMatches = rq
+    ? products
+        .filter((p) => !reqInList(p.id))
+        .filter(
+          (p) =>
+            String(p.name ?? '').toLowerCase().includes(rq) ||
+            String(p.sku ?? '').toLowerCase().includes(rq) ||
+            String(p.barcode ?? '').includes(rq),
+        )
+        .slice(0, 8)
+    : [];
+  const reqTotalQty = reqRows.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
+
+  function addReq(p: any) {
+    setReqQuery('');
+    if (reqInList(p.id)) return;
+    const st = stockTotal(p);
+    const min = Number(p.minStock) || 0;
+    setReqRows((rs) => [
+      ...rs,
+      { productId: p.id, name: p.name, unit: p.unit?.shortName ?? '', stock: st, minStock: min, quantity: String(suggestQty(st, min)) },
+    ]);
+  }
+  function addAllDeficit() {
+    setReqRows((rs) => {
+      const have = new Set(rs.map((r) => r.productId));
+      const add = deficitFiltered
+        .filter((x) => !have.has(x.p.id))
+        .map((x) => ({
+          productId: x.p.id,
+          name: x.p.name,
+          unit: x.p.unit?.shortName ?? '',
+          stock: x.st,
+          minStock: x.min,
+          quantity: String(suggestQty(x.st, x.min)),
+        }));
+      return [...rs, ...add];
+    });
+  }
+  function setReqRow(i: number, patch: Partial<ReqRow>) {
+    setReqRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  }
+  function removeReqRow(i: number) {
+    setReqRows((rs) => rs.filter((_, idx) => idx !== i));
+  }
+  function printRequest() {
+    if (reqRows.length === 0) return;
+    const supplier = suppliers.find((s) => s.id === reqSupplierId);
+    const date = new Date().toLocaleDateString('ru-RU');
+    const rowsHtml = reqRows
+      .map(
+        (r, i) =>
+          `<tr><td>${i + 1}</td><td>${escapeHtml(r.name)}</td><td class="c">${escapeHtml(r.unit)}</td><td class="r">${r.stock}</td><td class="r">${r.minStock || ''}</td><td class="r b">${Number(r.quantity) || 0}</td></tr>`,
+      )
+      .join('');
+    const w = window.open('', '_blank', 'width=820,height=920');
+    if (!w) return;
+    w.document.write(
+      `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Заявка на закупку</title>` +
+        `<style>*{font-family:Arial,Helvetica,sans-serif}body{margin:32px;color:#111}` +
+        `h1{font-size:20px;margin:0 0 4px}.meta{font-size:13px;color:#333;margin-bottom:16px}` +
+        `table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #999;padding:6px 8px}` +
+        `th{background:#f0f0f0;text-align:left}td.c{text-align:center}td.r{text-align:right}td.b{font-weight:700}` +
+        `tfoot td{font-weight:700}.sign{margin-top:44px;display:flex;justify-content:space-between;font-size:13px}` +
+        `.sign div{width:45%}.line{margin-top:26px;border-top:1px solid #333;padding-top:4px;color:#555}` +
+        `@media print{body{margin:12mm}}</style></head><body>` +
+        `<h1>Заявка на закупку</h1>` +
+        `<div class="meta">Дата: ${date}${supplier ? ` &nbsp;·&nbsp; Поставщик: <b>${escapeHtml(supplier.name)}</b>` : ''}` +
+        `${reqNote ? `<br>Примечание: ${escapeHtml(reqNote)}` : ''}</div>` +
+        `<table><thead><tr><th style="width:36px">№</th><th>Наименование</th><th style="width:56px">Ед.</th>` +
+        `<th style="width:90px">Остаток</th><th style="width:64px">Мин.</th><th style="width:90px">Заказать</th></tr></thead>` +
+        `<tbody>${rowsHtml}</tbody>` +
+        `<tfoot><tr><td colspan="5" class="r">Позиций: ${reqRows.length}, всего единиц:</td><td class="r b">${reqTotalQty}</td></tr></tfoot>` +
+        `</table>` +
+        `<div class="sign"><div class="line">Составил (ФИО, подпись)</div><div class="line">Утвердил (ФИО, подпись)</div></div>` +
+        `</body></html>`,
+    );
+    w.document.close();
+    w.focus();
+    w.print();
+  }
+
   // ---- фильтрация ----
   const qr = qReceipts.trim().toLowerCase();
   const filteredReceipts = qr
@@ -301,6 +428,7 @@ export default function PurchasingPage() {
 
   const tabs: TabItem[] = [
     { key: 'receipts', label: 'Приёмки', count: receipts.length },
+    { key: 'request', label: 'Заявка на закупку', count: deficit.length },
     { key: 'suppliers', label: 'Поставщики', count: suppliers.length },
   ];
 
@@ -481,6 +609,196 @@ export default function PurchasingPage() {
             </div>
           )}
         </TableCard>
+      )}
+
+      {/* ============ ЗАЯВКА НА ЗАКУПКУ ============ */}
+      {tab === 'request' && (
+        <div className="space-y-6">
+          {/* Дефицит на складе — источник для заявки */}
+          <TableCard>
+            <Toolbar>
+              <SectionTitle className="mb-0">Дефицит на складе</SectionTitle>
+              <div className="flex gap-1 rounded-lg border border-slate-200 p-0.5 dark:border-slate-700">
+                {([
+                  { k: 'all', l: `Все (${deficit.length})` },
+                  { k: 'low', l: 'Заканчиваются' },
+                  { k: 'out', l: 'Отсутствуют' },
+                ] as const).map((f) => (
+                  <button
+                    key={f.k}
+                    onClick={() => setReqFilter(f.k)}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                      reqFilter === f.k
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {f.l}
+                  </button>
+                ))}
+              </div>
+              {canManage && (
+                <Button size="sm" onClick={addAllDeficit} disabled={deficitFiltered.length === 0} className="ml-auto">
+                  <NavIcon name="plus" className="h-4 w-4" />Добавить всё в заявку
+                </Button>
+              )}
+            </Toolbar>
+            {deficitFiltered.length === 0 ? (
+              <EmptyState icon="check" title="Дефицита нет" hint="Всех товаров достаточно (остаток выше минимума)." />
+            ) : (
+              <div className="pp-table-scroll">
+                <table className="pp-table">
+                  <thead>
+                    <tr>
+                      <th>Товар</th>
+                      <th>Ед.</th>
+                      <th className="text-right">Остаток</th>
+                      <th className="text-right">Мин.</th>
+                      <th>Статус</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deficitFiltered.map(({ p, st, min }) => {
+                      const out = st <= 0;
+                      return (
+                        <tr key={p.id}>
+                          <td className="font-medium text-slate-700 dark:text-slate-200">{p.name}</td>
+                          <td className="text-slate-500 dark:text-slate-400">{p.unit?.shortName ?? '—'}</td>
+                          <td className={`text-right font-semibold ${out ? 'text-rose-600' : 'text-amber-600'}`}>{st}</td>
+                          <td className="text-right text-slate-400">{min || '—'}</td>
+                          <td>
+                            <Badge tone={out ? 'rose' : 'amber'}>{out ? 'Отсутствует' : 'Заканчивается'}</Badge>
+                          </td>
+                          <td className="text-right">
+                            {canManage &&
+                              (reqInList(p.id) ? (
+                                <span className="text-xs text-emerald-600 dark:text-emerald-400">в заявке ✓</span>
+                              ) : (
+                                <Button size="sm" variant="ghost" onClick={() => addReq(p)}>
+                                  <NavIcon name="plus" className="h-4 w-4" />В заявку
+                                </Button>
+                              ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </TableCard>
+
+          {/* Сама заявка + печать */}
+          <Card>
+            <div className="mb-3 flex items-center justify-between">
+              <SectionTitle className="mb-0">Заявка на закупку</SectionTitle>
+              {reqRows.length > 0 && (
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                  Позиций: <b className="text-slate-700 dark:text-slate-200">{reqRows.length}</b>, единиц:{' '}
+                  <b className="text-slate-700 dark:text-slate-200">{reqTotalQty}</b>
+                </span>
+              )}
+            </div>
+
+            {/* Поиск любого товара для добавления в заявку */}
+            <div className="relative mb-3">
+              <SearchInput
+                value={reqQuery}
+                onChange={setReqQuery}
+                placeholder="Найти товар и добавить в заявку (название, артикул, штрихкод)…"
+                className="max-w-none"
+              />
+              {reqMatches.length > 0 && (
+                <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                  {reqMatches.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => addReq(p)}
+                      className="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 text-left text-sm last:border-0 hover:bg-slate-50 dark:border-slate-700/60 dark:hover:bg-slate-700/60"
+                    >
+                      <span className="truncate font-medium text-slate-700 dark:text-slate-200">{p.name}</span>
+                      <span className="shrink-0 text-xs text-slate-400">остаток {stockTotal(p)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {rq && reqMatches.length === 0 && (
+                <div className="absolute z-10 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-400 shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                  Ничего не найдено
+                </div>
+              )}
+            </div>
+
+            {reqRows.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400 dark:border-slate-700">
+                Добавьте товары из списка дефицита выше или через поиск.
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <div className="flex gap-2 px-1 text-xs font-medium text-slate-400">
+                    <span className="flex-1">Товар</span>
+                    <span className="w-20 text-center">Остаток</span>
+                    <span className="w-24 text-center">Заказать</span>
+                    <span className="w-6" />
+                  </div>
+                  {reqRows.map((r, i) => (
+                    <div key={r.productId} className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{r.name}</div>
+                        <div className="text-xs text-slate-400">
+                          {r.unit ? `ед: ${r.unit}` : ''}{r.minStock ? ` · мин: ${r.minStock}` : ''}
+                        </div>
+                      </div>
+                      <div className="w-20 text-center text-sm tabular-nums text-slate-500">{r.stock}</div>
+                      <Input
+                        value={r.quantity}
+                        onChange={(e) => setReqRow(i, { quantity: e.target.value })}
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        className="w-24 text-right"
+                      />
+                      <button
+                        type="button"
+                        aria-label="Удалить"
+                        onClick={() => removeReqRow(i)}
+                        className="inline-flex w-6 shrink-0 items-center justify-center text-slate-400 dark:text-slate-500 hover:text-rose-600"
+                      >
+                        <NavIcon name="close" className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <Field label="Поставщик (необязательно)">
+                    <Select value={reqSupplierId} onChange={(e) => setReqSupplierId(e.target.value)}>
+                      <option value="">— не указан —</option>
+                      {suppliers.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Примечание">
+                    <Input value={reqNote} onChange={(e) => setReqNote(e.target.value)} placeholder="напр. срочно, до пятницы" />
+                  </Field>
+                </div>
+
+                <div className="mt-4 flex items-center gap-2">
+                  <Button variant="ghost" onClick={() => { setReqRows([]); setReqNote(''); setReqSupplierId(''); }}>
+                    Очистить
+                  </Button>
+                  <Button onClick={printRequest} className="ml-auto">
+                    <NavIcon name="print" className="h-4 w-4" />Печать заявки
+                  </Button>
+                </div>
+              </>
+            )}
+          </Card>
+        </div>
       )}
 
       {/* ===================== НОВЫЙ ПОСТАВЩИК (модальное окно) ===================== */}
