@@ -549,6 +549,117 @@ export function Badge({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Пагинация (низ таблицы)                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Полоса пагинации под таблицей: «Показывать по N», диапазон «1–10 из 47»
+ * и кнопки страниц. Используется внутри <TableCard> после таблицы.
+ */
+export function Pagination({
+  total,
+  page,
+  pageSize,
+  onPage,
+  onPageSize,
+  sizes = [10, 25, 50, 100],
+  className = '',
+}: {
+  total: number;
+  page: number;
+  pageSize: number;
+  onPage: (page: number) => void;
+  onPageSize?: (size: number) => void;
+  sizes?: number[];
+  className?: string;
+}) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const cur = Math.min(Math.max(page, 1), pages);
+  const from = total === 0 ? 0 : (cur - 1) * pageSize + 1;
+  const to = Math.min(cur * pageSize, total);
+
+  // Номера: первая, последняя, соседи текущей; между разрывами — «…»
+  const nums: (number | '…')[] = [];
+  for (let i = 1; i <= pages; i++) {
+    if (i === 1 || i === pages || Math.abs(i - cur) <= 1) nums.push(i);
+    else if (nums[nums.length - 1] !== '…') nums.push('…');
+  }
+
+  const btn =
+    'flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-sm font-medium transition disabled:opacity-40';
+
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 px-4 py-3 dark:border-slate-700/60 ${className}`}
+    >
+      {onPageSize && (
+        <label className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+          Показывать по
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              onPageSize(Number(e.target.value));
+              onPage(1);
+            }}
+            className="rounded-lg border border-slate-300 bg-slate-50 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+          >
+            {sizes.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <span className="text-sm text-slate-400">
+        {total === 0 ? 'Нет записей' : `${from}–${to} из ${total}`}
+      </span>
+
+      {pages > 1 && (
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            onClick={() => onPage(cur - 1)}
+            disabled={cur <= 1}
+            aria-label="Предыдущая страница"
+            className={`${btn} border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-transparent dark:text-slate-300 dark:hover:bg-slate-800`}
+          >
+            ‹
+          </button>
+          {nums.map((n, i) =>
+            n === '…' ? (
+              <span key={`e${i}`} className="px-1 text-sm text-slate-400">
+                …
+              </span>
+            ) : (
+              <button
+                key={n}
+                onClick={() => onPage(n)}
+                className={`${btn} ${
+                  n === cur
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-transparent dark:text-slate-300 dark:hover:bg-slate-800'
+                }`}
+              >
+                {n}
+              </button>
+            ),
+          )}
+          <button
+            onClick={() => onPage(cur + 1)}
+            disabled={cur >= pages}
+            aria-label="Следующая страница"
+            className={`${btn} border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-transparent dark:text-slate-300 dark:hover:bg-slate-800`}
+          >
+            ›
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Пустое состояние / загрузка                                        */
 /* ------------------------------------------------------------------ */
 

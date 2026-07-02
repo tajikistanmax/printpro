@@ -22,6 +22,7 @@ import {
   Button,
   Badge,
   EmptyState,
+  Pagination,
 } from '@/components/ui';
 import type { Tone } from '@/components/ui';
 import NavIcon from '@/lib/NavIcons';
@@ -85,6 +86,11 @@ export default function WarehousePage() {
   const [filterCat, setFilterCat] = useState('ALL');
   const [fBranch, setFBranch] = useState('');
   const [fStatus, setFStatus] = useState('');
+
+  // Пагинация списка остатков
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  useEffect(() => { setPage(1); }, [q, filterCat, fBranch, fStatus]);
 
   const [products, setProducts] = useState<any[]>([]);
   const [units, setUnits] = useState<any[]>([]);
@@ -457,6 +463,10 @@ export default function WarehousePage() {
     return true;
   });
 
+  // Текущая страница списка (страница не выходит за пределы после фильтрации)
+  const pageCur = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)));
+  const paged = filtered.slice((pageCur - 1) * pageSize, pageCur * pageSize);
+
   const totalValue = products.reduce((s, p) => s + stockOf(p) * (Number(p.purchasePrice) || 0), 0);
   const lowCount = products.filter((p) => { const x = stockOf(p); return x > 0 && Number(p.minStock) > 0 && x <= Number(p.minStock); }).length;
   const outCount = products.filter((p) => stockOf(p) <= 0).length;
@@ -549,7 +559,7 @@ export default function WarehousePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((p) => {
+                    {paged.map((p) => {
                       const x = stockOf(p);
                       const st = matStatus(x, Number(p.minStock));
                       return (
@@ -576,6 +586,15 @@ export default function WarehousePage() {
                   </tbody>
                 </table>
               </div>
+            )}
+            {!loading && filtered.length > 0 && (
+              <Pagination
+                total={filtered.length}
+                page={pageCur}
+                pageSize={pageSize}
+                onPage={setPage}
+                onPageSize={setPageSize}
+              />
             )}
           </TableCard>
         </>

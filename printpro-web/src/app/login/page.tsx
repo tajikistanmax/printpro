@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { API_BASE, DEFAULT_COMPANY_ID } from '@/lib/config';
@@ -22,6 +22,31 @@ export default function LoginPage() {
     setError('');
     setPin((p) => (p.length >= 6 ? p : p + d));
   }
+  // Ввод PIN с физической клавиатуры (цифры, Backspace, Enter, Esc)
+  useEffect(() => {
+    if (mode !== 'pin') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (busy) return;
+      if (/^\d$/.test(e.key)) {
+        e.preventDefault();
+        pushPin(e.key);
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        setError('');
+        setPin((p) => p.slice(0, -1));
+      } else if (e.key === 'Escape' || e.key === 'Delete') {
+        e.preventDefault();
+        setPin('');
+      } else if (e.key === 'Enter' && pin.length >= 4) {
+        e.preventDefault();
+        void submitPin(pin);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, busy, pin]);
+
   async function submitPin(value: string) {
     setError('');
     setBusy(true);
@@ -181,6 +206,10 @@ export default function LoginPage() {
                 {busy ? 'Вход…' : 'Войти на кассу'}
                 {!busy && <ArrowIcon className="h-5 w-5" />}
               </button>
+
+              <p className="text-center text-xs text-slate-400">
+                Можно набирать PIN с клавиатуры: цифры, ⌫ — стереть, Enter — войти
+              </p>
             </div>
           )}
 
