@@ -56,3 +56,24 @@ export class CreateReceiptDto {
   @Type(() => ReceiptItemDto)
   items: ReceiptItemDto[];
 }
+
+// ----- Заявка на закупку -----
+export class PurchaseRequestItemDto {
+  @IsOptional() @IsString() productId?: string;
+  @IsString() name: string;
+  @IsOptional() @IsString() unit?: string;
+  @IsOptional() @IsNumber() stock?: number;
+  @IsOptional() @IsNumber() minStock?: number;
+  @IsNumber() @Min(0) quantity: number;
+}
+
+export class CreatePurchaseRequestDto {
+  @IsString() companyId: string; // переопределяется из токена на бэкенде
+  @IsOptional() @IsString() supplierName?: string;
+  @IsOptional() @IsString() note?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseRequestItemDto)
+  items: PurchaseRequestItemDto[];
+}

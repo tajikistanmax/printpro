@@ -6,6 +6,7 @@ import {
   CreateSupplierDto,
   UpdateSupplierDto,
   PaySupplierDebtDto,
+  CreatePurchaseRequestDto,
 } from './dto/purchasing.dto';
 import { docNumber } from '../common/doc-number';
 import { nextSeq } from '../common/next-number';
@@ -235,6 +236,38 @@ export class PurchasingService {
     const receipt = await this.loadReceipt(this.prisma, id);
     if (!receipt) throw new NotFoundException('Приёмка не найдена');
     return receipt;
+  }
+
+  // ---------- Заявки на закупку (снимок «что и когда заказывали») ----------
+  async createRequest(dto: CreatePurchaseRequestDto, userId?: string) {
+    if (!dto.items?.length) {
+      throw new BadRequestException('Добавьте хотя бы одну позицию');
+    }
+    const totalQty = Number(
+      dto.items.reduce((s, it) => s + (Number(it.quantity) || 0), 0).toFixed(3),
+    );
+    const count = await this.prisma.purchaseRequest.count({
+      where: { companyId: dto.companyId },
+    });
+    return this.prisma.purchaseRequest.create({
+      data: {
+        companyId: dto.companyId,
+        number: docNumber('ZAK', count + 1),
+        supplierName: dto.supplierName,
+        note: dto.note,
+        items: dto.items as any,
+        totalQty,
+        createdById: userId,
+      },
+    });
+  }
+
+  listRequests(companyId: string) {
+    return this.prisma.purchaseRequest.findMany({
+      where: { companyId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
   }
 
   // ---------- helpers ----------

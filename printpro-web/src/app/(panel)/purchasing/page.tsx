@@ -84,6 +84,7 @@ export default function PurchasingPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
   const [receipts, setReceipts] = useState<any[]>([]);
+  const [requests, setRequests] = useState<any[]>([]); // сохранённые заявки на закупку
 
   const [qReceipts, setQReceipts] = useState('');
   const [qSuppliers, setQSuppliers] = useState('');
@@ -124,12 +125,14 @@ export default function PurchasingPage() {
       api.get(`/products?companyId=${cid}`),
       api.get(`/branches?companyId=${cid}`),
       api.get(`/purchasing/receipts?companyId=${cid}`),
+      api.get(`/purchasing/requests?companyId=${cid}`),
     ])
-      .then(([s, p, b, r]) => {
+      .then(([s, p, b, r, rq]) => {
         setSuppliers(s);
         setProducts(p);
         setBranches(b);
         setReceipts(r);
+        setRequests(rq);
         if (b[0]) setBranchId(b[0].id);
       })
       .catch(() => {});
@@ -370,16 +373,21 @@ export default function PurchasingPage() {
   function removeReqRow(i: number) {
     setReqRows((rs) => rs.filter((_, idx) => idx !== i));
   }
-  function printRequest() {
-    if (reqRows.length === 0) return;
-    const supplier = suppliers.find((s) => s.id === reqSupplierId);
-    const date = new Date().toLocaleDateString('ru-RU');
-    const rowsHtml = reqRows
+  // Печать накладной-заявки (общий рендер для новой и сохранённой заявки)
+  function openRequestPrint(
+    number: string | null | undefined,
+    dateStr: string,
+    supplierName: string | null | undefined,
+    note: string | null | undefined,
+    items: any[],
+  ) {
+    const rowsHtml = items
       .map(
         (r, i) =>
-          `<tr><td>${i + 1}</td><td>${escapeHtml(r.name)}</td><td class="c">${escapeHtml(r.unit)}</td><td class="r">${r.stock}</td><td class="r">${r.minStock || ''}</td><td class="r b">${Number(r.quantity) || 0}</td></tr>`,
+          `<tr><td>${i + 1}</td><td>${escapeHtml(r.name)}</td><td class="c">${escapeHtml(r.unit)}</td><td class="r">${r.stock ?? ''}</td><td class="r">${r.minStock || ''}</td><td class="r b">${Number(r.quantity) || 0}</td></tr>`,
       )
       .join('');
+    const totalQty = items.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
     const w = window.open('', '_blank', 'width=820,height=920');
     if (!w) return;
     w.document.write(
@@ -391,13 +399,13 @@ export default function PurchasingPage() {
         `tfoot td{font-weight:700}.sign{margin-top:44px;display:flex;justify-content:space-between;font-size:13px}` +
         `.sign div{width:45%}.line{margin-top:26px;border-top:1px solid #333;padding-top:4px;color:#555}` +
         `@media print{body{margin:12mm}}</style></head><body>` +
-        `<h1>Заявка на закупку</h1>` +
-        `<div class="meta">Дата: ${date}${supplier ? ` &nbsp;·&nbsp; Поставщик: <b>${escapeHtml(supplier.name)}</b>` : ''}` +
-        `${reqNote ? `<br>Примечание: ${escapeHtml(reqNote)}` : ''}</div>` +
+        `<h1>Заявка на закупку${number ? ` № ${escapeHtml(number)}` : ''}</h1>` +
+        `<div class="meta">Дата: ${escapeHtml(dateStr)}${supplierName ? ` &nbsp;·&nbsp; Поставщик: <b>${escapeHtml(supplierName)}</b>` : ''}` +
+        `${note ? `<br>Примечание: ${escapeHtml(note)}` : ''}</div>` +
         `<table><thead><tr><th style="width:36px">№</th><th>Наименование</th><th style="width:56px">Ед.</th>` +
         `<th style="width:90px">Остаток</th><th style="width:64px">Мин.</th><th style="width:90px">Заказать</th></tr></thead>` +
         `<tbody>${rowsHtml}</tbody>` +
-        `<tfoot><tr><td colspan="5" class="r">Позиций: ${reqRows.length}, всего единиц:</td><td class="r b">${reqTotalQty}</td></tr></tfoot>` +
+        `<tfoot><tr><td colspan="5" class="r">Позиций: ${items.length}, всего единиц:</td><td class="r b">${totalQty}</td></tr></tfoot>` +
         `</table>` +
         `<div class="sign"><div class="line">Составил (ФИО, подпись)</div><div class="line">Утвердил (ФИО, подпись)</div></div>` +
         `</body></html>`,
@@ -405,6 +413,51 @@ export default function PurchasingPage() {
     w.document.close();
     w.focus();
     w.print();
+  }
+
+  // Сохранить заявку (в историю, с номером) и сразу распечатать накладную
+  async function saveAndPrintRequest() {
+    if (reqRows.length === 0) return;
+    const supplier = suppliers.find((s) => s.id === reqSupplierId);
+    try {
+      const saved = await api.post('/purchasing/requests', {
+        companyId: cid,
+        supplierName: supplier?.name,
+        note: reqNote || undefined,
+        items: reqRows.map((r) => ({
+          productId: r.productId,
+          name: r.name,
+          unit: r.unit,
+          stock: r.stock,
+          minStock: r.minStock,
+          quantity: Number(r.quantity) || 0,
+        })),
+      });
+      openRequestPrint(
+        saved.number,
+        new Date(saved.createdAt).toLocaleDateString('ru-RU'),
+        saved.supplierName,
+        saved.note,
+        Array.isArray(saved.items) ? saved.items : [],
+      );
+      setReqRows([]);
+      setReqNote('');
+      setReqSupplierId('');
+      load();
+    } catch (err: any) {
+      alert('Не удалось сохранить заявку: ' + (err?.message ?? err));
+    }
+  }
+
+  // Повторная печать сохранённой заявки из истории
+  function printSaved(req: any) {
+    openRequestPrint(
+      req.number,
+      new Date(req.createdAt).toLocaleDateString('ru-RU'),
+      req.supplierName,
+      req.note,
+      Array.isArray(req.items) ? req.items : [],
+    );
   }
 
   // ---- фильтрация ----
@@ -791,13 +844,71 @@ export default function PurchasingPage() {
                   <Button variant="ghost" onClick={() => { setReqRows([]); setReqNote(''); setReqSupplierId(''); }}>
                     Очистить
                   </Button>
-                  <Button onClick={printRequest} className="ml-auto">
-                    <NavIcon name="print" className="h-4 w-4" />Печать заявки
+                  <Button onClick={saveAndPrintRequest} className="ml-auto">
+                    <NavIcon name="print" className="h-4 w-4" />Сохранить и печатать
                   </Button>
                 </div>
               </>
             )}
           </Card>
+
+          {/* История заявок — доказательство «что и когда заказывали» */}
+          <TableCard>
+            <Toolbar>
+              <SectionTitle className="mb-0">История заявок</SectionTitle>
+              <span className="text-sm text-slate-400">Всего: {requests.length}</span>
+            </Toolbar>
+            {requests.length === 0 ? (
+              <EmptyState
+                icon="purchasing"
+                title="Заявок пока нет"
+                hint="Составьте заявку выше и нажмите «Сохранить и печатать» — она попадёт в историю с номером и датой."
+              />
+            ) : (
+              <div className="pp-table-scroll">
+                <table className="pp-table">
+                  <thead>
+                    <tr>
+                      <th>Номер</th>
+                      <th>Дата и время</th>
+                      <th>Поставщик</th>
+                      <th className="text-right">Позиций</th>
+                      <th className="text-right">Единиц</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {requests.map((r) => (
+                      <tr key={r.id}>
+                        <td className="font-medium text-slate-700 dark:text-slate-200">{r.number ?? '—'}</td>
+                        <td className="text-slate-500 dark:text-slate-400">
+                          {new Date(r.createdAt).toLocaleString('ru-RU', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </td>
+                        <td className="text-slate-700 dark:text-slate-200">{r.supplierName ?? '—'}</td>
+                        <td className="text-right text-slate-500 dark:text-slate-400">
+                          {Array.isArray(r.items) ? r.items.length : 0}
+                        </td>
+                        <td className="text-right font-medium text-slate-800 dark:text-slate-100">
+                          {Number(r.totalQty) || 0}
+                        </td>
+                        <td className="text-right">
+                          <Button size="sm" variant="ghost" onClick={() => printSaved(r)}>
+                            <NavIcon name="print" className="h-4 w-4" />Печать
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </TableCard>
         </div>
       )}
 

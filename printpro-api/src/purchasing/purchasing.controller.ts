@@ -14,6 +14,7 @@ import {
   CreateSupplierDto,
   UpdateSupplierDto,
   PaySupplierDebtDto,
+  CreatePurchaseRequestDto,
 } from './dto/purchasing.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -74,5 +75,24 @@ export class PurchasingController {
     @CurrentUser() user: { sub: string },
   ) {
     return this.purchasing.createReceipt(dto, user.sub);
+  }
+
+  // ----- Заявки на закупку -----
+  @Get('requests')
+  @RequirePermissions('stock.view')
+  listRequests(@CurrentUser() user: { companyId: string }) {
+    return this.purchasing.listRequests(user.companyId);
+  }
+
+  @Post('requests')
+  @RequirePermissions('stock.manage')
+  createRequest(
+    @Body() dto: CreatePurchaseRequestDto,
+    @CurrentUser() user: { sub: string; companyId: string },
+  ) {
+    return this.purchasing.createRequest(
+      { ...dto, companyId: user.companyId },
+      user.sub,
+    );
   }
 }

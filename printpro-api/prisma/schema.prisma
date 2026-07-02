@@ -660,6 +660,26 @@ model StockReceiptItem {
   salePrice Decimal?     @db.Decimal(12, 2) // цена продажи, заданная при приёмке
 }
 
+// Заявка на закупку (что нужно докупить). Хранится как снимок для печати/доказательства:
+// «какого числа и что заказывали». Номер ЗАК-<узел>-год-NNNN.
+model PurchaseRequest {
+  // --- синхронизация ---
+  updatedAt    DateTime  @default(now()) @updatedAt
+  deletedAt    DateTime?
+  syncNode     String?
+  id           String    @id @default(uuid())
+  companyId    String
+  number       String? // ЗАК-<узел>-год-NNNN
+  supplierName String? // снимок названия поставщика (необязательно)
+  note         String?
+  items        Json // [{productId,name,unit,stock,minStock,quantity}]
+  totalQty     Decimal   @default(0) @db.Decimal(12, 3)
+  createdById  String?
+  createdAt    DateTime  @default(now())
+
+  @@index([companyId])
+}
+
 // Отложенный чек (касса) — корзина сохранена, чтобы вернуться позже
 model HeldSale {
   // --- синхронизация ---
