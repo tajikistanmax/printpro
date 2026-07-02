@@ -212,7 +212,7 @@ const SERVICES: { icon: FC<IcoProps>; name: string; from: string; tone: string }
 ];
 
 /* --------------- нижняя промо-полоса (светлая, карточками) --------------- */
-const PromoStripCards: FC = () => (
+const PromoStripCards: FC<{ qr?: string }> = ({ qr }) => (
   <div className="grid grid-cols-2 gap-4 px-6 pb-6 lg:grid-cols-4">
     <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-violet-50 to-fuchsia-50 p-5">
       <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-fuchsia-500 text-white">
@@ -245,7 +245,7 @@ const PromoStripCards: FC = () => (
       </div>
     </div>
     <div className="flex items-center gap-4 rounded-2xl bg-white p-5 shadow-sm">
-      <QrPlaceholder className="h-16 w-16" />
+      <QrPlaceholder className="h-16 w-16" src={qr} />
       <div>
         <div className="text-sm font-semibold text-slate-700">Оставьте отзыв</div>
         <div className="text-xs text-slate-400">Отсканируйте QR</div>
@@ -255,7 +255,7 @@ const PromoStripCards: FC = () => (
 );
 
 /* --------------- нижняя промо-полоса (тёмная, для «Промо») --------------- */
-const PromoStripDark: FC = () => (
+const PromoStripDark: FC<{ qr?: string }> = ({ qr }) => (
   <div className="flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-indigo-900 to-violet-900 px-8 py-5 text-white">
     <div className="flex items-center gap-2">
       <span className="text-2xl font-black text-amber-400">★ 4.9</span>
@@ -286,22 +286,26 @@ const PromoStripDark: FC = () => (
         <br />
         для быстрой связи
       </div>
-      <QrPlaceholder className="h-16 w-16 bg-white" />
+      <QrPlaceholder className="h-16 w-16 bg-white" src={qr} />
     </div>
   </div>
 );
 
-/* ------------------------------ QR-заглушка ------------------------------ */
-const QrPlaceholder: FC<IcoProps> = ({ className }) => (
-  <div className={`grid grid-cols-4 gap-0.5 rounded-lg bg-white p-1.5 ${className ?? ''}`}>
-    {Array.from({ length: 16 }).map((_, i) => (
-      <span
-        key={i}
-        className={`rounded-[1px] ${[0, 1, 2, 4, 7, 8, 10, 12, 13, 15].includes(i) ? 'bg-slate-800' : 'bg-transparent'}`}
-      />
-    ))}
-  </div>
-);
+/* ------------------------------ QR (загруженный или заглушка) ------------------------------ */
+const QrPlaceholder: FC<IcoProps & { src?: string }> = ({ className, src }) =>
+  src ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={fileUrl(src)} alt="QR" className={`rounded-lg bg-white object-contain p-1 ${className ?? ''}`} />
+  ) : (
+    <div className={`grid grid-cols-4 gap-0.5 rounded-lg bg-white p-1.5 ${className ?? ''}`}>
+      {Array.from({ length: 16 }).map((_, i) => (
+        <span
+          key={i}
+          className={`rounded-[1px] ${[0, 1, 2, 4, 7, 8, 10, 12, 13, 15].includes(i) ? 'bg-slate-800' : 'bg-transparent'}`}
+        />
+      ))}
+    </div>
+  );
 
 /* -------------------- векторные иллюстрации-заглушки (в стиле макетов) -------------------- */
 const LogoMark: FC<{ x: number; y: number; s?: number; grad: string }> = ({ x, y, s = 1, grad }) => (
@@ -566,7 +570,7 @@ const SkinShowcase: FC<SkinProps> = ({ state, shop, now }) => {
         </div>
         <CartAside state={state} />
       </main>
-      <PromoStripCards />
+      <PromoStripCards qr={state.displayQr} />
     </Screen>
   );
 };
@@ -620,7 +624,7 @@ const SkinCatalog: FC<SkinProps> = ({ state, shop, now }) => {
         </section>
         <CartAside state={state} />
       </main>
-      <PromoStripCards />
+      <PromoStripCards qr={state.displayQr} />
     </Screen>
   );
 };
@@ -677,7 +681,7 @@ const SkinPromo: FC<SkinProps> = ({ state, shop, now }) => {
           </section>
         )}
       </main>
-      <PromoStripDark />
+      <PromoStripDark qr={state.displayQr} />
     </Screen>
   );
 };

@@ -20,6 +20,7 @@ export class SettingsService {
     const PUBLIC_KEYS = [
       'posLayout',
       'customerDisplayLayout',
+      'displayQr',
       'companyName',
       'currency',
       'language',

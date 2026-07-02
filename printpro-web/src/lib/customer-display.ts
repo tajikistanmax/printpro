@@ -18,11 +18,12 @@ export type DisplayLine = {
 };
 
 export type DisplayState =
-  | { type: 'welcome'; shopName?: string; layout?: string }
+  | { type: 'welcome'; shopName?: string; layout?: string; displayQr?: string }
   | {
       type: 'cart';
       shopName?: string;
       layout?: string;
+      displayQr?: string;
       lines: DisplayLine[];
       subtotal: number;
       discount: number;

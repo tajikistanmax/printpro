@@ -1000,6 +1000,17 @@ function PosSection({ s, set }: { s: Record<string, string>; set: (k: string, v:
           );
         })}
       </div>
+      <div className="mt-5 border-t border-slate-100 pt-4 dark:border-slate-700/60">
+        <ImageUpload
+          value={s.displayQr}
+          onChange={(url) => set('displayQr', url)}
+          label="QR-код для промо-полосы второго экрана (отзыв / связь)"
+          size="h-28 w-28"
+        />
+        <p className="mt-1 text-xs text-slate-400">
+          Показывается в блоке «Оставьте отзыв · Отсканируйте QR» на втором экране.
+        </p>
+      </div>
     </Card>
 
     <Card>

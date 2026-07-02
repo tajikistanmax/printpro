@@ -60,6 +60,7 @@ export default function PosPage() {
   const [search, setSearch] = useState('');
   const [layout, setLayout] = useState<string>(DEFAULT_POS_LAYOUT);
   const [displayLayout, setDisplayLayout] = useState<string>(DEFAULT_DISPLAY_LAYOUT);
+  const [displayQr, setDisplayQr] = useState('');
   const [vfdCfg, setVfdCfg] = useState<VfdConfig>(DEFAULT_VFD);
   const [scanMsg, setScanMsg] = useState('');
   const scanRef = useRef<(code: string) => void>(() => {});
@@ -121,6 +122,7 @@ export default function PosPage() {
       .then((ui) => {
         if (ui?.posLayout) setLayout(ui.posLayout);
         if (ui?.customerDisplayLayout) setDisplayLayout(ui.customerDisplayLayout);
+        if (ui?.displayQr) setDisplayQr(ui.displayQr);
         if (ui?.companyName) setShopName(ui.companyName);
         if (ui) {
           setVfdCfg(readVfdConfig(ui));
@@ -240,7 +242,7 @@ export default function PosPage() {
     }
     if (!displayOn) return;
     if (cart.length === 0) {
-      sendDisplay({ type: 'welcome', shopName, layout: displayLayout });
+      sendDisplay({ type: 'welcome', shopName, layout: displayLayout, displayQr: displayQr || undefined });
     } else if (method === 'TRANSFER') {
       // Оплата переводом — показываем клиенту QR для сканирования
       sendDisplay({
@@ -256,6 +258,7 @@ export default function PosPage() {
         type: 'cart',
         shopName,
         layout: displayLayout,
+        displayQr: displayQr || undefined,
         lines: cart.map((c) => ({
           name: c.name,
           qty: c.quantity,
@@ -267,7 +270,7 @@ export default function PosPage() {
         total,
       });
     }
-  }, [cart, subtotal, total, totalDiscount, shopName, receipt, displayOn, vfdCfg, cartCount, method, transferPay, displayLayout]);
+  }, [cart, subtotal, total, totalDiscount, shopName, receipt, displayOn, vfdCfg, cartCount, method, transferPay, displayLayout, displayQr]);
 
   // После оплаты показываем итог/«спасибо» на дисплее
   useEffect(() => {
