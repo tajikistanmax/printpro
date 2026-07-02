@@ -757,8 +757,8 @@ export default function PurchasingPage() {
                         value={r.quantity}
                         onChange={(e) => setReqRow(i, { quantity: e.target.value })}
                         type="number"
-                        min="0"
-                        step="0.001"
+                        min="1"
+                        step="1"
                         className="w-24 text-right"
                       />
                       <button
