@@ -82,23 +82,31 @@ export class PromocodesService {
     const res = await this.validate(companyId, code, subtotal);
     if (!res.valid) throw new BadRequestException(res.message);
 
-    // Атомарно списываем использование: инкремент проходит только если лимит
-    // ещё не исчерпан. Это защищает от гонки при одновременных продажах.
+    // Атомарно списываем использование: инкремент проходит только если код
+    // всё ещё активен, не истёк и лимит не исчерпан. Между validate и этим
+    // апдейтом код мог отключиться/истечь/исчерпаться при параллельной продаже —
+    // все условия проверяем прямо в where, чтобы не «съесть» недоступный код.
     const normalizedCode = code.trim().toUpperCase();
     const { count } = await this.prisma.promoCode.updateMany({
       where: {
         companyId,
         code: normalizedCode,
         deletedAt: null,
-        OR: [
-          { maxUses: null },
-          { usedCount: { lt: this.prisma.promoCode.fields.maxUses } },
+        isActive: true,
+        AND: [
+          { OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }] },
+          {
+            OR: [
+              { maxUses: null },
+              { usedCount: { lt: this.prisma.promoCode.fields.maxUses } },
+            ],
+          },
         ],
       },
       data: { usedCount: { increment: 1 } },
     });
     if (count === 0) {
-      throw new BadRequestException('Лимит использований исчерпан');
+      throw new BadRequestException('Промокод недоступен (истёк, отключён или исчерпан)');
     }
     return res.discount;
   }

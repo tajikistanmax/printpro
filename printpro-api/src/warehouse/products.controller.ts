@@ -104,8 +104,8 @@ export class ProductsController {
   }
 
   @Delete('product-categories/:id')
-  removeCategory(@Param('id') id: string) {
-    return this.products.removeCategory(id);
+  removeCategory(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.products.removeCategory(id, user.companyId);
   }
 
   // ---- Единицы измерения ----

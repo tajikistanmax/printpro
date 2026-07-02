@@ -392,14 +392,35 @@ export class ProductsService {
     return this.prisma.productCategory.update({ where: { id }, data });
   }
 
-  // Удалить категорию: сначала открепляем товары, чтобы не нарушать связь
-  async removeCategory(id: string) {
-    await this.prisma.product.updateMany({
-      where: { categoryId: id },
-      data: { categoryId: null },
+  // Удалить категорию (мягко, в транзакции):
+  //  1) открепляем товары этой категории (categoryId → null);
+  //  2) подкатегории поднимаем на верхний уровень (parentId → null), чтобы они
+  //     и их товары не «повисли» на удалённом родителе;
+  //  3) мягкое удаление (deletedAt) — в духе soft-delete/синхронизации,
+  //     hard delete ломал бы историю и sync.
+  async removeCategory(id: string, companyId?: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const cat = await tx.productCategory.findUnique({ where: { id } });
+      if (!cat || cat.deletedAt) {
+        throw new NotFoundException('Категория не найдена');
+      }
+      if (companyId && cat.companyId !== companyId) {
+        throw new NotFoundException('Категория не найдена');
+      }
+      await tx.product.updateMany({
+        where: { categoryId: id },
+        data: { categoryId: null },
+      });
+      await tx.productCategory.updateMany({
+        where: { parentId: id },
+        data: { parentId: null },
+      });
+      await tx.productCategory.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
+      return { ok: true };
     });
-    await this.prisma.productCategory.delete({ where: { id } });
-    return { ok: true };
   }
 
   async updateProduct(id: string, dto: Partial<CreateProductDto>, companyId?: string) {

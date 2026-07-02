@@ -141,12 +141,13 @@ export class CashService {
         user: { select: { id: true, fullName: true } },
         branch: { select: { id: true, name: true } },
         payments: {
+          where: { deletedAt: null },
           include: {
             order: { select: { orderNumber: true } },
           },
           orderBy: { createdAt: 'desc' },
         },
-        movements: { orderBy: { createdAt: 'desc' } },
+        movements: { where: { deletedAt: null }, orderBy: { createdAt: 'desc' } },
       },
     });
     if (!shift) throw new NotFoundException('Смена не найдена');
