@@ -54,14 +54,19 @@ function channel(): BroadcastChannel | null {
   return new BroadcastChannel(DISPLAY_CHANNEL);
 }
 
+// Сколько «живёт» сохранённое рабочее состояние (корзина/итог/оплата). Если окно
+// дисплея открыли позже этого срока — показываем приветствие, а не старый заказ.
+const STALE_MS = 10 * 60 * 1000;
+
 /** Сторона кассы: отправить состояние на дисплей. */
 export function sendDisplay(state: DisplayState) {
   const bc = channel();
   if (!bc) return;
   bc.postMessage(state);
-  // Сохраняем последнее состояние, чтобы окно, открытое позже, сразу его увидело.
+  // Сохраняем последнее состояние + метку времени, чтобы окно, открытое позже,
+  // сразу его увидело, но не «залипло» на старой корзине.
   try {
-    localStorage.setItem('pp_display_last', JSON.stringify(state));
+    localStorage.setItem('pp_display_last', JSON.stringify({ s: state, t: Date.now() }));
   } catch {
     /* ignore */
   }
@@ -79,12 +84,24 @@ export function subscribeDisplay(cb: (state: DisplayState) => void): () => void 
   };
   // Подхватываем последнее состояние из localStorage при открытии окна.
   try {
-    const last = localStorage.getItem('pp_display_last');
-    if (last) cb(JSON.parse(last) as DisplayState);
+    const raw = localStorage.getItem('pp_display_last');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Новый формат {s,t}; старый — «голое» состояние (для обратной совместимости).
+      const state: DisplayState = parsed?.s ?? parsed;
+      const ts: number = typeof parsed?.t === 'number' ? parsed.t : 0;
+      const stale = state?.type !== 'welcome' && ts > 0 && Date.now() - ts > STALE_MS;
+      if (state?.type) cb(stale ? { type: 'welcome' } : state);
+    }
   } catch {
     /* ignore */
   }
   return () => bc.close();
+}
+
+/** Сброс дисплея на приветствие (при закрытии/уходе с кассы). */
+export function resetDisplay() {
+  sendDisplay({ type: 'welcome' });
 }
 
 /** Открыть окно дисплея покупателя. */

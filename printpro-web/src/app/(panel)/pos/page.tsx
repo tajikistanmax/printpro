@@ -7,7 +7,7 @@ import { DEFAULT_POS_LAYOUT } from '@/lib/pos-layouts';
 import { DEFAULT_DISPLAY_LAYOUT } from '@/lib/display-layouts';
 import { SKINS, type CartItem, type PosCtx } from './_pos';
 import { useFeatureFlags } from '@/lib/feature-flags';
-import { sendDisplay, openCustomerDisplay } from '@/lib/customer-display';
+import { sendDisplay, openCustomerDisplay, resetDisplay } from '@/lib/customer-display';
 import { readVfdConfig, vfdShow, DEFAULT_VFD, type VfdConfig } from '@/lib/vfd-display';
 import {
   readEscposConfig,
@@ -290,6 +290,18 @@ export default function PosPage() {
     }
   }, [cart, subtotal, total, totalDiscount, shopName, receipt, displayOn, vfdCfg, cartCount, method, transferPay, displayLayout, displayQr]);
 
+  // При закрытии вкладки/уходе с кассы очищаем второй экран (иначе покупатель
+  // видит «зависшую» старую корзину до следующего действия кассира).
+  useEffect(() => {
+    if (!displayOn) return;
+    const clear = () => resetDisplay();
+    window.addEventListener('pagehide', clear);
+    return () => {
+      window.removeEventListener('pagehide', clear);
+      clear();
+    };
+  }, [displayOn]);
+
   // После оплаты показываем итог/«спасибо» на дисплее
   useEffect(() => {
     if (!receipt) return;
@@ -569,9 +581,23 @@ export default function PosPage() {
       await api.post('/orders/held', {
         companyId: cid,
         branchId: branchId || undefined,
-        label: phone || `${cartCount} поз.`,
+        label: clientName || phone || `${cartCount} поз.`,
+        note: note || undefined,
         total,
-        items: cart,
+        // Снимок всего чека, а не только корзины: при возобновлении вернём
+        // скидку, промокод, бонусы, клиента и примечание (v:2). Старые чеки
+        // (плоский массив) по-прежнему открываются — см. resumeHeld.
+        items: {
+          v: 2,
+          cart,
+          discount: discount || undefined,
+          promoCode: promoCode || undefined,
+          promoDiscount: promoDiscount || undefined,
+          useBonus: useBonus || undefined,
+          phone: phone || undefined,
+          clientName: clientName || undefined,
+          note: note || undefined,
+        },
       });
       clearCart();
       loadHeld();
@@ -581,7 +607,24 @@ export default function PosPage() {
   }
 
   async function resumeHeld(h: any) {
-    setCart(Array.isArray(h.items) ? h.items : []);
+    const data = h.items;
+    if (Array.isArray(data)) {
+      // Старый формат: только корзина.
+      setCart(data);
+    } else if (data && Array.isArray(data.cart)) {
+      // Новый формат (v:2): восстанавливаем весь контекст чека.
+      setCart(data.cart);
+      setDiscount(data.discount != null ? String(data.discount) : '');
+      setPromoCode(data.promoCode ?? '');
+      setPromoDiscount(Number(data.promoDiscount) || 0);
+      setPromoMsg(data.promoCode ? 'Промокод восстановлен из отложенного чека' : '');
+      setUseBonus(data.useBonus != null ? String(data.useBonus) : '');
+      setPhone(data.phone ?? '');
+      setClientName(data.clientName ?? '');
+      setNote(data.note ?? '');
+    } else {
+      setCart([]);
+    }
     try {
       await api.del(`/orders/held/${h.id}`);
     } catch {}
