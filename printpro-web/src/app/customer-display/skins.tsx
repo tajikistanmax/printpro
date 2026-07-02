@@ -79,6 +79,12 @@ const SocWhatsApp: FC<IcoProps> = ({ className }) => (
     <path d="M8 8c-1 1-1 3 1 5s4 3 5 2l-1.5-1.5-1.5.7c-.8-.4-1.9-1.5-2.3-2.3l.7-1.5z" fill="#fff" />
   </svg>
 );
+const SocVK: FC<IcoProps> = ({ className }) => (
+  <svg viewBox="0 0 24 24" className={className ?? 'h-6 w-6'} aria-hidden="true">
+    <rect x="2" y="2" width="20" height="20" rx="6" fill="#0077FF" />
+    <path d="M6 9c.4 2.6 2 5 4.4 5.2V9h1.5v2.4c1.4-.1 2.6-1.2 3-2.4H16c-.3 1.2-1.1 2.3-2 2.9 1 .5 1.7 1.5 2.2 2.6h-1.7c-.4-.9-1.1-1.7-2.1-1.8v1.8h-.4C8.8 15 6.6 12.5 6.2 9z" fill="#fff" />
+  </svg>
+);
 
 /* --------------------------------- шапка --------------------------------- */
 function Wordmark({ shop }: { shop: string }) {
@@ -224,6 +230,9 @@ const PromoStripCards: FC = () => (
           <IcoStar key={i} className="h-5 w-5" />
         ))}
       </div>
+      <div className="mt-2 flex items-center justify-between">
+        <Avatars />
+      </div>
       <div className="mt-1 text-xs text-slate-400">25 000+ довольных клиентов</div>
     </div>
     <div className="rounded-2xl bg-white p-5 shadow-sm">
@@ -232,6 +241,7 @@ const PromoStripCards: FC = () => (
         <SocInstagram className="h-8 w-8" />
         <SocTelegram className="h-8 w-8" />
         <SocWhatsApp className="h-8 w-8" />
+        <SocVK className="h-8 w-8" />
       </div>
     </div>
     <div className="flex items-center gap-4 rounded-2xl bg-white p-5 shadow-sm">
@@ -293,20 +303,67 @@ const QrPlaceholder: FC<IcoProps> = ({ className }) => (
   </div>
 );
 
-/* -------------------- фото-заглушка (можно заменить своей) -------------------- */
-const PhotoBlock: FC<{ className?: string; label?: string }> = ({ className, label }) => (
+/* -------------------- фото (реальное из /public/display или заглушка) --------------------
+ * Положите файл (напр. /public/display/showcase.jpg) — он покажется поверх заглушки.
+ * Если файла нет, останется брендовый градиент с логотипом. */
+const PhotoBlock: FC<{ className?: string; label?: string; src?: string }> = ({
+  className,
+  label,
+  src,
+}) => (
   <div
     className={`relative flex items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-violet-100 via-fuchsia-50 to-indigo-100 ${className ?? ''}`}
   >
     {/* eslint-disable-next-line @next/next/no-img-element */}
     <img src="/logo.svg" alt="" className="h-20 w-20 opacity-70" />
+    {src && (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).style.display = 'none';
+        }}
+      />
+    )}
     {label && (
-      <span className="absolute bottom-3 left-4 text-sm font-semibold uppercase tracking-wide text-violet-400">
+      <span className="absolute bottom-3 left-4 z-10 text-sm font-semibold uppercase tracking-wide text-violet-500">
         {label}
       </span>
     )}
   </div>
 );
+
+/* -------------------- точки-карусель (декор) -------------------- */
+const Dots: FC<{ n?: number; active?: number }> = ({ n = 5, active = 0 }) => (
+  <div className="mt-3 flex justify-center gap-1.5">
+    {Array.from({ length: n }).map((_, i) => (
+      <span
+        key={i}
+        className={`h-2 rounded-full transition-all ${i === active ? 'w-6 bg-violet-500' : 'w-2 bg-slate-300'}`}
+      />
+    ))}
+  </div>
+);
+
+/* -------------------- аватары «довольных клиентов» (декор) -------------------- */
+const Avatars: FC = () => {
+  const tones = ['from-violet-500 to-indigo-600', 'from-fuchsia-500 to-pink-600', 'from-sky-500 to-cyan-600', 'from-amber-500 to-orange-600'];
+  return (
+    <div className="flex items-center">
+      {tones.map((t, i) => (
+        <span
+          key={i}
+          className={`-ml-2 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br ${t} text-xs font-bold text-white first:ml-0`}
+        >
+          {['А', 'М', 'К', 'С'][i]}
+        </span>
+      ))}
+      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">+1.2K</span>
+    </div>
+  );
+};
 
 /* --------------------- общие экраны оплаты (итог / QR) --------------------- */
 const Screen: FC<{ children: ReactNode }> = ({ children }) => (
@@ -369,32 +426,53 @@ const PayQrScreen: FC<SkinProps> = ({ state, shop, now }) => {
 const SkinShowcase: FC<SkinProps> = ({ state, shop, now }) => {
   if (state.type === 'total') return <TotalScreen state={state} shop={shop} now={now} />;
   if (state.type === 'pay-qr') return <PayQrScreen state={state} shop={shop} now={now} />;
+  const lines = state.type === 'cart' ? state.lines : [];
+  const last = lines[lines.length - 1];
   return (
     <Screen>
       <Header shop={shop} now={now} />
       <main className="grid flex-1 grid-cols-1 gap-5 px-6 lg:grid-cols-[1fr_380px]">
-        <section className="min-h-0 rounded-3xl bg-white p-6 shadow-sm">
-          <div className="grid h-full grid-cols-1 gap-6 md:grid-cols-[1fr_240px]">
-            <div className="flex flex-col">
-              <PhotoBlock className="min-h-[280px] flex-1" label="Print your vision" />
-              <div className="mt-4 flex items-center gap-3">
-                <h1 className="text-3xl font-black tracking-tight">Визитки</h1>
-                <span className="rounded-full border border-violet-200 px-3 py-1 text-sm font-semibold text-violet-600">100 шт.</span>
-              </div>
-              <p className="mt-1 text-slate-500">Плотная бумага 300 г/м² · двусторонняя печать</p>
-            </div>
-            <div className="space-y-3">
-              {FEATURES.map((f) => (
-                <div key={f.title} className="flex items-center gap-3">
-                  <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${f.tone}`}>
-                    <f.icon className="h-5 w-5" />
-                  </span>
-                  <span className="font-medium text-slate-700">{f.title}</span>
+        <div className="flex min-h-0 flex-col gap-5">
+          <section className="min-h-0 flex-1 rounded-3xl bg-white p-6 shadow-sm">
+            <div className="grid h-full grid-cols-1 gap-6 md:grid-cols-[1fr_240px]">
+              <div className="flex flex-col">
+                <PhotoBlock className="min-h-[240px] flex-1" label="Print your vision" src="/display/showcase.jpg" />
+                <Dots active={0} />
+                <div className="mt-3 flex items-center gap-3">
+                  <h1 className="text-3xl font-black tracking-tight">Визитки</h1>
+                  <span className="rounded-full border border-violet-200 px-3 py-1 text-sm font-semibold text-violet-600">100 шт.</span>
                 </div>
-              ))}
+                <p className="mt-1 text-slate-500">Плотная бумага 300 г/м² · двусторонняя печать</p>
+              </div>
+              <div className="space-y-3">
+                {FEATURES.map((f) => (
+                  <div key={f.title} className="flex items-center gap-3">
+                    <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${f.tone}`}>
+                      <f.icon className="h-5 w-5" />
+                    </span>
+                    <span className="font-medium text-slate-700">{f.title}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+          {last && (
+            <div className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-violet-100 to-fuchsia-100 px-6 py-4">
+              <div className="flex items-center gap-4">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-600 text-white">
+                  <IcoCheck className="h-6 w-6" />
+                </span>
+                <div>
+                  <div className="text-lg font-bold text-slate-800">Добавлено в заказ!</div>
+                  <div className="text-sm text-slate-500">
+                    {last.name} · {last.qty} шт.
+                  </div>
+                </div>
+              </div>
+              <div className="text-2xl font-black text-violet-600">{money(last.total)}</div>
+            </div>
+          )}
+        </div>
         <CartAside state={state} />
       </main>
       <PromoStripCards />
@@ -446,7 +524,8 @@ const SkinCatalog: FC<SkinProps> = ({ state, shop, now }) => {
               </div>
             ))}
           </div>
-          <PhotoBlock className="mt-4 h-40 bg-white/50" label="Be creative" />
+          <PhotoBlock className="mt-4 h-40 bg-white/50" label="Be creative" src="/display/catalog-hero.jpg" />
+          <Dots active={0} />
         </section>
         <CartAside state={state} />
       </main>
@@ -485,7 +564,7 @@ const SkinPromo: FC<SkinProps> = ({ state, shop, now }) => {
               </div>
             ))}
           </div>
-          <PhotoBlock className="mt-6 h-48" label="Print your success" />
+          <PhotoBlock className="mt-6 h-48" label="Print your success" src="/display/promo-hero.jpg" />
         </section>
         {/* Справа: услуги или заказ (когда есть корзина) */}
         {hasCart ? (
