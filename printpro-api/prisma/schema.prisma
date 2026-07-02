@@ -387,7 +387,14 @@ model ServiceCategory {
   isDefault Boolean   @default(false)
   sortOrder Int       @default(0)
 
+  // Подкатегории услуг (напр. «Печать» → «Визитки», «Баннеры»). null — верхний уровень.
+  parentId String?
+  parent   ServiceCategory?  @relation("ServiceCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children ServiceCategory[] @relation("ServiceCategoryTree")
+
   services Service[]
+
+  @@index([parentId])
 }
 
 model Service {

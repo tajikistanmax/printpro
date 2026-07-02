@@ -7,7 +7,7 @@ export class ServiceCategoriesController {
   constructor(private readonly servicesService: ServicesService) {}
 
   @Post()
-  create(@Body() dto: { companyId: string; name: string }) {
+  create(@Body() dto: { companyId: string; name: string; parentId?: string }) {
     return this.servicesService.createCategory(dto);
   }
 
@@ -19,7 +19,7 @@ export class ServiceCategoriesController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @Body() dto: { name?: string; isDefault?: boolean },
+    @Body() dto: { name?: string; isDefault?: boolean; parentId?: string | null },
   ) {
     return this.servicesService.updateCategory(id, dto);
   }

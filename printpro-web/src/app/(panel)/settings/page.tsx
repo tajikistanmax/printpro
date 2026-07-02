@@ -643,6 +643,7 @@ function CatalogSection({ cid }: { cid: string }) {
   const [catName, setCatName] = useState('');
   const [catParent, setCatParent] = useState(''); // родитель для новой подкатегории
   const [scatName, setScatName] = useState('');
+  const [scatParent, setScatParent] = useState(''); // родитель для новой подкатегории услуг
   const [uName, setUName] = useState('');
   const [uShort, setUShort] = useState('');
   const [msg, setMsg] = useState('');
@@ -690,8 +691,8 @@ function CatalogSection({ cid }: { cid: string }) {
     const n = scatName.trim();
     if (!n) return;
     try {
-      await api.post('/service-categories', { companyId: cid, name: n });
-      setScatName(''); setMsg(''); load();
+      await api.post('/service-categories', { companyId: cid, name: n, parentId: scatParent || undefined });
+      setScatName(''); setScatParent(''); setMsg(''); load();
     } catch (e: any) { setMsg('Ошибка: ' + e.message); }
   }
   async function delServiceCat(id: string) {
@@ -799,14 +800,38 @@ function CatalogSection({ cid }: { cid: string }) {
 
       <Card>
         <SectionTitle>Категории услуг</SectionTitle>
+        <p className="-mt-1 mb-2 text-xs text-slate-400 dark:text-slate-500">
+          Можно создавать подкатегории: напр. «Печать» → «Визитки», «Баннеры».
+        </p>
         {serviceCats.length === 0 ? (
           <p className="text-xs text-slate-400">Нет категорий услуг.</p>
         ) : (
-          <div>{serviceCats.map((c) => renderRow('scat', c))}</div>
+          <div>
+            {serviceCats
+              .filter((c) => !c.parentId || !serviceCats.some((p: any) => p.id === c.parentId))
+              .map((c) => (
+                <div key={c.id}>
+                  {renderRow('scat', c)}
+                  {serviceCats
+                    .filter((ch) => ch.parentId === c.id)
+                    .map((ch) => (
+                      <div key={ch.id} className="ml-5 border-l-2 border-slate-100 pl-2 dark:border-slate-700/60">
+                        {renderRow('scat', ch)}
+                      </div>
+                    ))}
+                </div>
+              ))}
+          </div>
         )}
-        <div className="mt-3 flex items-center gap-2">
-          <Input value={scatName} onChange={(e) => setScatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addServiceCat())} placeholder="Новая категория услуг (напр. Печать)" />
-          <Button type="button" variant="ghost" onClick={addServiceCat} className="shrink-0">+ Категория</Button>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Input value={scatName} onChange={(e) => setScatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addServiceCat())} placeholder="Категория или подкатегория" className="min-w-[160px] flex-1" />
+          <Select value={scatParent} onChange={(e) => setScatParent(e.target.value)} className="w-auto">
+            <option value="">— верхний уровень —</option>
+            {serviceCats.filter((c) => !c.parentId).map((c) => (
+              <option key={c.id} value={c.id}>в «{c.name}»</option>
+            ))}
+          </Select>
+          <Button type="button" variant="ghost" onClick={addServiceCat} className="shrink-0">+ Добавить</Button>
         </div>
       </Card>
 

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 
@@ -78,9 +78,13 @@ export class ServicesService {
   }
 
   // ---------- Категории услуг ----------
-  createCategory(dto: { companyId: string; name: string }) {
+  createCategory(dto: { companyId: string; name: string; parentId?: string }) {
     return this.prisma.serviceCategory.create({
-      data: { companyId: dto.companyId, name: dto.name },
+      data: {
+        companyId: dto.companyId,
+        name: dto.name,
+        parentId: dto.parentId || undefined, // пусто → верхний уровень
+      },
     });
   }
 
@@ -91,8 +95,11 @@ export class ServicesService {
     });
   }
 
-  // Переименовать / назначить категорию услуг по умолчанию (одна на компанию)
-  async updateCategory(id: string, dto: { name?: string; isDefault?: boolean }) {
+  // Переименовать / по умолчанию / сменить родителя (подкатегория)
+  async updateCategory(
+    id: string,
+    dto: { name?: string; isDefault?: boolean; parentId?: string | null },
+  ) {
     const cat = await this.prisma.serviceCategory.findUniqueOrThrow({ where: { id } });
     if (dto.isDefault) {
       await this.prisma.serviceCategory.updateMany({
@@ -100,13 +107,18 @@ export class ServicesService {
         data: { isDefault: false },
       });
     }
-    return this.prisma.serviceCategory.update({
-      where: { id },
-      data: {
-        name: dto.name?.trim() || undefined,
-        isDefault: dto.isDefault,
-      },
-    });
+    const data: { name?: string; isDefault?: boolean; parentId?: string | null } = {
+      name: dto.name?.trim() || undefined,
+      isDefault: dto.isDefault,
+    };
+    if (dto.parentId !== undefined) {
+      const pid = dto.parentId || null;
+      if (pid === id) {
+        throw new BadRequestException('Категория не может быть своим родителем');
+      }
+      data.parentId = pid;
+    }
+    return this.prisma.serviceCategory.update({ where: { id }, data });
   }
 
   // Удалить категорию: сначала открепляем услуги, чтобы не нарушать связь

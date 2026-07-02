@@ -35,6 +35,21 @@ function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(Math.round(Number(n) || 0)) + ' c.';
 }
 
+// Категории в иерархическом порядке: родитель, затем его подкатегории (с «—»).
+function orderCats(categories: any[]): { id: string; label: string }[] {
+  const out: { id: string; label: string }[] = [];
+  const tops = categories.filter(
+    (c) => !c.parentId || !categories.some((p) => p.id === c.parentId),
+  );
+  for (const t of tops) {
+    out.push({ id: t.id, label: t.name });
+    for (const ch of categories.filter((c) => c.parentId === t.id)) {
+      out.push({ id: ch.id, label: '— ' + ch.name });
+    }
+  }
+  return out;
+}
+
 // Минуты → читабельный срок выполнения
 function fmtLead(min?: number | null) {
   if (!min) return '—';
@@ -254,7 +269,12 @@ export default function ServicesPage() {
   // ---- производные ----
   const ql = search.trim().toLowerCase();
   const filtered = services.filter((s) => {
-    if (filterCat !== 'ALL' && s.categoryId !== filterCat) return false;
+    if (
+      filterCat !== 'ALL' &&
+      s.categoryId !== filterCat &&
+      !categories.some((c) => c.id === s.categoryId && c.parentId === filterCat)
+    )
+      return false;
     if (statusFilter === 'active' && s.isActive === false) return false;
     if (statusFilter === 'inactive' && s.isActive !== false) return false;
     if (ql && !s.name.toLowerCase().includes(ql) && !(s.category?.name ?? '').toLowerCase().includes(ql)) return false;
@@ -280,7 +300,7 @@ export default function ServicesPage() {
           <Field label="Категория">
             <Select value={ef.categoryId} onChange={(e) => setEf((f: any) => ({ ...f, categoryId: e.target.value }))}>
               <option value="">— без категории —</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {orderCats(categories).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
             </Select>
           </Field>
           <Field label="Тип цены">
@@ -448,7 +468,7 @@ export default function ServicesPage() {
                 <Field label="Категория">
                   <Select value={newF.categoryId} onChange={(e) => setNewF((f) => ({ ...f, categoryId: e.target.value }))}>
                     <option value="">— без категории —</option>
-                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {orderCats(categories).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                   </Select>
                 </Field>
                 <Field label="Тип цены">
@@ -489,7 +509,7 @@ export default function ServicesPage() {
           {categories.length > 0 && (
             <Select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="w-auto">
               <option value="ALL">Все категории</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {orderCats(categories).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
             </Select>
           )}
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-auto">
