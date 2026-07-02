@@ -1047,7 +1047,7 @@ export default function PurchasingPage() {
                         value={r.cost}
                         onChange={(e) => setRow(i, { cost: e.target.value })}
                         type="number"
-                        step="0.01"
+                        step="any"
                         placeholder="0"
                         className="w-24 text-right"
                         title="Цена закупки за единицу"
@@ -1056,7 +1056,7 @@ export default function PurchasingPage() {
                         value={r.salePrice}
                         onChange={(e) => setRow(i, { salePrice: e.target.value })}
                         type="number"
-                        step="0.01"
+                        step="any"
                         placeholder="0"
                         className="w-24 text-right"
                         title="Новая цена продажи (обновит цену товара)"
@@ -1114,7 +1114,7 @@ export default function PurchasingPage() {
                         value={paidAmount}
                         onChange={(e) => setPaidAmount(e.target.value)}
                         type="number"
-                        step="0.01"
+                        step="any"
                         placeholder={`меньше ${receiptTotal.toFixed(2)}`}
                       />
                     </Field>
@@ -1189,7 +1189,7 @@ export default function PurchasingPage() {
                   value={payAmount}
                   onChange={(e) => setPayAmount(e.target.value)}
                   type="number"
-                  step="0.01"
+                  step="any"
                   min="0"
                   autoFocus
                   required
