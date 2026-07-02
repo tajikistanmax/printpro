@@ -23,15 +23,27 @@ export class CashService {
       throw new BadRequestException('У вас уже есть открытая смена');
     }
     const smenaSeq = await nextSeq(this.prisma, companyId, 'SMENA');
-    return this.prisma.cashShift.create({
-      data: {
-        companyId,
-        number: docNumber('SMENA', smenaSeq),
-        userId,
-        branchId: dto.branchId,
-        openingBalance: dto.openingBalance ?? 0,
-      },
-    });
+    try {
+      return await this.prisma.cashShift.create({
+        data: {
+          companyId,
+          number: docNumber('SMENA', smenaSeq),
+          userId,
+          branchId: dto.branchId,
+          openingBalance: dto.openingBalance ?? 0,
+        },
+      });
+    } catch (e) {
+      // Гонка: частичный уникальный индекс «одна открытая смена на кассира»
+      // (CashShift_companyId_userId_open_key) не дал открыть вторую смену.
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        throw new BadRequestException('У вас уже есть открытая смена');
+      }
+      throw e;
+    }
   }
 
   // ---------- Текущая открытая смена пользователя ----------

@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -11,6 +12,20 @@ import { CreateUnitDto } from './dto/create-unit.dto';
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // Гонка на уникальном штрихкоде (частичный индекс
+  // Product_companyId_barcode_active_key) → понятная ошибка вместо 500.
+  private barcodeConflict(e: unknown, code?: string | null): never {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === 'P2002'
+    ) {
+      throw new BadRequestException(
+        `Штрихкод ${(code ?? '').trim()} уже используется другим товаром`,
+      );
+    }
+    throw e as Error;
+  }
 
   // Проверка, что штрихкод свободен в пределах компании (среди активных
   // товаров и их доп. штрихкодов). Один штрихкод = один товар.
@@ -46,24 +61,28 @@ export class ProductsService {
   // ---------- Товары ----------
   async createProduct(dto: CreateProductDto) {
     await this.assertBarcodeFree(dto.companyId, dto.barcode);
-    return this.prisma.product.create({
-      data: {
-        companyId: dto.companyId,
-        name: dto.name,
-        categoryId: dto.categoryId,
-        unitId: dto.unitId,
-        salePrice: dto.salePrice ?? 0,
-        purchasePrice: dto.purchasePrice ?? 0,
-        minStock: dto.minStock ?? 0,
-        barcode: dto.barcode,
-        sku: dto.sku,
-        size: dto.size,
-        weight: dto.weight,
-        imageUrl: dto.imageUrl,
-        isActive: dto.isActive ?? true,
-      },
-      include: { category: true, unit: true },
-    });
+    try {
+      return await this.prisma.product.create({
+        data: {
+          companyId: dto.companyId,
+          name: dto.name,
+          categoryId: dto.categoryId,
+          unitId: dto.unitId,
+          salePrice: dto.salePrice ?? 0,
+          purchasePrice: dto.purchasePrice ?? 0,
+          minStock: dto.minStock ?? 0,
+          barcode: dto.barcode,
+          sku: dto.sku,
+          size: dto.size,
+          weight: dto.weight,
+          imageUrl: dto.imageUrl,
+          isActive: dto.isActive ?? true,
+        },
+        include: { category: true, unit: true },
+      });
+    } catch (e) {
+      this.barcodeConflict(e, dto.barcode);
+    }
   }
 
   findAllProducts(companyId: string) {
@@ -391,27 +410,31 @@ export class ProductsService {
     if (dto.barcode != null && dto.barcode.trim() !== (current.barcode ?? '')) {
       await this.assertBarcodeFree(current.companyId, dto.barcode, id);
     }
-    return this.prisma.product.update({
-      where: { id },
-      data: {
-        name: dto.name,
-        // Не сбрасываем категорию/единицу при частичном обновлении: поле, которого
-        // нет в запросе (undefined), Prisma пропускает; пустая строка → снять связь.
-        categoryId:
-          dto.categoryId === undefined ? undefined : dto.categoryId || null,
-        unitId: dto.unitId === undefined ? undefined : dto.unitId || null,
-        salePrice: dto.salePrice,
-        purchasePrice: dto.purchasePrice,
-        minStock: dto.minStock,
-        barcode: dto.barcode,
-        sku: dto.sku,
-        size: dto.size,
-        weight: dto.weight,
-        imageUrl: dto.imageUrl,
-        isActive: dto.isActive,
-      },
-      include: { category: true, unit: true },
-    });
+    try {
+      return await this.prisma.product.update({
+        where: { id },
+        data: {
+          name: dto.name,
+          // Не сбрасываем категорию/единицу при частичном обновлении: поле, которого
+          // нет в запросе (undefined), Prisma пропускает; пустая строка → снять связь.
+          categoryId:
+            dto.categoryId === undefined ? undefined : dto.categoryId || null,
+          unitId: dto.unitId === undefined ? undefined : dto.unitId || null,
+          salePrice: dto.salePrice,
+          purchasePrice: dto.purchasePrice,
+          minStock: dto.minStock,
+          barcode: dto.barcode,
+          sku: dto.sku,
+          size: dto.size,
+          weight: dto.weight,
+          imageUrl: dto.imageUrl,
+          isActive: dto.isActive,
+        },
+        include: { category: true, unit: true },
+      });
+    } catch (e) {
+      this.barcodeConflict(e, dto.barcode);
+    }
   }
 
   async removeProduct(id: string, companyId?: string) {

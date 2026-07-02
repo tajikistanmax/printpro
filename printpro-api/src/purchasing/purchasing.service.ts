@@ -67,6 +67,43 @@ export class PurchasingService {
           userId,
         },
       });
+
+      // С3: гасим приёмки этого поставщика (старые первыми), пока хватает оплаты.
+      // Раньше долг уменьшался, но StockReceipt.paymentStatus навсегда оставался
+      // «в долг/просрочено». Теперь оплата распределяется по приёмкам.
+      let left = pay;
+      const openReceipts = await tx.stockReceipt.findMany({
+        where: {
+          companyId: supplier.companyId,
+          supplierId: id,
+          deletedAt: null,
+          paymentStatus: {
+            in: [ReceiptPaymentStatus.DEBT, ReceiptPaymentStatus.PARTIAL],
+          },
+        },
+        orderBy: { date: 'asc' },
+      });
+      for (const r of openReceipts) {
+        if (left <= 0.001) break;
+        const outstanding = Number(
+          (Number(r.total) - Number(r.paidAmount)).toFixed(2),
+        );
+        if (outstanding <= 0) continue;
+        const alloc = Number(Math.min(left, outstanding).toFixed(2));
+        const newPaid = Number((Number(r.paidAmount) + alloc).toFixed(2));
+        const fullyPaid = newPaid >= Number(r.total) - 0.001;
+        await tx.stockReceipt.update({
+          where: { id: r.id },
+          data: {
+            paidAmount: newPaid,
+            paymentStatus: fullyPaid
+              ? ReceiptPaymentStatus.PAID
+              : ReceiptPaymentStatus.PARTIAL,
+            dueDate: fullyPaid ? null : r.dueDate,
+          },
+        });
+        left = Number((left - alloc).toFixed(2));
+      }
       // Расход из кассы, привязанный к открытой смене кассира — иначе оплата
       // поставщику не попадёт в Z-отчёт и завысит остаток наличных.
       const shiftId = await this.openShiftId(tx, supplier.companyId, userId);
