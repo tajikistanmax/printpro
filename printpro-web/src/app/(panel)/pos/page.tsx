@@ -466,7 +466,9 @@ export default function PosPage() {
         clientName: clientName || undefined,
         discount: disc || undefined,
         promoCode: promoCode.trim() || undefined,
-        useBonus: Number(useBonus) > 0 ? Number(useBonus) : undefined,
+        // Отправляем УЖЕ обрезанный бонус (как показан на экране и учтён в итоге),
+        // а не сырой ввод — иначе чек и второй экран разойдутся по сумме.
+        useBonus: bonusApplied > 0 ? bonusApplied : undefined,
         note: note.trim() || undefined,
         method: mixed ? undefined : useMethod,
         payments,

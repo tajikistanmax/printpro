@@ -36,11 +36,28 @@ export class PurchasingService {
     companyId?: string,
   ) {
     const supplier = await this.ensureSupplier(id, companyId);
-    const outstanding = Number(supplier.debt) || 0;
-    // Нельзя заплатить больше долга: иначе из кассы уйдёт лишнее, а долг всё равно 0.
-    const pay = Number(Math.min(dto.amount, outstanding).toFixed(2));
-    if (pay <= 0) throw new BadRequestException('У поставщика нет долга к оплате');
     return this.prisma.$transaction(async (tx) => {
+      // Свежий остаток долга берём ВНУТРИ транзакции и списываем его атомарно
+      // (updateMany + guard debt >= pay). Иначе два параллельных запроса прочитали бы
+      // один и тот же долг и дважды списали деньги из кассы.
+      const fresh = await tx.supplier.findUnique({
+        where: { id },
+        select: { debt: true },
+      });
+      const outstanding = Number(fresh?.debt ?? 0);
+      const pay = Number(Math.min(dto.amount, outstanding).toFixed(2));
+      if (pay <= 0) throw new BadRequestException('У поставщика нет долга к оплате');
+
+      const dec = await tx.supplier.updateMany({
+        where: { id, debt: { gte: pay } },
+        data: { debt: { decrement: pay } },
+      });
+      if (dec.count === 0) {
+        throw new BadRequestException(
+          'Долг изменился (возможно, оплачен параллельно) — обновите и повторите',
+        );
+      }
+
       await tx.supplierPayment.create({
         data: {
           companyId: supplier.companyId,
@@ -50,8 +67,6 @@ export class PurchasingService {
           userId,
         },
       });
-      const newDebt = Number(Math.max(0, Number(supplier.debt) - pay).toFixed(2));
-      await tx.supplier.update({ where: { id }, data: { debt: newDebt } });
       // Расход из кассы, привязанный к открытой смене кассира — иначе оплата
       // поставщику не попадёт в Z-отчёт и завысит остаток наличных.
       const shiftId = await this.openShiftId(tx, supplier.companyId, userId);

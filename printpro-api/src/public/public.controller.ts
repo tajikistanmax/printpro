@@ -9,15 +9,13 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import { randomUUID } from 'crypto';
 import { IsArray, IsOptional, IsString } from 'class-validator';
 import { OrderStatus, OrderType, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { nextSeq } from '../common/next-number';
 import { ClientsService } from '../clients/clients.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { LAYOUT_UPLOAD_OPTIONS } from '../uploads/image-upload.options';
 
 class PublicFileDto {
   @IsString() url: string;
@@ -71,21 +69,11 @@ export class PublicController {
     });
   }
 
-  // Загрузка файла (макета) клиентом
+  // Загрузка файла (макета) клиентом. Только изображения/PDF (без SVG/HTML/JS).
   @Post('upload')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: './uploads',
-        filename: (_req, file, cb) => {
-          const name = randomUUID() + extname(file.originalname);
-          cb(null, name);
-        },
-      }),
-      limits: { fileSize: 50 * 1024 * 1024 }, // до 50 МБ
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file', LAYOUT_UPLOAD_OPTIONS))
   upload(@UploadedFile() file: any) {
+    if (!file) return { url: null };
     return {
       url: `/uploads/${file.filename}`,
       name: file.originalname,

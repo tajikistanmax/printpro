@@ -119,15 +119,18 @@ export class ProductionService {
         if (qty > 0) need.set(m.productId, (need.get(m.productId) ?? 0) + qty);
       }
     }
-    if (need.size === 0) {
-      await this.prisma.productionJob.update({
-        where: { id: jobId },
+
+    // Захват права на списание и само списание — в одной транзакции. Флаг
+    // переводим false→true атомарно (updateMany + проверка count): второй
+    // параллельный запрос получит count=0 и материалы не спишутся дважды.
+    // При сбое транзакция откатится вместе с флагом — списание можно повторить.
+    await this.prisma.$transaction(async (tx) => {
+      const claim = await tx.productionJob.updateMany({
+        where: { id: jobId, materialsWrittenOff: false },
         data: { materialsWrittenOff: true },
       });
-      return;
-    }
+      if (claim.count === 0) return; // уже списано параллельно
 
-    await this.prisma.$transaction(async (tx) => {
       for (const [productId, qty] of need) {
         await tx.stock.upsert({
           where: { productId_branchId: { productId, branchId: order.branchId! } },
@@ -150,10 +153,6 @@ export class ProductionService {
           },
         });
       }
-      await tx.productionJob.update({
-        where: { id: jobId },
-        data: { materialsWrittenOff: true },
-      });
     });
   }
 

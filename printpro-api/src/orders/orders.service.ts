@@ -319,18 +319,7 @@ export class OrdersService {
         shiftId = openShift?.id;
       }
 
-      await tx.payment.create({
-        data: {
-          companyId: order.companyId,
-          orderId,
-          amount: dto.amount,
-          method: dto.method,
-          userId: cashierId,
-          shiftId,
-        },
-      });
-
-      const newPaid = Number(order.paid) + dto.amount;
+      const newPaid = Number((Number(order.paid) + dto.amount).toFixed(2));
       const balanceDue = Number((Number(order.total) - newPaid).toFixed(2));
 
       // Статус оплаты
@@ -339,12 +328,32 @@ export class OrdersService {
       else if (newPaid > 0) paymentStatus = PaymentStatus.PARTIAL;
       else paymentStatus = PaymentStatus.UNPAID;
 
-      await tx.order.update({
-        where: { id: orderId },
+      // Оптимистичная блокировка: обновляем заказ только если `paid` не изменился
+      // с момента чтения. Иначе два параллельных запроса (двойной клик) прочитали бы
+      // один и тот же остаток и создали переплату. Здесь второй запрос получит count=0.
+      const upd = await tx.order.updateMany({
+        where: { id: orderId, paid: order.paid },
         data: {
           paid: newPaid,
           balanceDue: balanceDue < 0 ? 0 : balanceDue,
           paymentStatus,
+        },
+      });
+      if (upd.count === 0) {
+        throw new BadRequestException(
+          'Оплата не проведена: заказ изменился (возможно, оплачен параллельно). Обновите и повторите.',
+        );
+      }
+
+      // Платёж создаём только после успешного обновления — иначе остался бы «висящий» платёж.
+      await tx.payment.create({
+        data: {
+          companyId: order.companyId,
+          orderId,
+          amount: dto.amount,
+          method: dto.method,
+          userId: cashierId,
+          shiftId,
         },
       });
 
@@ -468,11 +477,18 @@ export class OrdersService {
         );
         bonusUsed = Number(bonusUsed.toFixed(2));
         if (bonusUsed > 0) {
-          discount += bonusUsed;
-          await this.prisma.client.update({
-            where: { id: order.clientId },
+          // Атомарное списание: проходит только если баллов реально хватает.
+          // Защищает от гонки — два одновременных чека не уведут баланс в минус.
+          const dec = await this.prisma.client.updateMany({
+            where: { id: order.clientId, bonusPoints: { gte: bonusUsed } },
             data: { bonusPoints: { decrement: bonusUsed } },
           });
+          if (dec.count === 0) {
+            throw new BadRequestException(
+              'Недостаточно бонусов у клиента (возможно, списаны параллельно)',
+            );
+          }
+          discount += bonusUsed;
         }
       }
 
@@ -656,26 +672,50 @@ export class OrdersService {
 
       const paid = Number(order.paid);
 
-      // 1. Возврат денег из кассы (расход) — привязываем к открытой смене кассира,
-      // иначе расход не попадёт в Z-отчёт и завысит остаток наличных.
-      if (paid > 0) {
+      // 1. Возврат денег. Из НАЛИЧНОЙ кассы выдаём только ту часть, что была
+      // получена наличными — безналичные (карта/перевод/QR) возвращаются на карту
+      // и кассовый ящик не трогают, иначе Z-отчёт покажет ложную недостачу.
+      const cashPaid = order.payments
+        .filter((p) => p.method === PaymentMethod.CASH)
+        .reduce((s, p) => s + Number(p.amount), 0);
+      const cashRefund = Number(Math.min(paid, cashPaid).toFixed(2));
+      if (cashRefund > 0) {
         const shiftId = await this.openShiftId(tx, order.companyId, userId);
         await tx.cashMovement.create({
           data: {
             companyId: order.companyId,
             shiftId,
             type: 'OUT',
-            amount: paid,
+            amount: cashRefund,
             category: 'Возвраты',
             reason: `Возврат по заказу №${order.orderNumber}`,
           },
         });
       }
 
-      // 2. Возврат товаров на склад
+      // 2. Возврат товаров на склад — только то, что ещё не вернули частичными
+      // возвратами, иначе товар оприходуется дважды (продано 5, вернули 2, отмена → +3, не +5).
       if (order.branchId) {
+        const priorReturns = await tx.return.findMany({
+          where: { orderId },
+          select: { items: true },
+        });
+        const returnedByItem = new Map<string, number>();
+        for (const r of priorReturns) {
+          for (const li of (r.items as any[]) ?? []) {
+            if (li?.orderItemId) {
+              returnedByItem.set(
+                li.orderItemId,
+                (returnedByItem.get(li.orderItemId) ?? 0) + Number(li.quantity || 0),
+              );
+            }
+          }
+        }
         for (const it of order.items) {
           if (it.itemType === ItemType.PRODUCT && it.productId) {
+            const alreadyReturned = returnedByItem.get(it.id) ?? 0;
+            const restock = Number((Number(it.quantity) - alreadyReturned).toFixed(3));
+            if (restock <= 0) continue; // всё уже возвращено ранее
             const cur = await tx.stock.findUnique({
               where: {
                 productId_branchId: { productId: it.productId, branchId: order.branchId },
@@ -692,9 +732,9 @@ export class OrdersService {
               create: {
                 productId: it.productId,
                 branchId: order.branchId,
-                quantity: it.quantity,
+                quantity: restock,
               },
-              update: { quantity: { increment: it.quantity } },
+              update: { quantity: { increment: restock } },
             });
             await tx.stockMovement.create({
               data: {
@@ -702,9 +742,9 @@ export class OrdersService {
                 productId: it.productId,
                 branchId: order.branchId,
                 type: StockMovementType.IN,
-                quantity: it.quantity,
+                quantity: restock,
                 beforeQty: before,
-                afterQty: Number((before + Number(it.quantity)).toFixed(3)),
+                afterQty: Number((before + restock).toFixed(3)),
                 reason: `Возврат по заказу №${order.orderNumber}`,
                 orderId: order.id,
               },
@@ -761,11 +801,32 @@ export class OrdersService {
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        include: { items: true },
+        include: { items: true, payments: true },
       });
       if (!order) throw new NotFoundException('Заказ не найден');
       if (companyId && order.companyId !== companyId) {
         throw new NotFoundException('Заказ не найден');
+      }
+      if (order.status === OrderStatus.CANCELLED) {
+        throw new BadRequestException('Заказ отменён — возврат невозможен');
+      }
+
+      // Сколько уже возвращено по каждой позиции (из прошлых документов возврата),
+      // чтобы нельзя было вернуть больше, чем реально продано (двойной возврат).
+      const priorReturns = await tx.return.findMany({
+        where: { orderId },
+        select: { items: true },
+      });
+      const returnedByItem = new Map<string, number>();
+      for (const r of priorReturns) {
+        for (const li of (r.items as any[]) ?? []) {
+          if (li?.orderItemId) {
+            returnedByItem.set(
+              li.orderItemId,
+              (returnedByItem.get(li.orderItemId) ?? 0) + Number(li.quantity || 0),
+            );
+          }
+        }
       }
 
       let amount = 0;
@@ -775,7 +836,10 @@ export class OrdersService {
       for (const ri of dto.items) {
         const oi = order.items.find((x) => x.id === ri.orderItemId);
         if (!oi) continue;
-        const qty = Math.min(Number(ri.quantity), Number(oi.quantity));
+        // Остаток к возврату по позиции = продано − уже возвращено.
+        const alreadyReturned = returnedByItem.get(oi.id) ?? 0;
+        const remaining = Number(oi.quantity) - alreadyReturned;
+        const qty = Math.min(Number(ri.quantity), remaining);
         if (qty <= 0) continue;
         const lineAmount = Number((qty * Number(oi.unitPrice)).toFixed(2));
         amount += lineAmount;
@@ -827,21 +891,27 @@ export class OrdersService {
         throw new BadRequestException('Нечего возвращать');
       }
 
-      // Реально из кассы возвращаем не больше, чем по заказу оплачено.
-      // Для продажи «в долг» деньги не вносились — наличных не возвращаем,
-      // просто уменьшаем долг на стоимость возвращённого товара.
-      const cashRefund = Number(Math.min(amount, Number(order.paid)).toFixed(2));
+      // Всего денег к возврату — не больше, чем по заказу оплачено. Для продажи
+      // «в долг» деньги не вносились — уменьшаем только долг на стоимость товара.
+      const moneyBack = Number(Math.min(amount, Number(order.paid)).toFixed(2));
 
-      // Деньги обратно — расход из кассы, привязанный к открытой смене кассира
-      // (иначе возврат не отразится в Z-отчёте и завысит наличные).
-      if (cashRefund > 0) {
+      // Из НАЛИЧНОЙ кассы выдаём только наличную часть оплаты; безналичное
+      // (карта/перевод/QR) возвращается на карту и ящик не трогает — иначе Z-отчёт
+      // покажет ложную недостачу.
+      const cashPaid = order.payments
+        .filter((p) => p.method === PaymentMethod.CASH)
+        .reduce((s, p) => s + Number(p.amount), 0);
+      const cashBack = Number(Math.min(moneyBack, cashPaid).toFixed(2));
+
+      // Наличный расход — привязан к открытой смене кассира (иначе не попадёт в Z-отчёт).
+      if (cashBack > 0) {
         const shiftId = await this.openShiftId(tx, order.companyId, userId);
         await tx.cashMovement.create({
           data: {
             companyId: order.companyId,
             shiftId,
             type: 'OUT',
-            amount: cashRefund,
+            amount: cashBack,
             category: 'Возвраты',
             reason: `Возврат по заказу №${order.orderNumber}`,
           },
@@ -871,7 +941,8 @@ export class OrdersService {
       // Долг = итог − возвраты − оплата (не меньше нуля) — корректно и для «в долг».
       const newReturnedTotal = Number((Number(order.returnedTotal) + amount).toFixed(2));
       const newReturnedCost = Number((Number(order.returnedCost) + returnedCost).toFixed(2));
-      const newPaid = Number(Math.max(0, Number(order.paid) - cashRefund).toFixed(2));
+      // Оплата уменьшается на все реально возвращённые деньги (наличные + безнал).
+      const newPaid = Number(Math.max(0, Number(order.paid) - moneyBack).toFixed(2));
       await tx.order.update({
         where: { id: orderId },
         data: {
@@ -886,8 +957,8 @@ export class OrdersService {
 
       // Сторнируем начисленные бонусы пропорционально реально возвращённым деньгам
       // (1% — как при начислении в addPayment), чтобы возврат не оставлял «лишних» баллов.
-      if (order.clientId && cashRefund > 0) {
-        const earned = Number((cashRefund * 0.01).toFixed(2));
+      if (order.clientId && moneyBack > 0) {
+        const earned = Number((moneyBack * 0.01).toFixed(2));
         if (earned > 0) {
           const client = await tx.client.findUnique({
             where: { id: order.clientId },
@@ -965,6 +1036,14 @@ export class OrdersService {
     if (!order) throw new NotFoundException('Заказ не найден');
     if (companyId && order.companyId !== companyId) {
       throw new NotFoundException('Заказ не найден');
+    }
+    // Отмену нельзя проводить простой сменой статуса: иначе долг/оплата/склад
+    // останутся неоткаченными (долг «исчезнет», товар не вернётся, деньги не выданы).
+    // Отмена — только через refund(), который корректно всё сторнирует.
+    if (status === OrderStatus.CANCELLED) {
+      throw new BadRequestException(
+        'Отмена заказа — через «Возврат» (кнопка refund): он вернёт деньги, товар и спишет бонусы',
+      );
     }
     if (order.status === status) return this.findOne(orderId);
 

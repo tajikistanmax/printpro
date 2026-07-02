@@ -4,19 +4,23 @@ import { LoginDto } from './dto/login.dto';
 import { PosLoginDto } from './dto/pos-login.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
+import { LoginRateLimitGuard } from './rate-limit.guard';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
-  // POST /api/auth/login — вход по логину/паролю
+  // POST /api/auth/login — вход по логину/паролю (с защитой от перебора)
   @Post('login')
+  @UseGuards(LoginRateLimitGuard)
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto);
   }
 
-  // POST /api/auth/pos-login — быстрый вход кассира по PIN (токен 12ч)
+  // POST /api/auth/pos-login — быстрый вход кассира по PIN (токен 12ч).
+  // Rate-limit защищает от перебора PIN по всей компании.
   @Post('pos-login')
+  @UseGuards(LoginRateLimitGuard)
   posLogin(@Body() dto: PosLoginDto) {
     return this.auth.posLogin(dto.companyId, dto.pin);
   }
