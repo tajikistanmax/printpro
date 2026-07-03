@@ -1478,9 +1478,9 @@ function NotificationsSection({
       <Card>
         <SectionTitle>В системе</SectionTitle>
         <div className="space-y-3">
-          <Toggle label="Оповещать о низком остатке на складе" checked={s.notifyLowStock === 'true'} onChange={(v) => set('notifyLowStock', String(v))} />
-          <Toggle label="Оповещать о долгах клиентов" checked={s.notifyDebts === 'true'} onChange={(v) => set('notifyDebts', String(v))} />
-          <Toggle label="Оповещать о готовности заказа" checked={s.notifyOrderReady === 'true'} onChange={(v) => set('notifyOrderReady', String(v))} />
+          <Toggle label="Оповещать о низком остатке на складе" checked={s.notifyLowStock !== 'false'} onChange={(v) => set('notifyLowStock', String(v))} />
+          <Toggle label="Оповещать о долгах клиентов" checked={s.notifyDebts !== 'false'} onChange={(v) => set('notifyDebts', String(v))} />
+          <Toggle label="Оповещать о готовности заказа" checked={s.notifyOrderReady !== 'false'} onChange={(v) => set('notifyOrderReady', String(v))} />
         </div>
       </Card>
 

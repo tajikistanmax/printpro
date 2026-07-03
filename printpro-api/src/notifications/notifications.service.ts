@@ -16,21 +16,37 @@ export class NotificationsService {
   async list(companyId: string): Promise<Notification[]> {
     const out: Notification[] = [];
 
-    // 1. Низкий остаток на складе
-    const stocks = await this.prisma.stock.findMany({
-      where: { product: { companyId, minStock: { gt: new Prisma.Decimal(0) } } },
-      include: { product: { select: { name: true, minStock: true } } },
+    // Тумблеры уведомлений из настроек. По умолчанию (ключ не задан) — ВКЛ;
+    // выключено только при явном значении 'false' (совпадает с тумблерами в UI).
+    const settings = await this.prisma.setting.findMany({
+      where: {
+        companyId,
+        key: { in: ['notifyLowStock', 'notifyDebts', 'notifyOrderReady'] },
+      },
     });
-    const lowList = stocks.filter(
-      (s) => Number(s.quantity) <= Number(s.product.minStock),
-    );
-    for (const s of lowList.slice(0, 10)) {
-      out.push({
-        type: 'low_stock',
-        level: 'warning',
-        title: `Мало на складе: ${s.product.name} (${Number(s.quantity)})`,
-        link: '/warehouse',
+    const enabled = (key: string) =>
+      settings.find((s) => s.key === key)?.value !== 'false';
+    const notifyLow = enabled('notifyLowStock');
+    const notifyDebts = enabled('notifyDebts');
+    const notifyReady = enabled('notifyOrderReady');
+
+    // 1. Низкий остаток на складе
+    if (notifyLow) {
+      const stocks = await this.prisma.stock.findMany({
+        where: { product: { companyId, minStock: { gt: new Prisma.Decimal(0) } } },
+        include: { product: { select: { name: true, minStock: true } } },
       });
+      const lowList = stocks.filter(
+        (s) => Number(s.quantity) <= Number(s.product.minStock),
+      );
+      for (const s of lowList.slice(0, 10)) {
+        out.push({
+          type: 'low_stock',
+          level: 'warning',
+          title: `Мало на складе: ${s.product.name} (${Number(s.quantity)})`,
+          link: '/warehouse',
+        });
+      }
     }
 
     // 2. Долги клиентов (отменённые заказы в долг не считаем)
@@ -43,7 +59,7 @@ export class NotificationsService {
       _sum: { balanceDue: true },
       _count: true,
     });
-    if (debt._count > 0) {
+    if (notifyDebts && debt._count > 0) {
       out.push({
         type: 'debts',
         level: 'warning',
@@ -66,7 +82,7 @@ export class NotificationsService {
       _sum: { balanceDue: true },
       _count: true,
     });
-    if (overdue._count > 0) {
+    if (notifyDebts && overdue._count > 0) {
       out.push({
         type: 'debts_overdue',
         level: 'danger',
@@ -111,7 +127,7 @@ export class NotificationsService {
     const ready = await this.prisma.order.count({
       where: { companyId, status: OrderStatus.READY },
     });
-    if (ready > 0) {
+    if (notifyReady && ready > 0) {
       out.push({
         type: 'ready',
         level: 'info',
