@@ -18,6 +18,7 @@ import {
   HoldSaleDto,
   CreateReturnDto,
   UpdateStatusDto,
+  UpdateOrderDto,
 } from './dto/order-actions.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -192,5 +193,16 @@ export class OrdersController {
     @CurrentUser() user: JwtUser,
   ) {
     return this.orders.updateStatus(id, dto.status, user.sub, dto.reason, user.companyId);
+  }
+
+  // Редактирование полей заказа (менеджер/дизайнер/оператор/формат/срок/примечание)
+  @Patch(':id')
+  @RequirePermissions('orders.manage')
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.orders.updateFields(id, dto, user.companyId);
   }
 }

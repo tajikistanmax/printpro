@@ -52,6 +52,9 @@ const STATUS_FLOW = [
   'REWORK',
   'CANCELLED',
 ];
+// Статусы, доступные для ручной смены. CANCELLED исключён: отмена — только через
+// «Возврат» (он сторнирует деньги/склад/бонусы), простая смена статуса её отклонит.
+const STATUS_CHANGEABLE = STATUS_FLOW.filter((s) => s !== 'CANCELLED');
 const STATUS_TONES: Record<string, Tone> = {
   ACCEPTED: 'indigo',
   AWAITING_DESIGN: 'violet',
@@ -269,15 +272,23 @@ export default function OrdersPage() {
   async function bulkChangeStatus(status: string) {
     if (!status || selectedIds.size === 0) return;
     if (!confirm(`Сменить статус у ${selectedIds.size} заказ(ов) на «${STATUS_LABELS[status]}»?`)) return;
-    await Promise.all(
-      [...selectedIds].map((id) =>
-        api.patch(`/orders/${id}/status`, { status }).catch(() => {}),
-      ),
+    setMsg('');
+    // Не глотаем ошибки: считаем успехи/неудачи и показываем итог. Часть заказов
+    // может не сменить статус (недопустимый переход) — пользователь должен знать.
+    const results = await Promise.allSettled(
+      [...selectedIds].map((id) => api.patch(`/orders/${id}/status`, { status })),
     );
+    const ok = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.length - ok;
     setSelectedIds(new Set());
     setBulkStatus('');
     load();
     loadStats();
+    setMsg(
+      failed === 0
+        ? `✓ Статус изменён у ${ok} заказ(ов)`
+        : `Изменено: ${ok}. Не удалось: ${failed} (недопустимый переход статуса).`,
+    );
   }
 
   function exportCSV() {
@@ -457,7 +468,7 @@ export default function OrdersPage() {
                 className="w-auto"
               >
                 <option value="">Сменить статус…</option>
-                {STATUS_FLOW.map((st) => <option key={st} value={st}>{STATUS_LABELS[st]}</option>)}
+                {STATUS_CHANGEABLE.map((st) => <option key={st} value={st}>{STATUS_LABELS[st]}</option>)}
               </Select>
             )}
             <Button variant="ghost" size="sm" onClick={exportCSV}><NavIcon name="download" className="h-4 w-4" />Экспорт выбранных</Button>
@@ -585,7 +596,10 @@ export default function OrdersPage() {
             <div className="mb-3 flex flex-wrap items-center gap-2">
               {canManage ? (
                 <Select value={selected.status} onChange={(e) => changeStatus(e.target.value)} className="w-auto">
-                  {STATUS_FLOW.map((st) => <option key={st} value={st}>{STATUS_LABELS[st]}</option>)}
+                  {!STATUS_CHANGEABLE.includes(selected.status) && (
+                    <option value={selected.status} disabled>{STATUS_LABELS[selected.status] ?? selected.status}</option>
+                  )}
+                  {STATUS_CHANGEABLE.map((st) => <option key={st} value={st}>{STATUS_LABELS[st]}</option>)}
                 </Select>
               ) : (
                 <Badge tone={STATUS_TONES[selected.status] ?? 'slate'}>{STATUS_LABELS[selected.status]}</Badge>

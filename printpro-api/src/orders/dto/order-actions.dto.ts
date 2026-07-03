@@ -8,7 +8,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { OrderStatus, PaymentMethod } from '@prisma/client';
+import { OrderStatus, OrderUrgency, PaymentMethod } from '@prisma/client';
 import { OrderItemDto } from './create-order.dto';
 
 // Добавить оплату к заказу (касса)
@@ -36,6 +36,18 @@ export class CreateReturnDto {
 export class UpdateStatusDto {
   @IsEnum(OrderStatus) status: OrderStatus;
   @IsOptional() @IsString() reason?: string;
+}
+
+// Редактирование полей заказа (без позиций/сумм)
+export class UpdateOrderDto {
+  @IsOptional() @IsString() assignedUserId?: string | null;
+  @IsOptional() @IsString() designerId?: string | null;
+  @IsOptional() @IsString() operatorId?: string | null;
+  @IsOptional() @IsString() format?: string | null;
+  @IsOptional() @IsString() colorMode?: string | null;
+  @IsOptional() @IsEnum(OrderUrgency) urgency?: OrderUrgency;
+  @IsOptional() @IsString() deadline?: string | null;
+  @IsOptional() @IsString() note?: string | null;
 }
 
 // Часть смешанной оплаты

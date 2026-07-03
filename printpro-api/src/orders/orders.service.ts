@@ -7,6 +7,7 @@ import {
   ItemType,
   OrderStatus,
   OrderType,
+  OrderUrgency,
   PaymentMethod,
   PaymentStatus,
   Prisma,
@@ -1068,6 +1069,73 @@ export class OrdersService {
     }
     if (order.status === status) return this.findOne(orderId);
 
+    // Матрица допустимых переходов (ручная смена статуса). Вперёд по цепочке —
+    // свободно (в т.ч. быстрые продажи ACCEPTED→DELIVERED); назад — ограниченно;
+    // из DELIVERED — только в REWORK (переделка/возврат), иначе выданный заказ
+    // «уехал бы» обратно в работу. Авто-синхронизация из производства идёт мимо
+    // этого метода (прямой update), поэтому её матрица не блокирует.
+    const FLOW: Record<OrderStatus, OrderStatus[]> = {
+      ACCEPTED: [
+        OrderStatus.AWAITING_DESIGN,
+        OrderStatus.IN_DESIGN,
+        OrderStatus.DESIGN_APPROVED,
+        OrderStatus.IN_PROGRESS,
+        OrderStatus.READY,
+        OrderStatus.DELIVERED,
+      ],
+      AWAITING_DESIGN: [
+        OrderStatus.ACCEPTED,
+        OrderStatus.IN_DESIGN,
+        OrderStatus.DESIGN_APPROVAL,
+        OrderStatus.DESIGN_APPROVED,
+        OrderStatus.IN_PROGRESS,
+      ],
+      IN_DESIGN: [
+        OrderStatus.AWAITING_DESIGN,
+        OrderStatus.DESIGN_APPROVAL,
+        OrderStatus.DESIGN_APPROVED,
+        OrderStatus.IN_PROGRESS,
+        OrderStatus.REWORK,
+      ],
+      DESIGN_APPROVAL: [
+        OrderStatus.IN_DESIGN,
+        OrderStatus.DESIGN_APPROVED,
+        OrderStatus.IN_PROGRESS,
+        OrderStatus.REWORK,
+      ],
+      DESIGN_APPROVED: [
+        OrderStatus.IN_DESIGN,
+        OrderStatus.IN_PROGRESS,
+        OrderStatus.READY,
+        OrderStatus.REWORK,
+      ],
+      IN_PROGRESS: [
+        OrderStatus.DESIGN_APPROVED,
+        OrderStatus.READY,
+        OrderStatus.DELIVERED,
+        OrderStatus.REWORK,
+      ],
+      READY: [
+        OrderStatus.IN_PROGRESS,
+        OrderStatus.DELIVERED,
+        OrderStatus.REWORK,
+      ],
+      DELIVERED: [OrderStatus.REWORK],
+      REWORK: [
+        OrderStatus.ACCEPTED,
+        OrderStatus.IN_DESIGN,
+        OrderStatus.DESIGN_APPROVED,
+        OrderStatus.IN_PROGRESS,
+        OrderStatus.READY,
+      ],
+      CANCELLED: [],
+    };
+    if (!FLOW[order.status]?.includes(status)) {
+      throw new BadRequestException(
+        `Недопустимый переход статуса: «${order.status}» → «${status}»`,
+      );
+    }
+
     await this.prisma.$transaction([
       this.prisma.order.update({ where: { id: orderId }, data: { status } }),
       this.prisma.orderStatusHistory.create({
@@ -1101,6 +1169,49 @@ export class OrdersService {
     }
 
     return this.findOne(orderId);
+  }
+
+  // Редактирование полей заказа (без позиций/сумм — те влияют на деньги/склад).
+  // Поле, которого нет в запросе (undefined) — не трогаем; пустое → снять значение.
+  async updateFields(
+    orderId: string,
+    dto: {
+      assignedUserId?: string | null;
+      designerId?: string | null;
+      operatorId?: string | null;
+      format?: string | null;
+      colorMode?: string | null;
+      urgency?: OrderUrgency;
+      deadline?: string | null;
+      note?: string | null;
+    },
+    companyId: string,
+  ) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order || order.companyId !== companyId) {
+      throw new NotFoundException('Заказ не найден');
+    }
+    const nn = (v: string | null | undefined) =>
+      v === undefined ? undefined : v || null;
+    await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        assignedUserId: nn(dto.assignedUserId),
+        designerId: nn(dto.designerId),
+        operatorId: nn(dto.operatorId),
+        format: nn(dto.format),
+        colorMode: nn(dto.colorMode),
+        urgency: dto.urgency,
+        deadline:
+          dto.deadline === undefined
+            ? undefined
+            : dto.deadline
+              ? new Date(dto.deadline)
+              : null,
+        note: nn(dto.note),
+      },
+    });
+    return this.findOne(orderId, companyId);
   }
 
   // ---------- Списки и чтение ----------
