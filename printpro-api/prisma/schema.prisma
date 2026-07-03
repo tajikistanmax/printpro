@@ -423,6 +423,8 @@ model Service {
   options    ServiceOption[]
   materials  ServiceMaterial[]
   orderItems OrderItem[]
+
+  @@index([companyId])
 }
 
 // Норма расхода материала на единицу услуги (спецификация / BOM).
@@ -547,6 +549,8 @@ model Product {
   receiptItems     StockReceiptItem[]
   serviceMaterials ServiceMaterial[]
   barcodeAliases   ProductBarcodeAlias[]
+
+  @@index([companyId])
 }
 
 // Доп. штрихкоды товара (один товар = несколько ШК)
@@ -599,6 +603,9 @@ model StockMovement {
   userId    String?
   user      User?             @relation(fields: [userId], references: [id])
   createdAt DateTime          @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([productId, createdAt])
 }
 
 model Supplier {
@@ -824,6 +831,8 @@ model Order {
 
   @@unique([companyId, orderNumber])
   @@index([companyId, updatedAt])
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
 }
 
 model OrderStatusHistory {
@@ -945,6 +954,7 @@ model Payment {
   syncNode  String?
 
   @@index([companyId, updatedAt])
+  @@index([companyId, createdAt])
 }
 
 model CashMovement {
@@ -961,6 +971,8 @@ model CashMovement {
   category  String? // категория расхода/прихода (аренда, зарплата, материалы…)
   reason    String?
   createdAt DateTime   @default(now())
+
+  @@index([companyId, createdAt])
 }
 
 model ClientDebt {
@@ -1032,6 +1044,7 @@ model ProductionJob {
   createdAt      DateTime         @default(now())
 
   @@index([companyId, status])
+  @@index([orderId])
 }
 
 // ======================= ОБОРУДОВАНИЕ =======================
@@ -1126,6 +1139,7 @@ model DesignProof {
   updatedAt      DateTime    @updatedAt
 
   @@index([companyId, status])
+  @@index([orderId])
 }
 
 // ======================= ЗАРПЛАТА =======================
@@ -1219,6 +1233,8 @@ model AuditLog {
   entityId  String?
   data      Json?
   createdAt DateTime @default(now())
+
+  @@index([companyId, createdAt])
 }
 
 model Setting {
