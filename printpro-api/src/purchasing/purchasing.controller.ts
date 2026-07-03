@@ -5,8 +5,10 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
+import { ReceiptPaymentStatus } from '@prisma/client';
 import { PurchasingService } from './purchasing.service';
 import {
   CreateReceiptDto,
@@ -65,8 +67,17 @@ export class PurchasingController {
   // ----- Приёмка -----
   @Get('receipts')
   @RequirePermissions('stock.view')
-  listReceipts(@CurrentUser() user: { companyId: string }) {
-    return this.purchasing.listReceipts(user.companyId);
+  listReceipts(
+    @CurrentUser() user: { companyId: string },
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('paymentStatus') paymentStatus?: ReceiptPaymentStatus,
+  ) {
+    return this.purchasing.listReceipts(user.companyId, {
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      paymentStatus,
+    });
   }
 
   @Get('receipts/:id')
@@ -100,8 +111,15 @@ export class PurchasingController {
   // ----- Заявки на закупку -----
   @Get('requests')
   @RequirePermissions('stock.view')
-  listRequests(@CurrentUser() user: { companyId: string }) {
-    return this.purchasing.listRequests(user.companyId);
+  listRequests(
+    @CurrentUser() user: { companyId: string },
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.purchasing.listRequests(user.companyId, {
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+    });
   }
 
   @Post('requests')

@@ -84,7 +84,11 @@ export default function PurchasingPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
   const [receipts, setReceipts] = useState<any[]>([]);
+  const [receiptsTotal, setReceiptsTotal] = useState(0);
+  const [receiptsTake, setReceiptsTake] = useState(50);
   const [requests, setRequests] = useState<any[]>([]); // сохранённые заявки на закупку
+  const [requestsTotal, setRequestsTotal] = useState(0);
+  const [requestsTake, setRequestsTake] = useState(50);
 
   const [qReceipts, setQReceipts] = useState('');
   const [qSuppliers, setQSuppliers] = useState('');
@@ -119,23 +123,33 @@ export default function PurchasingPage() {
   const [reqSupplierId, setReqSupplierId] = useState('');
   const [reqNote, setReqNote] = useState('');
 
+  function loadReceipts(take = receiptsTake) {
+    api.get(`/purchasing/receipts?companyId=${cid}&limit=${take}`).then((r: any) => {
+      setReceipts(r?.items ?? []);
+      setReceiptsTotal(r?.total ?? 0);
+    }).catch(() => {});
+  }
+  function loadRequests(take = requestsTake) {
+    api.get(`/purchasing/requests?companyId=${cid}&limit=${take}`).then((rq: any) => {
+      setRequests(rq?.items ?? []);
+      setRequestsTotal(rq?.total ?? 0);
+    }).catch(() => {});
+  }
   function load() {
     Promise.all([
       api.get(`/purchasing/suppliers?companyId=${cid}`),
       api.get(`/products?companyId=${cid}`),
       api.get(`/branches?companyId=${cid}`),
-      api.get(`/purchasing/receipts?companyId=${cid}`),
-      api.get(`/purchasing/requests?companyId=${cid}`),
     ])
-      .then(([s, p, b, r, rq]) => {
+      .then(([s, p, b]) => {
         setSuppliers(s);
         setProducts(p);
         setBranches(b);
-        setReceipts(r);
-        setRequests(rq);
         if (b[0]) setBranchId(b[0].id);
       })
       .catch(() => {});
+    loadReceipts();
+    loadRequests();
   }
   useEffect(load, [cid]);
 
@@ -490,7 +504,7 @@ export default function PurchasingPage() {
     : suppliers;
 
   const tabs: TabItem[] = [
-    { key: 'receipts', label: 'Приёмки', count: receipts.length },
+    { key: 'receipts', label: 'Приёмки', count: receiptsTotal },
     { key: 'request', label: 'Заявка на закупку', count: deficit.length },
     { key: 'suppliers', label: 'Поставщики', count: suppliers.length },
   ];
@@ -517,8 +531,8 @@ export default function PurchasingPage() {
 
       <StatGrid cols={4}>
         <StatCard icon="purchasing" tone="indigo" label="Поставщиков" value={suppliers.length} highlight />
-        <StatCard icon="reports" tone="sky" label="Приёмок" value={receipts.length} />
-        <StatCard icon="cash" tone="emerald" label="Сумма закупок" value={money(receiptsValue)} sub="по всем приёмкам" />
+        <StatCard icon="reports" tone="sky" label="Приёмок" value={receiptsTotal} />
+        <StatCard icon="cash" tone="emerald" label="Сумма закупок" value={money(receiptsValue)} sub="по загруженным" />
         <StatCard icon="alert" tone="rose" label="Долг поставщикам" value={money(supplierDebt)} sub={supplierDebt > 0 ? 'нужно оплатить' : 'нет долгов'} />
       </StatGrid>
 
@@ -607,6 +621,13 @@ export default function PurchasingPage() {
                   ))}
                 </tbody>
               </table>
+              {!qReceipts && receipts.length < receiptsTotal && (
+                <div className="border-t border-slate-100 p-3 text-center dark:border-slate-700/60">
+                  <Button variant="ghost" size="sm" onClick={() => { const t = receiptsTake + 50; setReceiptsTake(t); loadReceipts(t); }}>
+                    Показать ещё ({receipts.length} из {receiptsTotal})
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </TableCard>
@@ -870,7 +891,7 @@ export default function PurchasingPage() {
           <TableCard>
             <Toolbar>
               <SectionTitle className="mb-0">История заявок</SectionTitle>
-              <span className="text-sm text-slate-400">Всего: {requests.length}</span>
+              <span className="text-sm text-slate-400">Всего: {requestsTotal}</span>
             </Toolbar>
             {requests.length === 0 ? (
               <EmptyState
@@ -920,6 +941,13 @@ export default function PurchasingPage() {
                     ))}
                   </tbody>
                 </table>
+                {requests.length < requestsTotal && (
+                  <div className="border-t border-slate-100 p-3 text-center dark:border-slate-700/60">
+                    <Button variant="ghost" size="sm" onClick={() => { const t = requestsTake + 50; setRequestsTake(t); loadRequests(t); }}>
+                      Показать ещё ({requests.length} из {requestsTotal})
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </TableCard>

@@ -360,17 +360,36 @@ export class PurchasingService {
     });
   }
 
-  listReceipts(companyId: string) {
-    return this.prisma.stockReceipt.findMany({
-      where: { companyId, deletedAt: null },
-      include: {
-        supplier: { select: { name: true } },
-        branch: { select: { name: true } },
-        items: true,
-      },
-      orderBy: { date: 'desc' },
-      take: 100,
-    });
+  async listReceipts(
+    companyId: string,
+    opts: {
+      limit?: number;
+      offset?: number;
+      paymentStatus?: ReceiptPaymentStatus;
+    } = {},
+  ) {
+    const take = Math.min(Math.max(opts.limit ?? 50, 1), 500);
+    const skip = Math.max(opts.offset ?? 0, 0);
+    const where = {
+      companyId,
+      deletedAt: null,
+      ...(opts.paymentStatus ? { paymentStatus: opts.paymentStatus } : {}),
+    };
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.stockReceipt.findMany({
+        where,
+        include: {
+          supplier: { select: { name: true } },
+          branch: { select: { name: true } },
+          items: true,
+        },
+        orderBy: { date: 'desc' },
+        take,
+        skip,
+      }),
+      this.prisma.stockReceipt.count({ where }),
+    ]);
+    return { items, total };
   }
 
   async findReceipt(id: string, companyId?: string) {
@@ -404,12 +423,23 @@ export class PurchasingService {
     });
   }
 
-  listRequests(companyId: string) {
-    return this.prisma.purchaseRequest.findMany({
-      where: { companyId, deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+  async listRequests(
+    companyId: string,
+    opts: { limit?: number; offset?: number } = {},
+  ) {
+    const take = Math.min(Math.max(opts.limit ?? 50, 1), 500);
+    const skip = Math.max(opts.offset ?? 0, 0);
+    const where = { companyId, deletedAt: null };
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.purchaseRequest.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+      }),
+      this.prisma.purchaseRequest.count({ where }),
+    ]);
+    return { items, total };
   }
 
   // ---------- helpers ----------
