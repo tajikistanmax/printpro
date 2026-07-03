@@ -316,6 +316,28 @@ export default function OrdersPage() {
     }
   }
 
+  async function uploadOrderFile(file: File) {
+    setMsg('');
+    try {
+      await api.upload(`/orders/${selected.id}/files`, file);
+      const full = await api.get(`/orders/${selected.id}`);
+      setSelected(full);
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+  async function deleteOrderFile(fileId: string) {
+    if (!confirm('Удалить файл?')) return;
+    setMsg('');
+    try {
+      await api.del(`/orders/files/${fileId}`);
+      const full = await api.get(`/orders/${selected.id}`);
+      setSelected(full);
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
   async function bulkChangeStatus(status: string) {
     if (!status || selectedIds.size === 0) return;
     if (!confirm(`Сменить статус у ${selectedIds.size} заказ(ов) на «${STATUS_LABELS[status]}»?`)) return;
@@ -776,18 +798,41 @@ export default function OrdersPage() {
               </details>
             )}
 
-            {selected.files?.length > 0 && (
-              <div className="mb-3">
-                <div className="mb-1 text-xs font-medium text-slate-500">Файлы клиента</div>
+            <div className="mb-3">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">Файлы макета / документы</span>
+                {canManage && (
+                  <label className="cursor-pointer text-xs font-medium text-indigo-600 hover:underline">
+                    + Загрузить
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void uploadOrderFile(f);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+              {selected.files?.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {selected.files.map((f: any) => (
-                    <a key={f.id} href={`${SERVER_ORIGIN}${f.fileUrl}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-sm text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-300">
-                      <NavIcon name="paperclip" className="h-3.5 w-3.5 shrink-0" />{f.fileName ?? 'файл'}
-                    </a>
+                    <span key={f.id} className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-sm text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
+                      <a href={`${SERVER_ORIGIN}${f.fileUrl}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:underline">
+                        <NavIcon name="paperclip" className="h-3.5 w-3.5 shrink-0" />{f.fileName ?? 'файл'}
+                      </a>
+                      {canManage && (
+                        <button onClick={() => deleteOrderFile(f.id)} aria-label="Удалить файл" className="text-rose-400 hover:text-rose-600">✕</button>
+                      )}
+                    </span>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-xs text-slate-400">Файлов нет</p>
+              )}
+            </div>
 
             <div className="mb-4 space-y-1 text-sm">
               <Line label="Итого" value={`${selected.total} c.`} bold />
