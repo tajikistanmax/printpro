@@ -160,6 +160,9 @@ export default function OrdersPage() {
 
   const [stats, setStats] = useState<any>(null);
   const [managers, setManagers] = useState<any[]>([]);
+  // Редактирование полей выбранного заказа
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState<any>({});
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState('');
@@ -196,6 +199,11 @@ export default function OrdersPage() {
   useEffect(() => {
     api.get(`/users?companyId=${cid}`).then(setManagers).catch(() => {});
   }, [cid]);
+
+  // При открытии другого заказа выходим из режима редактирования
+  useEffect(() => {
+    setEditMode(false);
+  }, [selected?.id]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -264,6 +272,45 @@ export default function OrdersPage() {
       setSelected(updated);
       load();
       loadStats();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  function startEdit() {
+    const toLocalInput = (iso: string) => {
+      const d = new Date(iso);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    setEditForm({
+      assignedUserId: selected.assignedUserId ?? '',
+      designerId: selected.designerId ?? '',
+      operatorId: selected.operatorId ?? '',
+      format: selected.format ?? '',
+      colorMode: selected.colorMode ?? '',
+      urgency: selected.urgency ?? 'NORMAL',
+      deadline: selected.deadline ? toLocalInput(selected.deadline) : '',
+      note: selected.note ?? '',
+    });
+    setEditMode(true);
+  }
+  async function saveEdit() {
+    setMsg('');
+    try {
+      const updated = await api.patch(`/orders/${selected.id}`, {
+        assignedUserId: editForm.assignedUserId || null,
+        designerId: editForm.designerId || null,
+        operatorId: editForm.operatorId || null,
+        format: editForm.format || null,
+        colorMode: editForm.colorMode || null,
+        urgency: editForm.urgency || 'NORMAL',
+        deadline: editForm.deadline || null,
+        note: editForm.note || null,
+      });
+      setSelected(updated);
+      setEditMode(false);
+      load();
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
     }
@@ -609,6 +656,9 @@ export default function OrdersPage() {
                 <Button variant="ghost" size="sm"><NavIcon name="pos" className="h-4 w-4" />Чек</Button>
               </a>
               <Link href={`/order-card?id=${selected.id}`}><Button variant="ghost" size="sm"><NavIcon name="print" className="h-4 w-4" />Тех-карта</Button></Link>
+              {canManage && !editMode && selected.status !== 'CANCELLED' && (
+                <Button variant="ghost" size="sm" onClick={startEdit}><NavIcon name="edit" className="h-4 w-4" />Изменить</Button>
+              )}
               {can('cash.operate') && Number(selected.paid) > 0 && selected.status !== 'CANCELLED' && (
                 <Button variant="ghost" size="sm" className="text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => { setReturnMode((v) => !v); setReturnQty({}); }}>
                   <NavIcon name="arrowLeft" className="h-4 w-4" />Возврат
@@ -620,19 +670,63 @@ export default function OrdersPage() {
               Клиент: {selected.client?.fullName ?? selected.client?.phone ?? '—'}
             </div>
 
-            {(selected.format || selected.colorMode || (selected.urgency && selected.urgency !== 'NORMAL') || selected.designer || selected.operator || selected.deadline) && (
-              <div className="mb-3 flex flex-wrap gap-2 text-xs">
-                {selected.urgency && selected.urgency !== 'NORMAL' && (
-                  <Badge tone={selected.urgency === 'EXPRESS' ? 'rose' : 'amber'}>{URGENCY_LABELS[selected.urgency]}</Badge>
-                )}
-                {selected.format && <Badge tone="slate">Формат: {selected.format}</Badge>}
-                {selected.colorMode && <Badge tone="slate">{selected.colorMode}</Badge>}
-                {selected.designer && <Badge tone="violet">Дизайнер: {selected.designer.fullName}</Badge>}
-                {selected.operator && <Badge tone="sky">Оператор: {selected.operator.fullName}</Badge>}
-                {selected.deadline && (
-                  <Badge tone="slate">Срок: {new Date(selected.deadline).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Badge>
-                )}
+            {editMode ? (
+              <div className="mb-3 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                <Field label="Менеджер">
+                  <Select value={editForm.assignedUserId} onChange={(e) => setEditForm((f: any) => ({ ...f, assignedUserId: e.target.value }))}>
+                    <option value="">— не назначен —</option>
+                    {managers.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Срок">
+                  <Input type="datetime-local" value={editForm.deadline} onChange={(e) => setEditForm((f: any) => ({ ...f, deadline: e.target.value }))} />
+                </Field>
+                <Field label="Дизайнер">
+                  <Select value={editForm.designerId} onChange={(e) => setEditForm((f: any) => ({ ...f, designerId: e.target.value }))}>
+                    <option value="">— не назначен —</option>
+                    {managers.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Оператор">
+                  <Select value={editForm.operatorId} onChange={(e) => setEditForm((f: any) => ({ ...f, operatorId: e.target.value }))}>
+                    <option value="">— не назначен —</option>
+                    {managers.map((m) => <option key={m.id} value={m.id}>{m.fullName}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Формат">
+                  <Input value={editForm.format} onChange={(e) => setEditForm((f: any) => ({ ...f, format: e.target.value }))} placeholder="напр. A3" />
+                </Field>
+                <Field label="Цветность">
+                  <Input value={editForm.colorMode} onChange={(e) => setEditForm((f: any) => ({ ...f, colorMode: e.target.value }))} placeholder="цветной / ч-б" />
+                </Field>
+                <Field label="Срочность">
+                  <Select value={editForm.urgency} onChange={(e) => setEditForm((f: any) => ({ ...f, urgency: e.target.value }))}>
+                    {Object.entries(URGENCY_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Примечание" className="col-span-2">
+                  <Input value={editForm.note} onChange={(e) => setEditForm((f: any) => ({ ...f, note: e.target.value }))} />
+                </Field>
+                <div className="col-span-2 flex gap-2">
+                  <Button size="sm" variant="emerald" onClick={saveEdit}>Сохранить</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditMode(false)}>Отмена</Button>
+                </div>
               </div>
+            ) : (
+              (selected.format || selected.colorMode || (selected.urgency && selected.urgency !== 'NORMAL') || selected.designer || selected.operator || selected.deadline) && (
+                <div className="mb-3 flex flex-wrap gap-2 text-xs">
+                  {selected.urgency && selected.urgency !== 'NORMAL' && (
+                    <Badge tone={selected.urgency === 'EXPRESS' ? 'rose' : 'amber'}>{URGENCY_LABELS[selected.urgency]}</Badge>
+                  )}
+                  {selected.format && <Badge tone="slate">Формат: {selected.format}</Badge>}
+                  {selected.colorMode && <Badge tone="slate">{selected.colorMode}</Badge>}
+                  {selected.designer && <Badge tone="violet">Дизайнер: {selected.designer.fullName}</Badge>}
+                  {selected.operator && <Badge tone="sky">Оператор: {selected.operator.fullName}</Badge>}
+                  {selected.deadline && (
+                    <Badge tone="slate">Срок: {new Date(selected.deadline).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Badge>
+                  )}
+                </div>
+              )
             )}
 
             <div className="mb-3 space-y-1">
