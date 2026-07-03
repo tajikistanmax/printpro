@@ -276,6 +276,90 @@ export class PurchasingService {
     });
   }
 
+  // Отмена (сторно) ошибочной приёмки: возвращаем остатки, снимаем долг
+  // поставщику и возвращаем оплаченное в кассу, затем мягко удаляем документ.
+  async cancelReceipt(id: string, companyId: string, userId?: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const receipt = await tx.stockReceipt.findUnique({
+        where: { id },
+        include: { items: true },
+      });
+      if (!receipt || receipt.deletedAt || receipt.companyId !== companyId) {
+        throw new NotFoundException('Приёмка не найдена');
+      }
+      if (!receipt.branchId) {
+        throw new BadRequestException('У приёмки не указан склад — отмена невозможна');
+      }
+      const branchId = receipt.branchId;
+
+      // 1. Возвращаем остатки (не уходим в минус: если товар уже израсходован —
+      //    отменить приёмку нельзя, сначала нужно разобраться с расходом).
+      for (const it of receipt.items) {
+        const stock = await tx.stock.findUnique({
+          where: { productId_branchId: { productId: it.productId, branchId } },
+        });
+        const before = stock ? Number(stock.quantity) : 0;
+        if (before < Number(it.quantity)) {
+          throw new BadRequestException(
+            'Нельзя отменить приёмку: товар уже частично израсходован (остаток меньше принятого количества)',
+          );
+        }
+        const after = Number((before - Number(it.quantity)).toFixed(3));
+        await tx.stock.update({
+          where: { productId_branchId: { productId: it.productId, branchId } },
+          data: { quantity: after },
+        });
+        await tx.stockMovement.create({
+          data: {
+            companyId,
+            productId: it.productId,
+            branchId,
+            type: StockMovementType.OUT,
+            quantity: Number(it.quantity),
+            beforeQty: before,
+            afterQty: after,
+            reason: `Отмена приёмки №${receipt.number}`,
+            userId: userId ?? null,
+          },
+        });
+      }
+
+      // 2. Снимаем остаток долга по этой приёмке с поставщика
+      const outstanding = Number(
+        (Number(receipt.total) - Number(receipt.paidAmount)).toFixed(2),
+      );
+      if (receipt.supplierId && outstanding > 0) {
+        await tx.supplier.update({
+          where: { id: receipt.supplierId },
+          data: { debt: { decrement: outstanding } },
+        });
+      }
+
+      // 3. Оплаченное поставщику возвращается в кассу (IN, привязано к смене)
+      const paid = Number(receipt.paidAmount);
+      if (paid > 0) {
+        const shiftId = await this.openShiftId(tx, companyId, userId);
+        await tx.cashMovement.create({
+          data: {
+            companyId,
+            shiftId,
+            type: 'IN',
+            amount: paid,
+            category: 'Поставщики',
+            reason: `Отмена приёмки №${receipt.number}`,
+          },
+        });
+      }
+
+      // 4. Мягкое удаление документа приёмки
+      await tx.stockReceipt.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
+      return { ok: true };
+    });
+  }
+
   listReceipts(companyId: string) {
     return this.prisma.stockReceipt.findMany({
       where: { companyId, deletedAt: null },

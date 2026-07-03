@@ -324,6 +324,14 @@ export default function WarehousePage() {
       load(); loadWriteOffs(); if (tab === 'moves') loadMovements();
     } catch (err: any) { setWoMsg('Ошибка: ' + err.message); }
   }
+  async function cancelWriteOffRow(id: string) {
+    if (!confirm('Отменить это списание? Количество вернётся на склад.')) return;
+    try {
+      await api.post(`/stock/write-offs/${id}/cancel`);
+      setWoMsg('✓ Списание отменено');
+      load(); loadWriteOffs();
+    } catch (err: any) { setWoMsg('Ошибка: ' + err.message); }
+  }
 
   // ---- панель материала ----
   async function openMaterial(id: string) {
@@ -745,7 +753,7 @@ export default function WarehousePage() {
               <>
                 <div className="pp-table-scroll">
                   <table className="pp-table">
-                    <thead><tr><th>Дата</th><th>Товар</th><th className="text-right">Кол-во</th><th className="text-right">Себест.</th><th>Причина</th></tr></thead>
+                    <thead><tr><th>Дата</th><th>Товар</th><th className="text-right">Кол-во</th><th className="text-right">Себест.</th><th>Причина</th><th></th></tr></thead>
                     <tbody>
                       {writeOffs.map((w) => (
                         <tr key={w.id}>
@@ -754,6 +762,9 @@ export default function WarehousePage() {
                           <td className="text-right font-semibold text-slate-700 dark:text-slate-200">{Number(w.quantity)} {w.unit}</td>
                           <td className="text-right tabular-nums text-slate-500 dark:text-slate-400">{money(Number(w.cost))}</td>
                           <td className="text-slate-500 dark:text-slate-400">{w.reason ?? '—'}</td>
+                          <td className="text-right">
+                            <button onClick={() => cancelWriteOffRow(w.id)} className="text-xs font-medium text-rose-600 hover:underline">Отменить</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

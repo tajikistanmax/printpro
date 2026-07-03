@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReceiveStockDto } from './dto/receive-stock.dto';
@@ -487,6 +491,52 @@ export class StockService {
       unit: map.get(r.productId)?.unit?.shortName ?? '',
     }));
     return { items, total };
+  }
+
+  // Отмена (сторно) ошибочного списания: возвращаем количество на склад
+  async cancelWriteOff(id: string, companyId: string, userId?: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const w = await tx.writeOff.findUnique({ where: { id } });
+      if (!w || w.deletedAt || w.companyId !== companyId) {
+        throw new NotFoundException('Списание не найдено');
+      }
+      if (!w.branchId) {
+        throw new BadRequestException('У списания не указан склад — отмена невозможна');
+      }
+      const branchId = w.branchId;
+      const stock = await tx.stock.findUnique({
+        where: { productId_branchId: { productId: w.productId, branchId } },
+      });
+      const before = stock ? Number(stock.quantity) : 0;
+      const after = Number((before + Number(w.quantity)).toFixed(3));
+      await tx.stock.upsert({
+        where: { productId_branchId: { productId: w.productId, branchId } },
+        create: {
+          productId: w.productId,
+          branchId,
+          quantity: Number(w.quantity),
+        },
+        update: { quantity: after },
+      });
+      await tx.stockMovement.create({
+        data: {
+          companyId,
+          productId: w.productId,
+          branchId,
+          type: StockMovementType.IN,
+          quantity: Number(w.quantity),
+          beforeQty: before,
+          afterQty: after,
+          reason: 'Отмена списания',
+          userId: userId ?? null,
+        },
+      });
+      await tx.writeOff.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
+      return { ok: true };
+    });
   }
 
   async lowStock(companyId: string) {

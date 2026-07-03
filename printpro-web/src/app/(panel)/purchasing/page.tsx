@@ -312,6 +312,16 @@ export default function PurchasingPage() {
     );
   }
 
+  async function cancelReceipt(r: any) {
+    if (!confirm(`Отменить приёмку ${r.number ?? ''}? Товар вернётся со склада, долг поставщику и оплата будут сторнированы.`)) return;
+    try {
+      await api.post(`/purchasing/receipts/${r.id}/cancel`);
+      load();
+    } catch (err: any) {
+      alert('Ошибка: ' + err.message);
+    }
+  }
+
   const receiptsValue = receipts.reduce(
     (s, r) => s + (r.total != null ? Number(r.total) : receiptSum(r)),
     0,
@@ -544,6 +554,7 @@ export default function PurchasingPage() {
                     <th className="text-right">Сумма</th>
                     <th>Оплата</th>
                     <th>Срок оплаты</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -588,6 +599,9 @@ export default function PurchasingPage() {
                         ) : (
                           <span className="text-slate-400">—</span>
                         )}
+                      </td>
+                      <td className="text-right">
+                        <button onClick={() => cancelReceipt(r)} className="text-xs font-medium text-rose-600 hover:underline">Отменить</button>
                       </td>
                     </tr>
                   ))}

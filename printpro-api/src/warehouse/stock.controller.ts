@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { StockMovementType } from '@prisma/client';
 import { StockService } from './stock.service';
 import { ReceiveStockDto } from './dto/receive-stock.dto';
@@ -25,6 +25,12 @@ export class StockController {
   @Post('write-off')
   writeOff(@Body() dto: WriteOffDto, @CurrentUser() user: JwtUser) {
     return this.stock.writeOff({ ...dto, companyId: user.companyId });
+  }
+
+  // POST /api/stock/write-offs/:id/cancel — отмена (сторно) списания
+  @Post('write-offs/:id/cancel')
+  cancelWriteOff(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.stock.cancelWriteOff(id, user.companyId, user.sub);
   }
 
   // GET /api/stock/write-offs — журнал списаний

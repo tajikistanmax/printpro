@@ -87,6 +87,16 @@ export class PurchasingController {
     );
   }
 
+  // Отмена (сторно) ошибочной приёмки
+  @Post('receipts/:id/cancel')
+  @RequirePermissions('stock.manage')
+  cancelReceipt(
+    @Param('id') id: string,
+    @CurrentUser() user: { sub: string; companyId: string },
+  ) {
+    return this.purchasing.cancelReceipt(id, user.companyId, user.sub);
+  }
+
   // ----- Заявки на закупку -----
   @Get('requests')
   @RequirePermissions('stock.view')
