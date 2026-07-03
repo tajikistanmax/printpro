@@ -316,13 +316,16 @@ export class ProductsService {
   }
 
   // ---------- Доп. штрихкоды (алиасы) ----------
-  async addBarcodeAlias(productId: string, barcode: string) {
+  async addBarcodeAlias(productId: string, barcode: string, companyId?: string) {
     const code = (barcode ?? '').trim();
     if (!code) throw new NotFoundException('Пустой штрихкод');
     const product = await this.prisma.product.findUniqueOrThrow({
       where: { id: productId },
       select: { companyId: true },
     });
+    if (companyId && product.companyId !== companyId) {
+      throw new NotFoundException('Товар не найден');
+    }
     // Не даём назначить чужой штрихкод (уже у другого товара или его доп. кода)
     await this.assertBarcodeFree(product.companyId, code, productId);
     try {
@@ -339,7 +342,16 @@ export class ProductsService {
     }
   }
 
-  async removeBarcodeAlias(aliasId: string) {
+  async removeBarcodeAlias(aliasId: string, companyId?: string) {
+    if (companyId) {
+      const alias = await this.prisma.productBarcodeAlias.findUnique({
+        where: { id: aliasId },
+        include: { product: { select: { companyId: true } } },
+      });
+      if (!alias || alias.product.companyId !== companyId) {
+        throw new NotFoundException('Штрихкод не найден');
+      }
+    }
     await this.prisma.productBarcodeAlias.delete({ where: { id: aliasId } });
     return { ok: true };
   }
@@ -366,8 +378,12 @@ export class ProductsService {
   async updateCategory(
     id: string,
     dto: { name?: string; isDefault?: boolean; parentId?: string | null },
+    companyId?: string,
   ) {
     const cat = await this.prisma.productCategory.findUniqueOrThrow({ where: { id } });
+    if (companyId && cat.companyId !== companyId) {
+      throw new NotFoundException('Категория не найдена');
+    }
     if (dto.isDefault) {
       await this.prisma.productCategory.updateMany({
         where: { companyId: cat.companyId, isDefault: true },
@@ -476,15 +492,22 @@ export class ProductsService {
   }
 
   findUnits(companyId: string) {
-    return this.prisma.unit.findMany({ where: { companyId }, orderBy: { name: 'asc' } });
+    return this.prisma.unit.findMany({
+      where: { companyId, deletedAt: null },
+      orderBy: { name: 'asc' },
+    });
   }
 
   // Переименовать / назначить единицу по умолчанию (одна на компанию)
   async updateUnit(
     id: string,
     dto: { name?: string; shortName?: string; isDefault?: boolean },
+    companyId?: string,
   ) {
     const u = await this.prisma.unit.findUniqueOrThrow({ where: { id } });
+    if (companyId && u.companyId !== companyId) {
+      throw new NotFoundException('Единица не найдена');
+    }
     if (dto.isDefault) {
       await this.prisma.unit.updateMany({
         where: { companyId: u.companyId, isDefault: true },
@@ -501,8 +524,24 @@ export class ProductsService {
     });
   }
 
-  async removeUnit(id: string) {
-    await this.prisma.unit.findUniqueOrThrow({ where: { id } });
-    return this.prisma.unit.delete({ where: { id } });
+  async removeUnit(id: string, companyId?: string) {
+    const u = await this.prisma.unit.findUniqueOrThrow({ where: { id } });
+    if (companyId && u.companyId !== companyId) {
+      throw new NotFoundException('Единица не найдена');
+    }
+    // Нельзя удалить единицу, пока на неё ссылаются товары (иначе FK-ошибка).
+    const inUse = await this.prisma.product.count({
+      where: { unitId: id, deletedAt: null },
+    });
+    if (inUse > 0) {
+      throw new BadRequestException(
+        `Единица используется в ${inUse} товар(ах) — сначала смените её у товаров`,
+      );
+    }
+    // Мягкое удаление (в духе soft-delete/синхронизации), не hard delete.
+    return this.prisma.unit.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   }
 }

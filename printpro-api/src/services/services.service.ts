@@ -37,8 +37,8 @@ export class ServicesService {
   }
 
   // Обновить услугу (скаляры; тиры/размеры/опции — заменяем, если переданы)
-  async update(id: string, dto: Partial<CreateServiceDto>) {
-    await this.findOne(id);
+  async update(id: string, dto: Partial<CreateServiceDto>, companyId: string) {
+    await this.findOne(id, companyId);
     return this.prisma.$transaction(async (tx) => {
       if (dto.priceTiers) {
         await tx.servicePriceTier.deleteMany({ where: { serviceId: id } });
@@ -99,8 +99,12 @@ export class ServicesService {
   async updateCategory(
     id: string,
     dto: { name?: string; isDefault?: boolean; parentId?: string | null },
+    companyId: string,
   ) {
     const cat = await this.prisma.serviceCategory.findUniqueOrThrow({ where: { id } });
+    if (cat.companyId !== companyId) {
+      throw new NotFoundException('Категория не найдена');
+    }
     if (dto.isDefault) {
       await this.prisma.serviceCategory.updateMany({
         where: { companyId: cat.companyId, isDefault: true },
@@ -122,9 +126,13 @@ export class ServicesService {
   }
 
   // Удалить категорию: сначала открепляем услуги, чтобы не нарушать связь
-  async removeCategory(id: string) {
+  async removeCategory(id: string, companyId: string) {
+    const cat = await this.prisma.serviceCategory.findUniqueOrThrow({ where: { id } });
+    if (cat.companyId !== companyId) {
+      throw new NotFoundException('Категория не найдена');
+    }
     await this.prisma.service.updateMany({
-      where: { categoryId: id },
+      where: { categoryId: id, companyId },
       data: { categoryId: null },
     });
     await this.prisma.serviceCategory.delete({ where: { id } });
@@ -132,17 +140,30 @@ export class ServicesService {
   }
 
   // ---------- Материалы услуги (спецификация для авто-списания) ----------
-  async addMaterial(serviceId: string, productId: string, qtyPerUnit: number) {
-    await this.findOne(serviceId);
+  async addMaterial(
+    serviceId: string,
+    productId: string,
+    qtyPerUnit: number,
+    companyId: string,
+  ) {
+    await this.findOne(serviceId, companyId);
     await this.prisma.serviceMaterial.upsert({
       where: { serviceId_productId: { serviceId, productId } },
       create: { serviceId, productId, qtyPerUnit, deletedAt: null },
       update: { qtyPerUnit, deletedAt: null },
     });
-    return this.findOne(serviceId);
+    return this.findOne(serviceId, companyId);
   }
 
-  async removeMaterial(materialId: string) {
+  async removeMaterial(materialId: string, companyId: string) {
+    // Убеждаемся, что материал принадлежит услуге нашей компании
+    const material = await this.prisma.serviceMaterial.findUnique({
+      where: { id: materialId },
+      include: { service: { select: { companyId: true } } },
+    });
+    if (!material || material.service.companyId !== companyId) {
+      throw new NotFoundException('Материал не найден');
+    }
     await this.prisma.serviceMaterial.delete({ where: { id: materialId } });
     return { ok: true };
   }
@@ -162,10 +183,10 @@ export class ServicesService {
     });
   }
 
-  // Одна услуга по id
-  async findOne(id: string) {
-    const service = await this.prisma.service.findUnique({
-      where: { id },
+  // Одна услуга по id (в пределах своей компании)
+  async findOne(id: string, companyId: string) {
+    const service = await this.prisma.service.findFirst({
+      where: { id, companyId },
       include: {
         priceTiers: true,
         sizes: true,
@@ -179,8 +200,8 @@ export class ServicesService {
   }
 
   // Удалить услугу
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, companyId: string) {
+    await this.findOne(id, companyId);
     return this.prisma.service.delete({ where: { id } });
   }
 }

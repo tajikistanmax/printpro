@@ -75,13 +75,20 @@ export class ProductsController {
 
   // ---- Доп. штрихкоды (алиасы) ----
   @Post('products/:id/barcode-aliases')
-  addBarcodeAlias(@Param('id') id: string, @Body() body: { barcode: string }) {
-    return this.products.addBarcodeAlias(id, body.barcode);
+  addBarcodeAlias(
+    @Param('id') id: string,
+    @Body() body: { barcode: string },
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.products.addBarcodeAlias(id, body.barcode, user.companyId);
   }
 
   @Delete('products/barcode-aliases/:aliasId')
-  removeBarcodeAlias(@Param('aliasId') aliasId: string) {
-    return this.products.removeBarcodeAlias(aliasId);
+  removeBarcodeAlias(
+    @Param('aliasId') aliasId: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.products.removeBarcodeAlias(aliasId, user.companyId);
   }
 
   // ---- Категории товаров ----
@@ -99,8 +106,9 @@ export class ProductsController {
   updateCategory(
     @Param('id') id: string,
     @Body() dto: { name?: string; isDefault?: boolean; parentId?: string | null },
+    @CurrentUser() user: JwtUser,
   ) {
-    return this.products.updateCategory(id, dto);
+    return this.products.updateCategory(id, dto, user.companyId);
   }
 
   @Delete('product-categories/:id')
@@ -123,12 +131,13 @@ export class ProductsController {
   updateUnit(
     @Param('id') id: string,
     @Body() dto: { name?: string; shortName?: string; isDefault?: boolean },
+    @CurrentUser() user: JwtUser,
   ) {
-    return this.products.updateUnit(id, dto);
+    return this.products.updateUnit(id, dto, user.companyId);
   }
 
   @Delete('units/:id')
-  removeUnit(@Param('id') id: string) {
-    return this.products.removeUnit(id);
+  removeUnit(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.products.removeUnit(id, user.companyId);
   }
 }

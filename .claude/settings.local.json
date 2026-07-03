@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "PowerShell(git clone https://github.com/tajikistanmax/printpro.git .)",
-      "PowerShell($paths = @\\(\"C:\\\\Program Files\\\\Git\\\\cmd\\\\git.exe\",\"C:\\\\Program Files \\(x86\\)\\\\Git\\\\cmd\\\\git.exe\",\"$env:LOCALAPPDATA\\\\Programs\\\\Git\\\\cmd\\\\git.exe\"\\); foreach\\($p in $paths\\){ if\\(Test-Path $p\\){ Write-Output \"FOUND: $p\" } }; Get-Command git -ErrorAction SilentlyContinue)"
+      "PowerShell($paths = @\\(\"C:\\\\Program Files\\\\Git\\\\cmd\\\\git.exe\",\"C:\\\\Program Files \\(x86\\)\\\\Git\\\\cmd\\\\git.exe\",\"$env:LOCALAPPDATA\\\\Programs\\\\Git\\\\cmd\\\\git.exe\"\\); foreach\\($p in $paths\\){ if\\(Test-Path $p\\){ Write-Output \"FOUND: $p\" } }; Get-Command git -ErrorAction SilentlyContinue)",
+      "Bash(git pull:*)",
+      "Bash(npm run *)",
+      "Bash(grep -v \"//\")",
+      "Bash(git checkout *)"
     ]
   }
 }
