@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { StockMovementType } from '@prisma/client';
 import { StockService } from './stock.service';
 import { ReceiveStockDto } from './dto/receive-stock.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
@@ -28,8 +29,15 @@ export class StockController {
 
   // GET /api/stock/write-offs — журнал списаний
   @Get('write-offs')
-  listWriteOffs(@CurrentUser() user: JwtUser) {
-    return this.stock.listWriteOffs(user.companyId);
+  listWriteOffs(
+    @CurrentUser() user: JwtUser,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.stock.listWriteOffs(user.companyId, {
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+    });
   }
 
   // POST /api/stock/receive — приём товара (приход)
@@ -86,10 +94,25 @@ export class StockController {
     return this.stock.lowStock(user.companyId);
   }
 
-  // GET /api/stock/movements — история движений
+  // GET /api/stock/movements — история движений (пагинация + фильтры)
   @Get('movements')
-  listMovements(@CurrentUser() user: JwtUser) {
-    return this.stock.listMovements(user.companyId);
+  listMovements(
+    @CurrentUser() user: JwtUser,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('type') type?: StockMovementType,
+    @Query('productId') productId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.stock.listMovements(user.companyId, {
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      type,
+      productId,
+      from,
+      to,
+    });
   }
 
   // GET /api/stock/stats — сводка (поставщиков, поступления сегодня)

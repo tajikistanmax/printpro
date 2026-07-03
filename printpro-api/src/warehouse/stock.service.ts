@@ -336,18 +336,51 @@ export class StockService {
     return { applied, unchanged };
   }
 
-  // История движений склада (последние 200)
-  listMovements(companyId: string) {
-    return this.prisma.stockMovement.findMany({
-      where: { companyId },
-      include: {
-        product: { include: { unit: true } },
-        branch: true,
-        user: { select: { fullName: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
+  // История движений склада (пагинация + фильтры по типу/товару/дате)
+  async listMovements(
+    companyId: string,
+    opts: {
+      limit?: number;
+      offset?: number;
+      type?: StockMovementType;
+      productId?: string;
+      from?: string;
+      to?: string;
+    } = {},
+  ) {
+    const take = Math.min(Math.max(opts.limit ?? 50, 1), 500);
+    const skip = Math.max(opts.offset ?? 0, 0);
+    let createdAt: Prisma.DateTimeFilter | undefined;
+    if (opts.from || opts.to) {
+      createdAt = {};
+      if (opts.from) createdAt.gte = new Date(opts.from);
+      if (opts.to) {
+        const end = new Date(opts.to);
+        end.setHours(23, 59, 59, 999);
+        createdAt.lte = end;
+      }
+    }
+    const where: Prisma.StockMovementWhereInput = {
+      companyId,
+      ...(opts.type ? { type: opts.type } : {}),
+      ...(opts.productId ? { productId: opts.productId } : {}),
+      ...(createdAt ? { createdAt } : {}),
+    };
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.stockMovement.findMany({
+        where,
+        include: {
+          product: { include: { unit: true } },
+          branch: true,
+          user: { select: { fullName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+      }),
+      this.prisma.stockMovement.count({ where }),
+    ]);
+    return { items, total };
   }
 
   // Текущие остатки по компании (без мягко удалённых товаров)
@@ -426,23 +459,34 @@ export class StockService {
     });
   }
 
-  async listWriteOffs(companyId: string) {
-    const rows = await this.prisma.writeOff.findMany({
-      where: { companyId, deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+  async listWriteOffs(
+    companyId: string,
+    opts: { limit?: number; offset?: number } = {},
+  ) {
+    const take = Math.min(Math.max(opts.limit ?? 50, 1), 500);
+    const skip = Math.max(opts.offset ?? 0, 0);
+    const where = { companyId, deletedAt: null };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.writeOff.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+      }),
+      this.prisma.writeOff.count({ where }),
+    ]);
     const productIds = [...new Set(rows.map((r) => r.productId))];
     const products = await this.prisma.product.findMany({
       where: { id: { in: productIds } },
       select: { id: true, name: true, unit: { select: { shortName: true } } },
     });
     const map = new Map(products.map((p) => [p.id, p]));
-    return rows.map((r) => ({
+    const items = rows.map((r) => ({
       ...r,
       productName: map.get(r.productId)?.name ?? '—',
       unit: map.get(r.productId)?.unit?.shortName ?? '',
     }));
+    return { items, total };
   }
 
   async lowStock(companyId: string) {

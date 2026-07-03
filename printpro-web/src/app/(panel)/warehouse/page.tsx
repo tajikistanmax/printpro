@@ -97,7 +97,14 @@ export default function WarehousePage() {
   const [branches, setBranches] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [movements, setMovements] = useState<any[]>([]);
+  const [movesTotal, setMovesTotal] = useState(0);
+  const [movesTake, setMovesTake] = useState(50);
+  const [movesType, setMovesType] = useState('');
+  const [movesFrom, setMovesFrom] = useState('');
+  const [movesTo, setMovesTo] = useState('');
   const [writeOffs, setWriteOffs] = useState<any[]>([]);
+  const [woTotal, setWoTotal] = useState(0);
+  const [woTake, setWoTake] = useState(50);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -171,16 +178,31 @@ export default function WarehousePage() {
       .finally(() => setLoading(false));
     api.get(`/stock/stats?companyId=${cid}`).then(setStats).catch(() => {});
   }
-  function loadMovements() {
-    api.get(`/stock/movements?companyId=${cid}`).then(setMovements).catch(() => {});
+  function loadMovements(take = movesTake) {
+    const p = new URLSearchParams({ companyId: cid, limit: String(take) });
+    if (movesType) p.set('type', movesType);
+    if (movesFrom) p.set('from', movesFrom);
+    if (movesTo) p.set('to', movesTo);
+    api.get(`/stock/movements?${p.toString()}`).then((r: any) => {
+      setMovements(r?.items ?? []);
+      setMovesTotal(r?.total ?? 0);
+    }).catch(() => {});
   }
-  function loadWriteOffs() {
-    api.get(`/stock/write-offs?companyId=${cid}`).then(setWriteOffs).catch(() => {});
+  function loadWriteOffs(take = woTake) {
+    api.get(`/stock/write-offs?companyId=${cid}&limit=${take}`).then((r: any) => {
+      setWriteOffs(r?.items ?? []);
+      setWoTotal(r?.total ?? 0);
+    }).catch(() => {});
   }
 
   useEffect(() => { load(); }, [cid]);
-  useEffect(() => { if (tab === 'moves') loadMovements(); }, [tab, cid]);
-  useEffect(() => { if (tab === 'writeoff') loadWriteOffs(); }, [tab, cid]);
+  // Смена вкладки/фильтров — сбрасываем окно к первым 50 записям
+  useEffect(() => {
+    if (tab === 'moves') { setMovesTake(50); loadMovements(50); }
+  }, [tab, cid, movesType, movesFrom, movesTo]);
+  useEffect(() => {
+    if (tab === 'writeoff') { setWoTake(50); loadWriteOffs(50); }
+  }, [tab, cid]);
 
   // ---- данные по товару ----
   const stockOf = (p: any) => (p.stock ?? []).reduce((s: number, r: any) => s + Number(r.quantity), 0);
@@ -720,22 +742,31 @@ export default function WarehousePage() {
             {writeOffs.length === 0 ? (
               <EmptyState icon="reports" title="Списаний нет" hint="Здесь появится история списаний (бой/брак/порча)." />
             ) : (
-              <div className="pp-table-scroll">
-                <table className="pp-table">
-                  <thead><tr><th>Дата</th><th>Товар</th><th className="text-right">Кол-во</th><th className="text-right">Себест.</th><th>Причина</th></tr></thead>
-                  <tbody>
-                    {writeOffs.map((w) => (
-                      <tr key={w.id}>
-                        <td className="text-slate-400">{new Date(w.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
-                        <td className="font-medium text-slate-700 dark:text-slate-200">{w.productName}</td>
-                        <td className="text-right font-semibold text-slate-700 dark:text-slate-200">{Number(w.quantity)} {w.unit}</td>
-                        <td className="text-right tabular-nums text-slate-500 dark:text-slate-400">{money(Number(w.cost))}</td>
-                        <td className="text-slate-500 dark:text-slate-400">{w.reason ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div className="pp-table-scroll">
+                  <table className="pp-table">
+                    <thead><tr><th>Дата</th><th>Товар</th><th className="text-right">Кол-во</th><th className="text-right">Себест.</th><th>Причина</th></tr></thead>
+                    <tbody>
+                      {writeOffs.map((w) => (
+                        <tr key={w.id}>
+                          <td className="text-slate-400">{new Date(w.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                          <td className="font-medium text-slate-700 dark:text-slate-200">{w.productName}</td>
+                          <td className="text-right font-semibold text-slate-700 dark:text-slate-200">{Number(w.quantity)} {w.unit}</td>
+                          <td className="text-right tabular-nums text-slate-500 dark:text-slate-400">{money(Number(w.cost))}</td>
+                          <td className="text-slate-500 dark:text-slate-400">{w.reason ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {writeOffs.length < woTotal && (
+                  <div className="border-t border-slate-100 p-3 text-center dark:border-slate-700/60">
+                    <Button variant="ghost" onClick={() => { const t = woTake + 50; setWoTake(t); loadWriteOffs(t); }}>
+                      Показать ещё ({writeOffs.length} из {woTotal})
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </TableCard>
         </div>
@@ -744,28 +775,55 @@ export default function WarehousePage() {
       {/* ============ ДВИЖЕНИЯ ============ */}
       {tab === 'moves' && (
         <TableCard>
+          <div className="flex flex-wrap items-end gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-700/60">
+            <Field label="Тип" className="min-w-[140px]">
+              <Select value={movesType} onChange={(e) => setMovesType(e.target.value)}>
+                <option value="">Все типы</option>
+                {Object.entries(MOV_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </Select>
+            </Field>
+            <Field label="С даты" className="min-w-[130px]">
+              <Input type="date" value={movesFrom} onChange={(e) => setMovesFrom(e.target.value)} />
+            </Field>
+            <Field label="По дату" className="min-w-[130px]">
+              <Input type="date" value={movesTo} onChange={(e) => setMovesTo(e.target.value)} />
+            </Field>
+            {(movesType || movesFrom || movesTo) && (
+              <Button variant="ghost" onClick={() => { setMovesType(''); setMovesFrom(''); setMovesTo(''); }}>Сбросить</Button>
+            )}
+            <span className="ml-auto text-xs text-slate-400">Всего: {movesTotal}</span>
+          </div>
           {movements.length === 0 ? (
             <EmptyState icon="reports" title="Движений нет" hint="Здесь появятся приходы, расходы, списания и корректировки." />
           ) : (
-            <div className="pp-table-scroll">
-              <table className="pp-table">
-                <thead><tr><th>Дата</th><th>Товар</th><th>Тип</th><th className="text-right">Кол-во</th><th className="text-right">Было</th><th className="text-right">Стало</th><th>Причина</th><th>Сотрудник</th></tr></thead>
-                <tbody>
-                  {movements.map((m) => (
-                    <tr key={m.id}>
-                      <td className="text-slate-400">{new Date(m.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
-                      <td className="font-medium text-slate-700 dark:text-slate-200">{m.product?.name}</td>
-                      <td className={`font-medium ${MOV_COLOR[m.type] ?? 'text-slate-600'}`}>{MOV_LABEL[m.type] ?? m.type}</td>
-                      <td className="text-right font-semibold text-slate-700 dark:text-slate-200">{Number(m.quantity)} {m.product?.unit?.shortName ?? ''}</td>
-                      <td className="text-right tabular-nums text-slate-400">{m.beforeQty != null ? Number(m.beforeQty) : '—'}</td>
-                      <td className="text-right tabular-nums font-medium text-slate-600 dark:text-slate-300">{m.afterQty != null ? Number(m.afterQty) : '—'}</td>
-                      <td className="text-slate-500 dark:text-slate-400">{m.reason ?? '—'}</td>
-                      <td className="text-slate-500 dark:text-slate-400">{m.user?.fullName ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="pp-table-scroll">
+                <table className="pp-table">
+                  <thead><tr><th>Дата</th><th>Товар</th><th>Тип</th><th className="text-right">Кол-во</th><th className="text-right">Было</th><th className="text-right">Стало</th><th>Причина</th><th>Сотрудник</th></tr></thead>
+                  <tbody>
+                    {movements.map((m) => (
+                      <tr key={m.id}>
+                        <td className="text-slate-400">{new Date(m.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                        <td className="font-medium text-slate-700 dark:text-slate-200">{m.product?.name}</td>
+                        <td className={`font-medium ${MOV_COLOR[m.type] ?? 'text-slate-600'}`}>{MOV_LABEL[m.type] ?? m.type}</td>
+                        <td className="text-right font-semibold text-slate-700 dark:text-slate-200">{Number(m.quantity)} {m.product?.unit?.shortName ?? ''}</td>
+                        <td className="text-right tabular-nums text-slate-400">{m.beforeQty != null ? Number(m.beforeQty) : '—'}</td>
+                        <td className="text-right tabular-nums font-medium text-slate-600 dark:text-slate-300">{m.afterQty != null ? Number(m.afterQty) : '—'}</td>
+                        <td className="text-slate-500 dark:text-slate-400">{m.reason ?? '—'}</td>
+                        <td className="text-slate-500 dark:text-slate-400">{m.user?.fullName ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {movements.length < movesTotal && (
+                <div className="border-t border-slate-100 p-3 text-center dark:border-slate-700/60">
+                  <Button variant="ghost" onClick={() => { const t = movesTake + 50; setMovesTake(t); loadMovements(t); }}>
+                    Показать ещё ({movements.length} из {movesTotal})
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </TableCard>
       )}
