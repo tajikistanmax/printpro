@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
+  OrderStatus,
   PaymentMethod,
   Prisma,
   ProductionStatus,
+  StockMovementType,
   TaskStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -391,6 +393,114 @@ export class ReportsService {
         };
       })
       .sort((a, b) => b.salesSum - a.salesSum);
+  }
+
+  // Расход материалов за период (OUT + списания), по товарам (п. 2.10 ТЗ)
+  async materialsUsage(companyId: string, from?: string, to?: string) {
+    const range = this.range(from, to);
+    const moves = await this.prisma.stockMovement.groupBy({
+      by: ['productId', 'type'],
+      where: {
+        companyId,
+        createdAt: range,
+        type: { in: [StockMovementType.OUT, StockMovementType.WRITE_OFF] },
+      },
+      _sum: { quantity: true },
+    });
+    const ids = [...new Set(moves.map((m) => m.productId))];
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        name: true,
+        purchasePrice: true,
+        unit: { select: { shortName: true } },
+      },
+    });
+    const pmap = new Map(products.map((p) => [p.id, p]));
+    const agg = new Map<
+      string,
+      { name: string; unit: string; used: number; writeOff: number; cost: number }
+    >();
+    for (const m of moves) {
+      const p = pmap.get(m.productId);
+      const cur = agg.get(m.productId) ?? {
+        name: p?.name ?? '—',
+        unit: p?.unit?.shortName ?? '',
+        used: 0,
+        writeOff: 0,
+        cost: 0,
+      };
+      const qty = Number(m._sum.quantity ?? 0);
+      if (m.type === StockMovementType.WRITE_OFF) cur.writeOff += qty;
+      else cur.used += qty;
+      cur.cost += qty * Number(p?.purchasePrice ?? 0);
+      agg.set(m.productId, cur);
+    }
+    const items = [...agg.entries()]
+      .map(([productId, x]) => ({
+        productId,
+        name: x.name,
+        unit: x.unit,
+        used: Number(x.used.toFixed(3)),
+        writeOff: Number(x.writeOff.toFixed(3)),
+        total: Number((x.used + x.writeOff).toFixed(3)),
+        cost: Number(x.cost.toFixed(2)),
+      }))
+      .sort((a, b) => b.cost - a.cost);
+    return {
+      from: range.gte,
+      to: range.lte,
+      totalCost: Number(items.reduce((s, i) => s + i.cost, 0).toFixed(2)),
+      items,
+    };
+  }
+
+  // Заказы по статусам за период (сколько и на какую сумму)
+  async ordersByStatus(companyId: string, from?: string, to?: string) {
+    const range = this.range(from, to);
+    const rows = await this.prisma.order.groupBy({
+      by: ['status'],
+      where: { companyId, createdAt: range, deletedAt: null },
+      _count: true,
+      _sum: { total: true },
+    });
+    return rows
+      .map((r) => ({
+        status: r.status,
+        count: r._count,
+        total: Number(r._sum.total ?? 0),
+      }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  // Просроченные заказы: срок прошёл, но заказ не выдан и не отменён
+  async overdueOrders(companyId: string) {
+    const now = new Date();
+    const orders = await this.prisma.order.findMany({
+      where: {
+        companyId,
+        deletedAt: null,
+        deadline: { lt: now },
+        status: { notIn: [OrderStatus.DELIVERED, OrderStatus.CANCELLED] },
+      },
+      include: {
+        client: { select: { fullName: true, phone: true } },
+        assignedUser: { select: { fullName: true } },
+      },
+      orderBy: { deadline: 'asc' },
+      take: 200,
+    });
+    return orders.map((o) => ({
+      orderId: o.id,
+      orderNumber: o.orderNumber,
+      client: o.client?.fullName ?? o.client?.phone ?? 'без клиента',
+      status: o.status,
+      deadline: o.deadline,
+      manager: o.assignedUser?.fullName ?? '',
+      total: Number(o.total),
+      balanceDue: Number(o.balanceDue),
+    }));
   }
 
   // ---------- helpers ----------

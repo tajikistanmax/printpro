@@ -91,4 +91,33 @@ export class ReportsController {
   ) {
     return this.reports.staffPerformance(user.companyId, from, to);
   }
+
+  // Расход материалов за период
+  @Get('materials-usage')
+  @RequirePermissions('reports.view')
+  materialsUsage(
+    @CurrentUser() user: JwtUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reports.materialsUsage(user.companyId, from, to);
+  }
+
+  // Заказы по статусам за период
+  @Get('orders-by-status')
+  @RequirePermissions('reports.view')
+  ordersByStatus(
+    @CurrentUser() user: JwtUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reports.ordersByStatus(user.companyId, from, to);
+  }
+
+  // Просроченные заказы (текущие)
+  @Get('overdue')
+  @RequirePermissions('reports.view')
+  overdue(@CurrentUser() user: JwtUser) {
+    return this.reports.overdueOrders(user.companyId);
+  }
 }

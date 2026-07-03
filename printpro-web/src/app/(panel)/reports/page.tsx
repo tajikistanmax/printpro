@@ -21,6 +21,19 @@ function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(Math.round(n || 0)) + ' c.';
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  ACCEPTED: 'Принят',
+  AWAITING_DESIGN: 'Ожидает макет',
+  IN_DESIGN: 'В дизайне',
+  DESIGN_APPROVAL: 'На согласовании',
+  DESIGN_APPROVED: 'Согласован',
+  IN_PROGRESS: 'В производстве',
+  READY: 'Готов',
+  DELIVERED: 'Выдан',
+  REWORK: 'Переделка',
+  CANCELLED: 'Отменён',
+};
+
 // Выгрузка таблицы в CSV (открывается в Excel)
 function downloadCSV(filename: string, headers: string[], rows: (string | number)[][]) {
   const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
@@ -63,13 +76,19 @@ export default function ReportsPage() {
   const [profit, setProfit] = useState<any>(null);
   const [eqLoad, setEqLoad] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any>(null);
+  const [matUsage, setMatUsage] = useState<any>(null);
+  const [byStatus, setByStatus] = useState<any[]>([]);
+  const [overdue, setOverdue] = useState<any[]>([]);
+
+  // Кол-во дней в графике зависит от периода (С6: было жёстко 14)
+  const dailyDays = period === 'month' ? 30 : 7;
 
   useEffect(() => {
     const { from, to } = periodRange(period);
     const q = `companyId=${cid}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
     api.get(`/reports/summary?${q}`).then(setSummary).catch(() => {});
     api.get(`/reports/sales-by-item?${q}`).then(setSales).catch(() => {});
-    api.get(`/reports/daily?companyId=${cid}&days=14`).then(setDaily).catch(() => {});
+    api.get(`/reports/daily?companyId=${cid}&days=${dailyDays}`).then(setDaily).catch(() => {});
     api.get(`/reports/debts?companyId=${cid}`).then(setDebts).catch(() => {});
     api.get(`/reports/staff?${q}`).then(setStaff).catch(() => {});
     api.get(`/reports/profit?${q}`).then(setProfit).catch(() => {});
@@ -78,7 +97,10 @@ export default function ReportsPage() {
       .then(setEqLoad)
       .catch(() => {});
     api.get(`/reports/expenses?${q}`).then(setExpenses).catch(() => {});
-  }, [cid, period]);
+    api.get(`/reports/materials-usage?${q}`).then(setMatUsage).catch(() => {});
+    api.get(`/reports/orders-by-status?${q}`).then(setByStatus).catch(() => {});
+    api.get(`/reports/overdue?companyId=${cid}`).then(setOverdue).catch(() => {});
+  }, [cid, period, dailyDays]);
 
   const maxDaily = Math.max(1, ...daily.map((d) => d.amount));
 
@@ -137,7 +159,7 @@ export default function ReportsPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* График выручки */}
         <Card>
-          <SectionTitle>Выручка по дням (14 дней)</SectionTitle>
+          <SectionTitle>Выручка по дням ({dailyDays} дн.)</SectionTitle>
           {daily.length === 0 ? (
             <EmptyState icon="reports" title="Нет данных" />
           ) : (
@@ -334,7 +356,26 @@ export default function ReportsPage() {
       {/* Расходы по категориям */}
       {expenses && expenses.total > 0 && (
         <Card className="mt-6">
-          <SectionTitle right={<span className="font-semibold text-rose-600">{money(expenses.total)}</span>}>
+          <SectionTitle
+            right={
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    downloadCSV(
+                      'expenses.csv',
+                      ['Категория', 'Сумма'],
+                      expenses.byCategory.map((c: any) => [c.category, c.amount]),
+                    )
+                  }
+                >
+                  <NavIcon name="download" className="h-4 w-4" />CSV
+                </Button>
+                <span className="font-semibold text-rose-600">{money(expenses.total)}</span>
+              </div>
+            }
+          >
             Расходы по категориям
           </SectionTitle>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -396,6 +437,127 @@ export default function ReportsPage() {
                     <td className="text-right font-medium text-sky-600">{e.inWork}</td>
                     <td className="text-right text-emerald-600">{e.completed}</td>
                     <td className="text-right text-rose-600">{e.rework || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Просроченные заказы */}
+      {overdue.length > 0 && (
+        <Card className="mt-6">
+          <SectionTitle
+            right={
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    downloadCSV(
+                      'overdue.csv',
+                      ['Заказ', 'Клиент', 'Статус', 'Срок', 'Менеджер', 'Долг'],
+                      overdue.map((o) => [o.orderNumber, o.client, STATUS_LABELS[o.status] ?? o.status, o.deadline ? new Date(o.deadline).toLocaleString('ru-RU') : '', o.manager, o.balanceDue]),
+                    )
+                  }
+                >
+                  <NavIcon name="download" className="h-4 w-4" />CSV
+                </Button>
+                <span className="font-semibold text-rose-600">{overdue.length}</span>
+              </div>
+            }
+          >
+            Просроченные заказы
+          </SectionTitle>
+          <div className="pp-table-scroll">
+            <table className="pp-table">
+              <thead>
+                <tr>
+                  <th>Заказ</th>
+                  <th>Клиент</th>
+                  <th>Статус</th>
+                  <th>Срок</th>
+                  <th>Менеджер</th>
+                  <th className="text-right">Долг</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overdue.map((o) => (
+                  <tr key={o.orderId}>
+                    <td className="font-medium text-slate-700 dark:text-slate-200">№{o.orderNumber}</td>
+                    <td className="text-slate-500">{o.client}</td>
+                    <td><Badge tone="amber">{STATUS_LABELS[o.status] ?? o.status}</Badge></td>
+                    <td className="text-rose-600">{o.deadline ? new Date(o.deadline).toLocaleDateString('ru-RU') : '—'}</td>
+                    <td className="text-slate-500">{o.manager || '—'}</td>
+                    <td className="text-right font-medium text-rose-600">{o.balanceDue > 0 ? money(o.balanceDue) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Заказы по статусам */}
+      {byStatus.length > 0 && (
+        <Card className="mt-6">
+          <SectionTitle>Заказы по статусам (за период)</SectionTitle>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {byStatus.map((s) => (
+              <div key={s.status} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800/50">
+                <span className="text-slate-600 dark:text-slate-300">{STATUS_LABELS[s.status] ?? s.status}</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100">{s.count} · {money(s.total)}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Расход материалов */}
+      {matUsage && matUsage.items.length > 0 && (
+        <Card className="mt-6">
+          <SectionTitle
+            right={
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    downloadCSV(
+                      'materials-usage.csv',
+                      ['Материал', 'Расход', 'Списано', 'Итого', 'Ед.', 'Себестоимость'],
+                      matUsage.items.map((m: any) => [m.name, m.used, m.writeOff, m.total, m.unit, m.cost]),
+                    )
+                  }
+                >
+                  <NavIcon name="download" className="h-4 w-4" />CSV
+                </Button>
+                <span className="font-semibold text-slate-700 dark:text-slate-200">{money(matUsage.totalCost)}</span>
+              </div>
+            }
+          >
+            Расход материалов за период
+          </SectionTitle>
+          <div className="pp-table-scroll">
+            <table className="pp-table">
+              <thead>
+                <tr>
+                  <th>Материал</th>
+                  <th className="text-right">Расход</th>
+                  <th className="text-right">Списано</th>
+                  <th className="text-right">Итого</th>
+                  <th className="text-right">Себест-ть</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matUsage.items.slice(0, 50).map((m: any) => (
+                  <tr key={m.productId}>
+                    <td className="font-medium text-slate-700 dark:text-slate-200">{m.name}</td>
+                    <td className="text-right text-slate-600 dark:text-slate-300">{m.used} {m.unit}</td>
+                    <td className="text-right text-rose-600">{m.writeOff || ''}</td>
+                    <td className="text-right font-medium text-slate-700 dark:text-slate-200">{m.total} {m.unit}</td>
+                    <td className="text-right text-amber-600">{money(m.cost)}</td>
                   </tr>
                 ))}
               </tbody>
