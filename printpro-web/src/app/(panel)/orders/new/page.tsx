@@ -43,9 +43,11 @@ export default function NewOrderPage() {
   const [format, setFormat] = useState('');
   const [colorMode, setColorMode] = useState('');
   const [urgency, setUrgency] = useState('NORMAL');
+  const [assignedUserId, setAssignedUserId] = useState('');
   const [designerId, setDesignerId] = useState('');
   const [operatorId, setOperatorId] = useState('');
   const [deadline, setDeadline] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
 
   // Доп. поля
   const [deviceModel, setDeviceModel] = useState('');
@@ -126,6 +128,7 @@ export default function NewOrderPage() {
         format: format || undefined,
         colorMode: colorMode || undefined,
         urgency,
+        assignedUserId: assignedUserId || undefined,
         designerId: designerId || undefined,
         operatorId: operatorId || undefined,
         deadline: deadline ? new Date(deadline).toISOString() : undefined,
@@ -143,6 +146,14 @@ export default function NewOrderPage() {
         body.recoveryDetail = { deviceType, whatToRecover };
 
       const order = await api.post('/orders', body);
+      // Прикрепляем выбранные файлы к созданному заказу (по одному)
+      for (const f of files) {
+        try {
+          await api.upload(`/orders/${order.id}/files`, f);
+        } catch {
+          /* файл не загрузился — заказ уже создан, не блокируем переход */
+        }
+      }
       router.push(`/orders?created=${order.orderNumber}`);
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
@@ -257,6 +268,21 @@ export default function NewOrderPage() {
                 </>
               )}
               <div>
+                <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Ответственный менеджер</label>
+                <select
+                  value={assignedUserId}
+                  onChange={(e) => setAssignedUserId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 dark:bg-slate-800 dark:text-slate-100"
+                >
+                  <option value="">— не назначен —</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.fullName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="mb-1 block text-sm text-slate-500 dark:text-slate-400">Срочность</label>
                 <select
                   value={urgency}
@@ -310,6 +336,28 @@ export default function NewOrderPage() {
                 </select>
               </div>
             </div>
+          </div>
+
+          {/* Файлы макета/документы */}
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Файлы макета</h2>
+            <input
+              type="file"
+              multiple
+              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+              className="block w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-indigo-700 hover:file:bg-indigo-200 dark:file:bg-indigo-900/30 dark:file:text-indigo-300"
+            />
+            {files.length > 0 && (
+              <ul className="mt-2 space-y-1 text-sm text-slate-600 dark:text-slate-300">
+                {files.map((f, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <NavIcon name="pos" className="h-4 w-4 text-slate-400" />
+                    <span className="truncate">{f.name}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">Прикрепятся к заказу после создания (до 50 МБ каждый).</p>
           </div>
 
           {/* Детали ремонта/восстановления */}

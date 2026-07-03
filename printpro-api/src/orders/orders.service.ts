@@ -1220,6 +1220,38 @@ export class OrdersService {
     return this.findOne(orderId, companyId);
   }
 
+  // Прикрепить файл (макет/документ) к заказу
+  async addFile(
+    orderId: string,
+    fileUrl: string,
+    companyId: string,
+    fileName?: string,
+    type?: string,
+  ) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { companyId: true },
+    });
+    if (!order || order.companyId !== companyId) {
+      throw new NotFoundException('Заказ не найден');
+    }
+    return this.prisma.orderFile.create({
+      data: { orderId, fileUrl, fileName, type },
+    });
+  }
+
+  async removeFile(fileId: string, companyId: string) {
+    const file = await this.prisma.orderFile.findUnique({
+      where: { id: fileId },
+      include: { order: { select: { companyId: true } } },
+    });
+    if (!file || file.order.companyId !== companyId) {
+      throw new NotFoundException('Файл не найден');
+    }
+    await this.prisma.orderFile.delete({ where: { id: fileId } });
+    return { ok: true };
+  }
+
   // Ставки бонусной программы из настроек компании (в долях).
   // По умолчанию: начисление 1%, максимум списания 30% от чека.
   private async bonusRates(

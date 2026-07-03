@@ -7,8 +7,14 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { randomUUID } from 'crypto';
 import { OrderStatus, OrderType } from '@prisma/client';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -204,5 +210,39 @@ export class OrdersController {
     @CurrentUser() user: JwtUser,
   ) {
     return this.orders.updateFields(id, dto, user.companyId);
+  }
+
+  // Прикрепить файл (макет/документ) к заказу
+  @Post(':id/files')
+  @RequirePermissions('orders.manage')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads',
+        filename: (_req, file, cb) =>
+          cb(null, randomUUID() + extname(file.originalname)),
+      }),
+      limits: { fileSize: 50 * 1024 * 1024 },
+    }),
+  )
+  uploadFile(
+    @Param('id') id: string,
+    @UploadedFile() file: any,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.orders.addFile(
+      id,
+      `/uploads/${file.filename}`,
+      user.companyId,
+      file.originalname,
+      file.mimetype,
+    );
+  }
+
+  // Удалить файл заказа
+  @Delete('files/:fileId')
+  @RequirePermissions('orders.manage')
+  removeFile(@Param('fileId') fileId: string, @CurrentUser() user: JwtUser) {
+    return this.orders.removeFile(fileId, user.companyId);
   }
 }
