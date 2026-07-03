@@ -134,7 +134,7 @@ export class CashService {
   }
 
   // ---------- Отчёт по смене (X/Z-отчёт) ----------
-  async report(shiftId: string) {
+  async report(shiftId: string, companyId?: string) {
     const shift = await this.prisma.cashShift.findUnique({
       where: { id: shiftId },
       include: {
@@ -151,6 +151,9 @@ export class CashService {
       },
     });
     if (!shift) throw new NotFoundException('Смена не найдена');
+    if (companyId && shift.companyId !== companyId) {
+      throw new NotFoundException('Смена не найдена');
+    }
 
     // Суммы оплат по способам
     const byMethod: Record<PaymentMethod, number> = {

@@ -47,6 +47,9 @@ export default function CashPage() {
   const [moveReason, setMoveReason] = useState('');
   const [counted, setCounted] = useState('');
   const [showX, setShowX] = useState(false);
+  // Z-отчёт (итоговый по закрытой смене) и история смен
+  const [zReport, setZReport] = useState<any | null>(null);
+  const [history, setHistory] = useState<any[] | null>(null);
 
   function load() {
     setLoading(true);
@@ -97,15 +100,52 @@ export default function CashPage() {
     if (!confirm('Закрыть смену? Касса будет закрыта.')) return;
     setMsg('');
     try {
-      await api.post(`/cash/shifts/${shift.id}/close`, {
+      // Бэкенд возвращает итоговый отчёт закрытой смены — это и есть Z-отчёт.
+      const rep = await api.post(`/cash/shifts/${shift.id}/close`, {
         countedBalance: counted ? Number(counted) : undefined,
       });
       setCounted('');
+      setZReport(rep); // сразу показываем Z-отчёт (с возможностью печати)
       load();
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
     }
   }
+
+  // История смен + просмотр Z-отчёта прошлой смены
+  async function loadHistory() {
+    try {
+      setHistory(await api.get('/cash/shifts'));
+    } catch {
+      setHistory([]);
+    }
+  }
+  async function openReport(id: string) {
+    try {
+      setZReport(await api.get(`/cash/shifts/${id}/report`));
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
+  }
+
+  // Оверлеи (Z-отчёт и история смен) доступны в обоих состояниях кассы
+  const overlays = (
+    <>
+      {zReport && (
+        <ReportModal report={zReport} onClose={() => setZReport(null)} />
+      )}
+      {history !== null && (
+        <HistoryModal
+          items={history}
+          onClose={() => setHistory(null)}
+          onOpen={(id) => {
+            setHistory(null);
+            openReport(id);
+          }}
+        />
+      )}
+    </>
+  );
 
   if (loading) {
     return <EmptyState title="Загрузка…" />;
@@ -115,7 +155,18 @@ export default function CashPage() {
   if (!shift) {
     return (
       <div>
-        <PageHeader icon="cash" title="Касса" subtitle="Смена закрыта" />
+        {overlays}
+        <PageHeader
+          icon="cash"
+          title="Касса"
+          subtitle="Смена закрыта"
+          actions={
+            <Button variant="ghost" onClick={loadHistory}>
+              <NavIcon name="reports" className="h-4 w-4" />
+              История смен
+            </Button>
+          }
+        />
         <Card>
           <div className="mb-4 flex items-center gap-3 text-slate-600 dark:text-slate-300">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-800"><NavIcon name="lock" className="h-6 w-6" /></span>
@@ -163,12 +214,14 @@ export default function CashPage() {
 
   return (
     <div>
+      {overlays}
       <PageHeader
         icon="cash"
         title="Касса"
         subtitle={`Смена ${shift.number ? `${shift.number} · ` : ''}открыта · ${shift.user}`}
         actions={
           <>
+            <Button variant="ghost" onClick={loadHistory}><NavIcon name="reports" className="h-4 w-4" />История смен</Button>
             <Button variant="ghost" onClick={() => setShowX(true)}><NavIcon name="print" className="h-4 w-4" />X-отчёт</Button>
             <Badge tone="emerald">
               ● Смена {shift.number ? `${shift.number} · ` : ''}открыта · {shift.user}
@@ -426,6 +479,153 @@ function Line2({ l, r }: { l: string; r: string }) {
     <div className="flex justify-between">
       <span>{l}</span>
       <span>{r}</span>
+    </div>
+  );
+}
+
+// Z-отчёт (итоговый) / отчёт по любой смене из истории.
+function ReportModal({
+  report,
+  onClose,
+}: {
+  report: any;
+  onClose: () => void;
+}) {
+  const s = report.summary;
+  const isOpen = report.isOpen;
+  const counted = s.closingBalance;
+  const diff =
+    counted !== null && counted !== undefined
+      ? Number((counted - s.expectedCash).toFixed(2))
+      : null;
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-80 rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl">
+        <div className="print-area">
+          <div className="text-center">
+            <div className="text-lg font-bold text-slate-800 dark:text-slate-100">PrintPro</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              {isOpen ? 'X-отчёт (промежуточный)' : 'Z-отчёт (итоговый)'}
+            </div>
+          </div>
+          <div className="my-3 border-y border-dashed border-slate-300 dark:border-slate-600 py-2 text-xs text-slate-700 dark:text-slate-200">
+            {report.number && <Line2 l="Смена" r={report.number} />}
+            <Line2 l="Кассир" r={report.user} />
+            {report.branch && <Line2 l="Филиал" r={report.branch} />}
+            <Line2 l="Открыта" r={new Date(report.openedAt).toLocaleString('ru-RU')} />
+            {report.closedAt && (
+              <Line2 l="Закрыта" r={new Date(report.closedAt).toLocaleString('ru-RU')} />
+            )}
+            <Line2 l="Напечатан" r={new Date().toLocaleString('ru-RU')} />
+          </div>
+          <div className="space-y-1 text-sm text-slate-700 dark:text-slate-200">
+            <Line2 l="Наличные" r={money(s.cash)} />
+            <Line2 l="Карта" r={money(s.card)} />
+            <Line2 l="QR" r={money(s.qr)} />
+            <Line2 l="Перевод" r={money(s.transfer)} />
+            <Line2 l="В долг" r={money(s.debt)} />
+            <Line2 l="Внесения" r={money(s.movementsIn)} />
+            <Line2 l="Изъятия" r={money(s.movementsOut)} />
+          </div>
+          <div className="mt-3 border-t border-dashed border-slate-300 dark:border-slate-600 pt-2 text-sm">
+            <div className="flex justify-between font-bold text-slate-800 dark:text-slate-100">
+              <span>Выручка деньгами</span>
+              <span>{money(s.totalRevenue)}</span>
+            </div>
+            <div className="flex justify-between font-bold text-slate-800 dark:text-slate-100">
+              <span>Наличных (расчёт)</span>
+              <span>{money(s.expectedCash)}</span>
+            </div>
+            {!isOpen && counted !== null && counted !== undefined && (
+              <>
+                <Line2 l="Пересчитано (факт)" r={money(counted)} />
+                <div
+                  className={`flex justify-between font-bold ${
+                    diff === 0
+                      ? 'text-slate-800 dark:text-slate-100'
+                      : diff && diff > 0
+                        ? 'text-emerald-600'
+                        : 'text-rose-600'
+                  }`}
+                >
+                  <span>Расхождение</span>
+                  <span>
+                    {diff && diff > 0 ? '+' : ''}
+                    {money(diff ?? 0)}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="mt-3 text-center text-xs text-slate-400 dark:text-slate-500">
+            {isOpen ? 'Смена не закрыта' : 'Смена закрыта'}
+          </div>
+        </div>
+        <div className="no-print mt-5 flex gap-2">
+          <Button onClick={() => window.print()} className="flex-1"><NavIcon name="print" className="h-4 w-4" />Печать</Button>
+          <Button variant="ghost" onClick={onClose} className="flex-1">Закрыть</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// История смен: список последних смен с открытием Z-отчёта
+function HistoryModal({
+  items,
+  onClose,
+  onOpen,
+}: {
+  items: any[];
+  onClose: () => void;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-2xl">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100">История смен</h2>
+          <Button variant="ghost" onClick={onClose}>Закрыть</Button>
+        </div>
+        {items.length === 0 ? (
+          <EmptyState icon="cash" title="Смен пока нет" />
+        ) : (
+          <div className="max-h-[60vh] overflow-y-auto pp-table-scroll">
+            <table className="pp-table">
+              <thead>
+                <tr>
+                  <th>Открыта</th>
+                  <th>Кассир</th>
+                  <th>Статус</th>
+                  <th className="text-right">Отчёт</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((sh) => (
+                  <tr key={sh.id}>
+                    <td className="text-slate-700 dark:text-slate-200">
+                      {new Date(sh.openedAt).toLocaleString('ru-RU')}
+                    </td>
+                    <td className="text-slate-600 dark:text-slate-300">{sh.user}</td>
+                    <td>
+                      {sh.isOpen ? (
+                        <Badge tone="emerald">открыта</Badge>
+                      ) : (
+                        <Badge tone="slate">закрыта</Badge>
+                      )}
+                    </td>
+                    <td className="text-right">
+                      <Button variant="ghost" onClick={() => onOpen(sh.id)}>
+                        {sh.isOpen ? 'X-отчёт' : 'Z-отчёт'}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

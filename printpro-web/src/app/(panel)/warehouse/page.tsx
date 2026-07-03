@@ -97,6 +97,7 @@ export default function WarehousePage() {
   const [branches, setBranches] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [movements, setMovements] = useState<any[]>([]);
+  const [writeOffs, setWriteOffs] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -173,9 +174,13 @@ export default function WarehousePage() {
   function loadMovements() {
     api.get(`/stock/movements?companyId=${cid}`).then(setMovements).catch(() => {});
   }
+  function loadWriteOffs() {
+    api.get(`/stock/write-offs?companyId=${cid}`).then(setWriteOffs).catch(() => {});
+  }
 
   useEffect(() => { load(); }, [cid]);
   useEffect(() => { if (tab === 'moves') loadMovements(); }, [tab, cid]);
+  useEffect(() => { if (tab === 'writeoff') loadWriteOffs(); }, [tab, cid]);
 
   // ---- данные по товару ----
   const stockOf = (p: any) => (p.stock ?? []).reduce((s: number, r: any) => s + Number(r.quantity), 0);
@@ -294,7 +299,7 @@ export default function WarehousePage() {
     try {
       const r = await api.post('/stock/write-off', { companyId: cid, productId: woProduct || products[0]?.id, branchId: woBranch || branches[0]?.id, quantity: Number(woQty), reason: woReason || undefined });
       setWoQty(''); setWoReason(''); setWoMsg(`✓ Списано (себестоимость ${money(Number(r.cost))})`);
-      load(); if (tab === 'moves') loadMovements();
+      load(); loadWriteOffs(); if (tab === 'moves') loadMovements();
     } catch (err: any) { setWoMsg('Ошибка: ' + err.message); }
   }
 
@@ -706,6 +711,33 @@ export default function WarehousePage() {
             </form>
             <p className="mt-2 text-xs text-slate-400">Себестоимость спишется из закупочной цены материала.</p>
           </Card>
+
+          {/* Журнал списаний */}
+          <TableCard>
+            <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-700/60">
+              <h2 className="font-semibold text-slate-700 dark:text-slate-200">Журнал списаний</h2>
+            </div>
+            {writeOffs.length === 0 ? (
+              <EmptyState icon="reports" title="Списаний нет" hint="Здесь появится история списаний (бой/брак/порча)." />
+            ) : (
+              <div className="pp-table-scroll">
+                <table className="pp-table">
+                  <thead><tr><th>Дата</th><th>Товар</th><th className="text-right">Кол-во</th><th className="text-right">Себест.</th><th>Причина</th></tr></thead>
+                  <tbody>
+                    {writeOffs.map((w) => (
+                      <tr key={w.id}>
+                        <td className="text-slate-400">{new Date(w.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                        <td className="font-medium text-slate-700 dark:text-slate-200">{w.productName}</td>
+                        <td className="text-right font-semibold text-slate-700 dark:text-slate-200">{Number(w.quantity)} {w.unit}</td>
+                        <td className="text-right tabular-nums text-slate-500 dark:text-slate-400">{money(Number(w.cost))}</td>
+                        <td className="text-slate-500 dark:text-slate-400">{w.reason ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </TableCard>
         </div>
       )}
 

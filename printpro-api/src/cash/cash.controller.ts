@@ -43,8 +43,8 @@ export class CashController {
   // Отчёт по конкретной смене
   @Get('shifts/:id/report')
   @RequirePermissions('cash.view')
-  report(@Param('id') id: string) {
-    return this.cash.report(id);
+  report(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.cash.report(id, user.companyId);
   }
 
   // Открыть смену

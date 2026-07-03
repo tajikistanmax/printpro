@@ -245,10 +245,11 @@ export default function PosPage() {
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
-        const res = await api.get(
+        const res: any = await api.get(
           `/clients?search=${encodeURIComponent(phone.trim())}&pageSize=5`,
         );
-        const list = res.data?.items ?? res.data ?? [];
+        // api возвращает тело ответа напрямую: { items: [...] } (или массив)
+        const list: any[] = Array.isArray(res) ? res : res?.items ?? [];
         const match = list.find(
           (c: any) => (c.phone || '').replace(/\D/g, '') === digits,
         );
