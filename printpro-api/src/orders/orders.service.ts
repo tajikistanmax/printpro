@@ -455,8 +455,23 @@ export class OrdersService {
       // абсурдных/отрицательных значений с фронта). Полноценный лимит по %
       // и права на скидку — отдельная настройка компании.
       let total = Number(order.total);
+      const subtotal = Number(order.total); // сумма позиций до скидок
       const rawDiscount = dto.discount && dto.discount > 0 ? dto.discount : 0;
       let discount = Math.min(rawDiscount, total);
+
+      // Персональная скидка клиента (%) — по ТЗ применяется автоматически при
+      // выборе клиента. Считаем от суммы позиций (subtotal), чтобы фронт мог
+      // повторить расчёт один-в-один и итог совпал при смешанной оплате.
+      if (order.clientId) {
+        const c = await this.prisma.client.findUnique({
+          where: { id: order.clientId },
+          select: { discount: true },
+        });
+        const pct = Number(c?.discount ?? 0);
+        if (pct > 0) {
+          discount += Number(((subtotal * pct) / 100).toFixed(2));
+        }
+      }
 
       // Промокод (п. 8.7) — добавляем к скидке
       if (dto.promoCode) {

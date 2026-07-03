@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { OrderStatus, ProductionStatus } from '@prisma/client';
+import { OrderStatus, ProductionStatus, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateProductionJobDto,
@@ -62,6 +62,7 @@ export class ProductionService {
     companyId: string,
     status: ProductionStatus,
     defectReason?: string,
+    userId?: string,
   ) {
     const job = await this.ensure(id, companyId);
 
@@ -91,7 +92,7 @@ export class ProductionService {
 
     // При завершении — авто-списание материалов со склада (один раз)
     if (status === ProductionStatus.COMPLETED && !job.materialsWrittenOff) {
-      await this.writeOffMaterials(job.id, job.orderId);
+      await this.writeOffMaterials(job.id, job.orderId, userId);
     }
 
     // Подтягиваем статус заказа за производством
@@ -101,7 +102,11 @@ export class ProductionService {
   }
 
   // Авто-списание материалов по спецификации услуг заказа
-  private async writeOffMaterials(jobId: string, orderId: string) {
+  private async writeOffMaterials(
+    jobId: string,
+    orderId: string,
+    userId?: string,
+  ) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: {
@@ -109,6 +114,7 @@ export class ProductionService {
       },
     });
     if (!order?.branchId) return; // некуда списывать без филиала
+    const branchId = order.branchId;
 
     // Сводим расход по товарам: Σ (норма × кол-во услуги)
     const need = new Map<string, number>();
@@ -132,24 +138,33 @@ export class ProductionService {
       if (claim.count === 0) return; // уже списано параллельно
 
       for (const [productId, qty] of need) {
-        await tx.stock.upsert({
-          where: { productId_branchId: { productId, branchId: order.branchId! } },
-          create: {
-            productId,
-            branchId: order.branchId!,
-            quantity: -qty, // допускаем минус: фиксируем фактический расход
-          },
-          update: { quantity: { decrement: qty } },
+        // Не уходим в минус: списываем только фактически доступное (как в кассе
+        // и на складе). Недостача остатка = сигнал незанесённой приёмки, а не
+        // повод портить остаток отрицательным значением (ломает отчёты/оповещения).
+        const stock = await tx.stock.findUnique({
+          where: { productId_branchId: { productId, branchId } },
+          select: { quantity: true },
+        });
+        const before = stock ? Number(stock.quantity) : 0;
+        const dec = Math.min(before, qty);
+        if (dec <= 0) continue; // нечего списывать — движение не пишем
+        const after = Number((before - dec).toFixed(3));
+        await tx.stock.update({
+          where: { productId_branchId: { productId, branchId } },
+          data: { quantity: after },
         });
         await tx.stockMovement.create({
           data: {
             companyId: order.companyId,
             productId,
-            branchId: order.branchId,
-            type: 'WRITE_OFF',
-            quantity: qty,
+            branchId,
+            type: StockMovementType.WRITE_OFF,
+            quantity: dec,
+            beforeQty: before,
+            afterQty: after,
             reason: `Производство по заказу №${order.orderNumber}`,
             orderId: order.id,
+            userId: userId ?? null,
           },
         });
       }

@@ -278,7 +278,7 @@ export class PurchasingService {
 
   listReceipts(companyId: string) {
     return this.prisma.stockReceipt.findMany({
-      where: { companyId },
+      where: { companyId, deletedAt: null },
       include: {
         supplier: { select: { name: true } },
         branch: { select: { name: true } },

@@ -78,6 +78,9 @@ export default function PosPage() {
   const [useBonus, setUseBonus] = useState('');
   const [phone, setPhone] = useState('');
   const [clientName, setClientName] = useState('');
+  // Персональная скидка клиента (%) — подтягивается по телефону, применяется
+  // так же, как на бэкенде, чтобы отображаемый итог совпал с проведённым.
+  const [clientDiscPct, setClientDiscPct] = useState(0);
   const [method, setMethod] = useState('CASH');
   const [split, setSplit] = useState(false);
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
@@ -231,9 +234,43 @@ export default function PosPage() {
     );
   }
 
+  // По номеру телефона подтягиваем персональную скидку клиента (%). Совпадение —
+  // точное по цифрам номера; иначе скидки нет (новый клиент создаётся с 0%).
+  useEffect(() => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 6) {
+      setClientDiscPct(0);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const res = await api.get(
+          `/clients?search=${encodeURIComponent(phone.trim())}&pageSize=5`,
+        );
+        const list = res.data?.items ?? res.data ?? [];
+        const match = list.find(
+          (c: any) => (c.phone || '').replace(/\D/g, '') === digits,
+        );
+        if (!cancelled) setClientDiscPct(match ? Number(match.discount || 0) : 0);
+      } catch {
+        if (!cancelled) setClientDiscPct(0);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [phone]);
+
   const subtotal = cart.reduce((s, c) => s + c.unitPrice * c.quantity, 0);
   const disc = Math.min(Number(discount) || 0, subtotal);
-  const afterDisc = Math.max(0, subtotal - disc);
+  // Скидка клиента считается от суммы позиций (как на бэкенде) — итоги совпадут.
+  const clientDisc =
+    phone.trim() && clientDiscPct > 0
+      ? Number(((subtotal * clientDiscPct) / 100).toFixed(2))
+      : 0;
+  const afterDisc = Math.max(0, subtotal - disc - clientDisc);
   const promo = Math.min(promoDiscount, afterDisc);
   const afterPromo = Math.max(0, afterDisc - promo);
   // Бонусы списываются только у клиента (бэкенд применяет их лишь при clientId).

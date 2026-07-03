@@ -15,9 +15,15 @@ export class ReportsService {
   async summary(companyId: string, from?: string, to?: string) {
     const range = this.range(from, to);
 
-    // Заказы за период: сколько выставлено, оплачено, осталось должно
+    // Заказы за период: сколько выставлено, оплачено, осталось должно.
+    // Отменённые исключаем — иначе завышаем выставленное/кол-во/долг.
     const orders = await this.prisma.order.aggregate({
-      where: { companyId, createdAt: range },
+      where: {
+        companyId,
+        createdAt: range,
+        status: { not: 'CANCELLED' },
+        deletedAt: null,
+      },
       _sum: { total: true, paid: true, balanceDue: true, returnedTotal: true },
       _count: true,
     });
@@ -57,9 +63,8 @@ export class ReportsService {
       net, // чистая выручка = выставлено − возвраты
       collected, // получено деньгами
       debt: Number(orders._sum.balanceDue ?? 0), // остаток долга по заказам периода
-      avgCheck: ordersCount
-        ? Number((billed / ordersCount).toFixed(2))
-        : 0,
+      // Средний чек — по чистой выручке (после возвратов), а не по валовой.
+      avgCheck: ordersCount ? Number((net / ordersCount).toFixed(2)) : 0,
       byMethod: {
         cash: byMethod.CASH,
         card: byMethod.CARD,
@@ -168,9 +173,10 @@ export class ReportsService {
     let totalRevenue = 0;
     let totalCost = 0;
     const list = orders.map((o) => {
-      // Чистая выручка/себестоимость = валовые минус возвращённое (контр-выручка).
-      const revenue =
-        o.items.reduce((s, it) => s + Number(it.lineTotal), 0) - Number(o.returnedTotal);
+      // Выручку берём из итога заказа (o.total) — он уже учитывает скидку/промокод/
+      // бонусы, в отличие от суммы позиций. Иначе прибыль завышалась бы на размер
+      // скидки и расходилась со сводкой (там тоже o.total). Минус возвращённое.
+      const revenue = Number(o.total) - Number(o.returnedTotal);
       const cost =
         o.items.reduce((s, it) => s + Number(it.lineCost), 0) - Number(o.returnedCost);
       const profit = Number((revenue - cost).toFixed(2));
@@ -295,13 +301,20 @@ export class ReportsService {
     });
   }
 
-  // Долги клиентов (заказы с непогашенным остатком)
+  // Долги клиентов (заказы с непогашенным остатком).
+  // Отменённые исключаем — их остаток не является реальным долгом.
   async debts(companyId: string) {
     const orders = await this.prisma.order.findMany({
-      where: { companyId, balanceDue: { gt: new Prisma.Decimal(0) } },
+      where: {
+        companyId,
+        status: { not: 'CANCELLED' },
+        deletedAt: null,
+        balanceDue: { gt: new Prisma.Decimal(0) },
+      },
       include: { client: true },
       orderBy: { createdAt: 'asc' },
     });
+    const now = Date.now();
     const list = orders.map((o) => ({
       orderId: o.id,
       orderNumber: o.orderNumber,
@@ -310,6 +323,9 @@ export class ReportsService {
       total: Number(o.total),
       paid: Number(o.paid),
       debt: Number(o.balanceDue),
+      dueDate: o.debtDueDate,
+      // Просрочка — только если срок задан и уже прошёл.
+      overdue: o.debtDueDate ? new Date(o.debtDueDate).getTime() < now : false,
     }));
     const total = Number(
       list.reduce((s, d) => s + d.debt, 0).toFixed(2),

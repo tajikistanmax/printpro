@@ -76,6 +76,7 @@ export class ProductionController {
       user.companyId,
       dto.status,
       dto.defectReason,
+      user.sub,
     );
   }
 
