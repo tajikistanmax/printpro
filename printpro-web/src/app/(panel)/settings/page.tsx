@@ -351,6 +351,19 @@ export default function SettingsPage() {
                   </Field>
                 </div>
               </Card>
+
+              <Card className="mt-6">
+                <SectionTitle>Бонусная программа</SectionTitle>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Начисление, % от оплаты">
+                    <Input type="number" min="0" step="0.5" value={s.bonusAccrualPercent ?? ''} onChange={(e) => set('bonusAccrualPercent', e.target.value)} placeholder="1" />
+                  </Field>
+                  <Field label="Макс. списание, % от чека">
+                    <Input type="number" min="0" max="100" step="1" value={s.bonusMaxRedeemPercent ?? ''} onChange={(e) => set('bonusMaxRedeemPercent', e.target.value)} placeholder="30" />
+                  </Field>
+                </div>
+                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">По умолчанию: начисление 1% от каждой оплаты, списание до 30% от суммы чека.</p>
+              </Card>
             </div>
           )}
           {section === 'branches' && (

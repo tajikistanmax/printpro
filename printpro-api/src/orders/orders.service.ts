@@ -360,9 +360,11 @@ export class OrdersService {
         },
       });
 
-      // Бонусы клиенту: 1% от внесённой суммы (п. 8.6), кроме оплаты «в долг»
+      // Бонусы клиенту: % от внесённой суммы (п. 8.6), кроме оплаты «в долг».
+      // Ставка начисления берётся из настроек компании (по умолчанию 1%).
       if (order.clientId && dto.method !== PaymentMethod.DEBT) {
-        const bonus = Number((dto.amount * 0.01).toFixed(2));
+        const { accrual } = await this.bonusRates(order.companyId);
+        const bonus = Number((dto.amount * accrual).toFixed(2));
         if (bonus > 0) {
           await tx.client.update({
             where: { id: order.clientId },
@@ -485,13 +487,15 @@ export class OrdersService {
         discount += promoDisc;
       }
 
-      // Списание бонусов (п. 8.6) — не более 30% от суммы и не больше остатка
+      // Списание бонусов (п. 8.6) — не более N% от суммы (из настроек, по
+      // умолчанию 30%) и не больше остатка баллов клиента.
       if (dto.useBonus && dto.useBonus > 0 && order.clientId) {
         const client = await this.prisma.client.findUnique({
           where: { id: order.clientId },
           select: { bonusPoints: true },
         });
-        const maxByPercent = Number((total * 0.3).toFixed(2));
+        const { maxRedeem } = await this.bonusRates(dto.companyId);
+        const maxByPercent = Number((total * maxRedeem).toFixed(2));
         bonusUsed = Math.min(
           dto.useBonus,
           Number(client?.bonusPoints ?? 0),
@@ -778,9 +782,10 @@ export class OrdersService {
       // 3. Сторнируем начисленные бонусы (1% с каждой реальной оплаты, см. addPayment).
       //    Иначе клиент циклом «купил-вернул» бесплатно копил бы баллы.
       if (order.clientId) {
+        const { accrual } = await this.bonusRates(order.companyId);
         const earned = order.payments
           .filter((p) => p.method !== PaymentMethod.DEBT)
-          .reduce((s, p) => s + Number((Number(p.amount) * 0.01).toFixed(2)), 0);
+          .reduce((s, p) => s + Number((Number(p.amount) * accrual).toFixed(2)), 0);
         if (earned > 0) {
           const client = await tx.client.findUnique({
             where: { id: order.clientId },
@@ -978,9 +983,10 @@ export class OrdersService {
       });
 
       // Сторнируем начисленные бонусы пропорционально реально возвращённым деньгам
-      // (1% — как при начислении в addPayment), чтобы возврат не оставлял «лишних» баллов.
+      // (по той же ставке, что при начислении), чтобы возврат не оставлял «лишних» баллов.
       if (order.clientId && moneyBack > 0) {
-        const earned = Number((moneyBack * 0.01).toFixed(2));
+        const { accrual } = await this.bonusRates(order.companyId);
+        const earned = Number((moneyBack * accrual).toFixed(2));
         if (earned > 0) {
           const client = await tx.client.findUnique({
             where: { id: order.clientId },
@@ -1212,6 +1218,28 @@ export class OrdersService {
       },
     });
     return this.findOne(orderId, companyId);
+  }
+
+  // Ставки бонусной программы из настроек компании (в долях).
+  // По умолчанию: начисление 1%, максимум списания 30% от чека.
+  private async bonusRates(
+    companyId: string,
+  ): Promise<{ accrual: number; maxRedeem: number }> {
+    const rows = await this.prisma.setting.findMany({
+      where: {
+        companyId,
+        key: { in: ['bonusAccrualPercent', 'bonusMaxRedeemPercent'] },
+      },
+    });
+    const num = (key: string, def: number) => {
+      const v = rows.find((r) => r.key === key)?.value;
+      const n = v != null && v !== '' ? Number(v) : NaN;
+      return Number.isFinite(n) && n >= 0 ? n : def;
+    };
+    return {
+      accrual: num('bonusAccrualPercent', 1) / 100,
+      maxRedeem: num('bonusMaxRedeemPercent', 30) / 100,
+    };
   }
 
   // ---------- Списки и чтение ----------
