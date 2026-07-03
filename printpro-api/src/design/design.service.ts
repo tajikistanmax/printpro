@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { ProofStatus } from '@prisma/client';
+import { OrderStatus, ProofStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateProofDto,
@@ -17,7 +17,8 @@ export class DesignService {
     });
     if (!order) throw new NotFoundException('Заказ не найден');
 
-    return this.prisma.designProof.create({
+    const status = dto.fileUrl ? ProofStatus.IN_PROGRESS : ProofStatus.TODO;
+    const created = await this.prisma.designProof.create({
       data: {
         companyId: dto.companyId,
         orderId: dto.orderId,
@@ -25,10 +26,12 @@ export class DesignService {
         assignedUserId: dto.assignedUserId,
         fileUrl: dto.fileUrl,
         fileName: dto.fileName,
-        status: dto.fileUrl ? ProofStatus.IN_PROGRESS : ProofStatus.TODO,
+        status,
       },
       include: this.includes(),
     });
+    await this.syncOrderFromProof(dto.orderId, status);
+    return created;
   }
 
   findAll(companyId: string, status?: ProofStatus, orderId?: string) {
@@ -48,7 +51,7 @@ export class DesignService {
     const proof = await this.ensure(id);
     // Новый файл = новая версия
     const newFile = dto.fileUrl && dto.fileUrl !== proof.fileUrl;
-    return this.prisma.designProof.update({
+    const updated = await this.prisma.designProof.update({
       where: { id },
       data: {
         title: dto.title,
@@ -65,17 +68,55 @@ export class DesignService {
       },
       include: this.includes(),
     });
+    if (newFile) await this.syncOrderFromProof(proof.orderId, ProofStatus.IN_PROGRESS);
+    return updated;
   }
 
   async updateStatus(id: string, dto: UpdateProofStatusDto) {
-    await this.ensure(id);
-    return this.prisma.designProof.update({
+    const proof = await this.ensure(id);
+    const updated = await this.prisma.designProof.update({
       where: { id },
       data: {
         status: dto.status,
         ...(dto.comment !== undefined ? { comment: dto.comment } : {}),
       },
       include: this.includes(),
+    });
+    // Авто-связь: статус макета подтягивает статус заказа (только в дизайн-фазе)
+    await this.syncOrderFromProof(proof.orderId, dto.status);
+    return updated;
+  }
+
+  // Двигаем статус заказа за статусом макета. Только пока заказ в дизайн-фазе —
+  // не тянем назад заказы, уже ушедшие в производство/выдачу.
+  private async syncOrderFromProof(orderId: string, proofStatus: ProofStatus) {
+    const map: Partial<Record<ProofStatus, OrderStatus>> = {
+      IN_PROGRESS: OrderStatus.IN_DESIGN,
+      SENT: OrderStatus.DESIGN_APPROVAL,
+      APPROVED: OrderStatus.DESIGN_APPROVED,
+      REVISION: OrderStatus.IN_DESIGN,
+    };
+    const target = map[proofStatus];
+    if (!target) return;
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    });
+    if (!order) return;
+    const designPhase: OrderStatus[] = [
+      OrderStatus.ACCEPTED,
+      OrderStatus.AWAITING_DESIGN,
+      OrderStatus.IN_DESIGN,
+      OrderStatus.DESIGN_APPROVAL,
+      OrderStatus.DESIGN_APPROVED,
+    ];
+    if (!designPhase.includes(order.status) || order.status === target) return;
+    await this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: target },
+    });
+    await this.prisma.orderStatusHistory.create({
+      data: { orderId, status: target, reason: 'Авто: статус макета' },
     });
   }
 

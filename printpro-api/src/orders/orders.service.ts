@@ -1149,6 +1149,23 @@ export class OrdersService {
       }),
     ]);
 
+    // Авто-создание задания производства при переходе в «В производстве»,
+    // если для заказа его ещё нет (ТЗ п.11: согласование → производство).
+    if (status === OrderStatus.IN_PROGRESS) {
+      const existing = await this.prisma.productionJob.findFirst({
+        where: { orderId, deletedAt: null },
+      });
+      if (!existing) {
+        await this.prisma.productionJob.create({
+          data: {
+            companyId: order.companyId,
+            orderId,
+            assignedUserId: order.operatorId ?? undefined,
+          },
+        });
+      }
+    }
+
     // Уведомление о готовности заказа: Telegram + email клиенту
     if (status === OrderStatus.READY) {
       void this.telegram.send(
