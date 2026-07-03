@@ -97,6 +97,12 @@ export default function PosPage() {
   );
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [held, setHeld] = useState<any[]>([]);
+  // Возврат по чеку прямо с кассы
+  const [showRefund, setShowRefund] = useState(false);
+  const [refundSearch, setRefundSearch] = useState('');
+  const [refundList, setRefundList] = useState<any[]>([]);
+  const [refundMsg, setRefundMsg] = useState('');
+  const [refundBusy, setRefundBusy] = useState(false);
   const [orderStats, setOrderStats] = useState({
     active: 0,
     inWork: 0,
@@ -750,6 +756,46 @@ export default function PosPage() {
     },
   };
 
+  // ---- Возврат по чеку ----
+  function openRefund() {
+    setShowRefund(true);
+    setRefundSearch('');
+    setRefundMsg('');
+    // По умолчанию показываем последние оплаченные заказы
+    void searchRefund('');
+  }
+  async function searchRefund(q: string) {
+    try {
+      const qs = q.trim()
+        ? `&search=${encodeURIComponent(q.trim())}`
+        : '';
+      const res: any = await api.get(`/orders?page=1&pageSize=15${qs}`);
+      const list: any[] = res?.items ?? [];
+      // Возврат имеет смысл только для оплаченных и не отменённых заказов
+      setRefundList(
+        list.filter(
+          (o) => o.status !== 'CANCELLED' && Number(o.paid) > 0,
+        ),
+      );
+    } catch {
+      setRefundList([]);
+    }
+  }
+  async function doRefund(o: any) {
+    if (!confirm(`Оформить полный возврат по заказу №${o.orderNumber} на ${money(Number(o.paid))}? Деньги, товар и бонусы будут возвращены.`)) return;
+    setRefundBusy(true);
+    setRefundMsg('');
+    try {
+      await api.post(`/orders/${o.id}/refund`);
+      setRefundMsg(`✓ Возврат по №${o.orderNumber} оформлен`);
+      await searchRefund(refundSearch); // обновляем список
+    } catch (err: any) {
+      setRefundMsg('Ошибка: ' + err.message);
+    } finally {
+      setRefundBusy(false);
+    }
+  }
+
   const Skin = SKINS[layout] ?? SKINS[DEFAULT_POS_LAYOUT];
 
   return (
@@ -773,19 +819,32 @@ export default function PosPage() {
             Сканер ШК
           </span>
         </div>
-        {displayOn && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={openCustomerDisplay}
-            title="Открыть второй экран для покупателя"
-            className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            onClick={openRefund}
+            title="Оформить возврат по чеку"
+            className="flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-              <rect x="3" y="4" width="18" height="12" rx="2" />
-              <path d="M8 20h8M12 16v4" />
+              <path d="M9 14 4 9l5-5" />
+              <path d="M4 9h11a5 5 0 0 1 0 10h-1" />
             </svg>
-            Второй экран
+            Возврат
           </button>
-        )}
+          {displayOn && (
+            <button
+              onClick={openCustomerDisplay}
+              title="Открыть второй экран для покупателя"
+              className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <rect x="3" y="4" width="18" height="12" rx="2" />
+                <path d="M8 20h8M12 16v4" />
+              </svg>
+              Второй экран
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Отложенные чеки — нажми, чтобы вернуть корзину */}
@@ -829,6 +888,64 @@ export default function PosPage() {
           }`}
         >
           {scanMsg}
+        </div>
+      )}
+
+      {/* Возврат по чеку */}
+      {showRefund && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Возврат по чеку</h2>
+              <button
+                aria-label="Закрыть"
+                onClick={() => setShowRefund(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                ✕
+              </button>
+            </div>
+            <input
+              autoFocus
+              value={refundSearch}
+              onChange={(e) => { setRefundSearch(e.target.value); void searchRefund(e.target.value); }}
+              placeholder="Номер чека, клиент или телефон…"
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            />
+            {refundMsg && (
+              <p className={`mb-2 text-sm ${refundMsg.startsWith('✓') ? 'text-emerald-600' : 'text-rose-600'}`}>{refundMsg}</p>
+            )}
+            <div className="max-h-[50vh] overflow-y-auto">
+              {refundList.length === 0 ? (
+                <p className="py-6 text-center text-sm text-slate-400">Оплаченные заказы не найдены</p>
+              ) : (
+                <div className="space-y-2">
+                  {refundList.map((o) => (
+                    <div key={o.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 dark:border-slate-700/60">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-slate-800 dark:text-slate-100">
+                          №{o.orderNumber} · {money(Number(o.paid))}
+                        </div>
+                        <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                          {new Date(o.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          {o.client ? ` · ${o.client.fullName ?? o.client.phone ?? ''}` : ''}
+                          {Number(o.returnedTotal) > 0 ? ` · уже возвращено ${money(Number(o.returnedTotal))}` : ''}
+                        </div>
+                      </div>
+                      <button
+                        disabled={refundBusy}
+                        onClick={() => doRefund(o)}
+                        className="shrink-0 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-50"
+                      >
+                        Вернуть
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <p className="mt-3 text-xs text-slate-400">Полный возврат: деньги (по способу оплаты), товар на склад и бонусы клиента сторнируются. Частичный возврат по позициям — со страницы «Заказы».</p>
+          </div>
         </div>
       )}
 
