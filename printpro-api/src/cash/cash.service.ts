@@ -144,7 +144,8 @@ export class CashService {
       user: s.user?.fullName ?? '',
       branch: s.branch?.name ?? null,
       openingBalance: Number(s.openingBalance),
-      closingBalance: s.closingBalance !== null ? Number(s.closingBalance) : null,
+      closingBalance:
+        s.closingBalance !== null ? Number(s.closingBalance) : null,
     }));
   }
 
@@ -162,7 +163,10 @@ export class CashService {
           },
           orderBy: { createdAt: 'desc' },
         },
-        movements: { where: { deletedAt: null }, orderBy: { createdAt: 'desc' } },
+        movements: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
     if (!shift) throw new NotFoundException('Смена не найдена');

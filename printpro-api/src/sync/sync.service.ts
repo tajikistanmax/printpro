@@ -93,7 +93,10 @@ export class SyncService {
             where: { id: row.id },
           });
           // Конфликт: у нас версия не старее — пропускаем
-          if (existing && new Date(existing.updatedAt).getTime() >= incomingTs) {
+          if (
+            existing &&
+            new Date(existing.updatedAt).getTime() >= incomingTs
+          ) {
             skipped++;
             continue;
           }
@@ -177,7 +180,10 @@ export class SyncService {
     const callCloud = async (path: string, body: unknown) => {
       const res = await fetch(`${CLOUD}${path}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-sync-secret': SECRET },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-sync-secret': SECRET,
+        },
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`облако ${path} → ${res.status}`);

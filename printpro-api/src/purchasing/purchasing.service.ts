@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { StockMovementType, ReceiptPaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -46,7 +50,8 @@ export class PurchasingService {
       });
       const outstanding = Number(fresh?.debt ?? 0);
       const pay = Number(Math.min(dto.amount, outstanding).toFixed(2));
-      if (pay <= 0) throw new BadRequestException('У поставщика нет долга к оплате');
+      if (pay <= 0)
+        throw new BadRequestException('У поставщика нет долга к оплате');
 
       const dec = await tx.supplier.updateMany({
         where: { id, debt: { gte: pay } },
@@ -154,10 +159,14 @@ export class PurchasingService {
 
     // Сумма приёмки, оплата поставщику и статус
     const total = Number(
-      dto.items.reduce((s, it) => s + (it.cost ?? 0) * it.quantity, 0).toFixed(2),
+      dto.items
+        .reduce((s, it) => s + (it.cost ?? 0) * it.quantity, 0)
+        .toFixed(2),
     );
     // Оплата не может превышать сумму приёмки (иначе из кассы уйдёт лишнее).
-    const paidAmount = Number(Math.min(dto.paidAmount ?? total, total).toFixed(2));
+    const paidAmount = Number(
+      Math.min(dto.paidAmount ?? total, total).toFixed(2),
+    );
     const debt = Number(Math.max(0, total - paidAmount).toFixed(2));
     const paymentStatus: ReceiptPaymentStatus =
       paidAmount >= total
@@ -173,7 +182,11 @@ export class PurchasingService {
       // = наш, а product — чужой). productId/branchId/supplierId приходят из тела.
       const productIds = [...new Set(dto.items.map((it) => it.productId))];
       const owned = await tx.product.findMany({
-        where: { id: { in: productIds }, companyId: dto.companyId, deletedAt: null },
+        where: {
+          id: { in: productIds },
+          companyId: dto.companyId,
+          deletedAt: null,
+        },
         select: { id: true },
       });
       if (owned.length !== productIds.length) {
@@ -224,7 +237,10 @@ export class PurchasingService {
       for (const it of dto.items) {
         const prev = await tx.stock.findUnique({
           where: {
-            productId_branchId: { productId: it.productId, branchId: dto.branchId },
+            productId_branchId: {
+              productId: it.productId,
+              branchId: dto.branchId,
+            },
           },
         });
         const beforeQty = prev ? Number(prev.quantity) : 0;
@@ -315,7 +331,9 @@ export class PurchasingService {
         throw new NotFoundException('Приёмка не найдена');
       }
       if (!receipt.branchId) {
-        throw new BadRequestException('У приёмки не указан склад — отмена невозможна');
+        throw new BadRequestException(
+          'У приёмки не указан склад — отмена невозможна',
+        );
       }
       const branchId = receipt.branchId;
 

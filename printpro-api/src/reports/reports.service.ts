@@ -60,7 +60,9 @@ export class ReportsService {
     const ordersCount = orders._count;
     // Реальные деньги (без записей «в долг»)
     const collected = Number(
-      (byMethod.CASH + byMethod.CARD + byMethod.QR + byMethod.TRANSFER).toFixed(2),
+      (byMethod.CASH + byMethod.CARD + byMethod.QR + byMethod.TRANSFER).toFixed(
+        2,
+      ),
     );
 
     return {
@@ -115,7 +117,10 @@ export class ReportsService {
         map.set(key, Number((map.get(key)! + Number(p.amount)).toFixed(2)));
       }
     }
-    return Array.from(map.entries()).map(([date, amount]) => ({ date, amount }));
+    return Array.from(map.entries()).map(([date, amount]) => ({
+      date,
+      amount,
+    }));
   }
 
   // Продажи по услугам/товарам за период (топ). Нетто — за вычетом частичных
@@ -168,10 +173,7 @@ export class ReportsService {
     >();
     for (const it of items) {
       const name =
-        it.service?.name ??
-        it.product?.name ??
-        it.description ??
-        'Прочее';
+        it.service?.name ?? it.product?.name ?? it.description ?? 'Прочее';
       const key = `${it.itemType}:${name}`;
       const cur = agg.get(key) ?? {
         name,
@@ -224,7 +226,8 @@ export class ReportsService {
       // скидки и расходилась со сводкой (там тоже o.total). Минус возвращённое.
       const revenue = Number(o.total) - Number(o.returnedTotal);
       const cost =
-        o.items.reduce((s, it) => s + Number(it.lineCost), 0) - Number(o.returnedCost);
+        o.items.reduce((s, it) => s + Number(it.lineCost), 0) -
+        Number(o.returnedCost);
       const profit = Number((revenue - cost).toFixed(2));
       totalRevenue += revenue;
       totalCost += cost;
@@ -404,9 +407,7 @@ export class ReportsService {
       // Просрочка — только если срок задан и уже прошёл.
       overdue: o.debtDueDate ? new Date(o.debtDueDate).getTime() < now : false,
     }));
-    const total = Number(
-      list.reduce((s, d) => s + d.debt, 0).toFixed(2),
-    );
+    const total = Number(list.reduce((s, d) => s + d.debt, 0).toFixed(2));
     return { total, count: list.length, items: list };
   }
 
@@ -457,9 +458,7 @@ export class ReportsService {
       _count: true,
     });
 
-    const ordersBy = new Map(
-      orders.map((o) => [o.createdById, o]),
-    );
+    const ordersBy = new Map(orders.map((o) => [o.createdById, o]));
     const prodBy = new Map(prod.map((p) => [p.assignedUserId, p._count]));
     const tasksBy = new Map(tasks.map((t) => [t.assignedUserId, t._count]));
 
@@ -504,7 +503,13 @@ export class ReportsService {
     const pmap = new Map(products.map((p) => [p.id, p]));
     const agg = new Map<
       string,
-      { name: string; unit: string; used: number; writeOff: number; cost: number }
+      {
+        name: string;
+        unit: string;
+        used: number;
+        writeOff: number;
+        cost: number;
+      }
     >();
     for (const m of moves) {
       const p = pmap.get(m.productId);

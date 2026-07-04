@@ -10,7 +10,6 @@ import {
   Segmented,
   Card,
   SectionTitle,
-  TableCard,
   Button,
   Badge,
   EmptyState,
@@ -66,23 +65,75 @@ function periodRange(period: string): { from: string; to: string } {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
+// ---- Типы отчётов (ответы API) ----
+interface CatAmount { category: string; amount: number }
+interface Summary {
+  collected: number; billed: number; returns: number; net: number; tax: number;
+  ordersCount: number; avgCheck: number; debt: number;
+  byMethod: { cash: number; card: number; qr: number; transfer: number; debt: number };
+}
+interface DailyPoint { date: string; amount: number }
+interface SalesItem { name: string; type: string; qty: number; revenue: number }
+interface DebtItem {
+  orderId: string; orderNumber: string; client: string; phone: string;
+  total: number; paid: number; debt: number; dueDate: string | null; overdue: boolean;
+}
+interface DebtsReport { total: number; count: number; items: DebtItem[] }
+interface StaffItem {
+  id: string; name: string; role: string; ordersCreated: number;
+  salesSum: number; productionDone: number; tasksDone: number;
+}
+interface ProfitItem {
+  orderId: string; orderNumber: string; date: string; client: string;
+  revenue: number; cost: number; profit: number; margin: number;
+}
+interface ProfitReport {
+  ordersCount: number; revenue: number; cost: number; profit: number; margin: number; items: ProfitItem[];
+}
+interface EqLoadItem {
+  id: string; name: string; type: string; status: string; inQueue: number;
+  inWork: number; active: number; completed: number; rework: number; total: number;
+}
+interface ExpenseRow { date: string; category: string; reason: string; amount: number }
+interface ExpensesReport { total: number; byCategory: CatAmount[]; items: ExpenseRow[] }
+interface MatItem {
+  productId: string; name: string; unit: string; used: number; writeOff: number; total: number; cost: number;
+}
+interface MatUsageReport { totalCost: number; items: MatItem[] }
+interface StatusRow { status: string; count: number; total: number }
+interface OverdueItem {
+  orderId: string; orderNumber: string; client: string; status: string;
+  deadline: string | null; manager: string; total: number; balanceDue: number;
+}
+interface CashFlowReport {
+  totalIn: number; totalOut: number; net: number;
+  incomeByCategory: CatAmount[]; expenseByCategory: CatAmount[];
+}
+interface ReturnItem {
+  id: string; number: string | null; orderId: string | null;
+  amount: number; method: string | null; reason: string; date: string;
+}
+interface ReturnsReport { total: number; count: number; items: ReturnItem[] }
+interface SupItem { id: string; name: string; phone: string; debt: number }
+interface SupDebtsReport { total: number; count: number; items: SupItem[] }
+
 export default function ReportsPage() {
   const cid = DEFAULT_COMPANY_ID;
   const [period, setPeriod] = useState('month');
-  const [summary, setSummary] = useState<any>(null);
-  const [daily, setDaily] = useState<any[]>([]);
-  const [sales, setSales] = useState<any[]>([]);
-  const [debts, setDebts] = useState<any>(null);
-  const [staff, setStaff] = useState<any[]>([]);
-  const [profit, setProfit] = useState<any>(null);
-  const [eqLoad, setEqLoad] = useState<any[]>([]);
-  const [expenses, setExpenses] = useState<any>(null);
-  const [matUsage, setMatUsage] = useState<any>(null);
-  const [byStatus, setByStatus] = useState<any[]>([]);
-  const [overdue, setOverdue] = useState<any[]>([]);
-  const [cashFlow, setCashFlow] = useState<any>(null);
-  const [returns, setReturns] = useState<any>(null);
-  const [supDebts, setSupDebts] = useState<any>(null);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [daily, setDaily] = useState<DailyPoint[]>([]);
+  const [sales, setSales] = useState<SalesItem[]>([]);
+  const [debts, setDebts] = useState<DebtsReport | null>(null);
+  const [staff, setStaff] = useState<StaffItem[]>([]);
+  const [profit, setProfit] = useState<ProfitReport | null>(null);
+  const [eqLoad, setEqLoad] = useState<EqLoadItem[]>([]);
+  const [expenses, setExpenses] = useState<ExpensesReport | null>(null);
+  const [matUsage, setMatUsage] = useState<MatUsageReport | null>(null);
+  const [byStatus, setByStatus] = useState<StatusRow[]>([]);
+  const [overdue, setOverdue] = useState<OverdueItem[]>([]);
+  const [cashFlow, setCashFlow] = useState<CashFlowReport | null>(null);
+  const [returns, setReturns] = useState<ReturnsReport | null>(null);
+  const [supDebts, setSupDebts] = useState<SupDebtsReport | null>(null);
 
   // Кол-во дней в графике зависит от периода (С6: было жёстко 14)
   const dailyDays = period === 'month' ? 30 : 7;
@@ -151,7 +202,7 @@ export default function ReportsPage() {
         name: 'Прибыль',
         rows: [
           ['Заказ', 'Клиент', 'Выручка', 'Себестоимость', 'Прибыль', 'Маржа %'],
-          ...profit.items.map((p: any) => [p.orderNumber, p.client, p.revenue, p.cost, p.profit, p.margin]),
+          ...profit.items.map((p) => [p.orderNumber, p.client, p.revenue, p.cost, p.profit, p.margin]),
         ],
       });
     if (matUsage && matUsage.items.length)
@@ -159,7 +210,7 @@ export default function ReportsPage() {
         name: 'Расход материалов',
         rows: [
           ['Материал', 'Расход', 'Списано', 'Итого', 'Ед.', 'Себестоимость'],
-          ...matUsage.items.map((m: any) => [m.name, m.used, m.writeOff, m.total, m.unit, m.cost]),
+          ...matUsage.items.map((m) => [m.name, m.used, m.writeOff, m.total, m.unit, m.cost]),
         ],
       });
     if (byStatus.length)
@@ -183,20 +234,20 @@ export default function ReportsPage() {
         name: 'Долги',
         rows: [
           ['Заказ', 'Клиент', 'Телефон', 'Итого', 'Оплачено', 'Долг'],
-          ...debts.items.map((d: any) => [d.orderNumber, d.client, d.phone, d.total, d.paid, d.debt]),
+          ...debts.items.map((d) => [d.orderNumber, d.client, d.phone, d.total, d.paid, d.debt]),
         ],
       });
     if (expenses && expenses.byCategory.length)
       sheets.push({
         name: 'Расходы',
-        rows: [['Категория', 'Сумма'], ...expenses.byCategory.map((c: any) => [c.category, c.amount])],
+        rows: [['Категория', 'Сумма'], ...expenses.byCategory.map((c) => [c.category, c.amount])],
       });
     if (eqLoad.length)
       sheets.push({
         name: 'Оборудование',
         rows: [
           ['Оборудование', 'Тип', 'В очереди', 'В работе', 'Готово', 'Брак'],
-          ...eqLoad.map((e: any) => [e.name, e.type, e.inQueue, e.inWork, e.completed, e.rework || 0]),
+          ...eqLoad.map((e) => [e.name, e.type, e.inQueue, e.inWork, e.completed, e.rework || 0]),
         ],
       });
     if (staff.length)
@@ -204,7 +255,7 @@ export default function ReportsPage() {
         name: 'Сотрудники',
         rows: [
           ['Сотрудник', 'Роль', 'Заказов', 'Сумма продаж', 'Произв.', 'Задач'],
-          ...staff.map((u: any) => [u.name, u.role, u.ordersCreated, u.salesSum, u.productionDone, u.tasksDone]),
+          ...staff.map((u) => [u.name, u.role, u.ordersCreated, u.salesSum, u.productionDone, u.tasksDone]),
         ],
       });
     if (cashFlow)
@@ -212,8 +263,8 @@ export default function ReportsPage() {
         name: 'ДДС',
         rows: [
           ['Тип', 'Категория', 'Сумма'],
-          ...(cashFlow.incomeByCategory ?? []).map((c: any) => ['Приход', c.category, c.amount]),
-          ...(cashFlow.expenseByCategory ?? []).map((c: any) => ['Расход', c.category, c.amount]),
+          ...(cashFlow.incomeByCategory ?? []).map((c) => ['Приход', c.category, c.amount]),
+          ...(cashFlow.expenseByCategory ?? []).map((c) => ['Расход', c.category, c.amount]),
           ['', 'Итого нетто', cashFlow.net],
         ],
       });
@@ -222,7 +273,7 @@ export default function ReportsPage() {
         name: 'Возвраты',
         rows: [
           ['№', 'Дата', 'Способ', 'Причина', 'Сумма'],
-          ...returns.items.map((r: any) => [
+          ...returns.items.map((r) => [
             r.number ?? '',
             new Date(r.date).toLocaleDateString('ru-RU'),
             r.method ?? '',
@@ -236,7 +287,7 @@ export default function ReportsPage() {
         name: 'Долг поставщикам',
         rows: [
           ['Поставщик', 'Телефон', 'Долг'],
-          ...supDebts.items.map((s: any) => [s.name, s.phone ?? '', s.debt]),
+          ...supDebts.items.map((s) => [s.name, s.phone ?? '', s.debt]),
         ],
       });
     if (sheets.length === 0) sheets.push({ name: 'Отчёт', rows: [['Нет данных за период']] });
@@ -336,7 +387,7 @@ export default function ReportsPage() {
                       downloadCSV(
                         'debts.csv',
                         ['Заказ', 'Клиент', 'Телефон', 'Итого', 'Оплачено', 'Долг'],
-                        debts.items.map((d: any) => [d.orderNumber, d.client, d.phone, d.total, d.paid, d.debt]),
+                        debts.items.map((d) => [d.orderNumber, d.client, d.phone, d.total, d.paid, d.debt]),
                       )
                     }
                   >
@@ -357,7 +408,7 @@ export default function ReportsPage() {
             <EmptyState icon="clients" title="Долгов нет" />
           ) : (
             <div className="max-h-40 space-y-1 overflow-auto">
-              {debts.items.map((d: any) => (
+              {debts.items.map((d) => (
                 <div key={d.orderId} className="flex items-center justify-between border-b border-slate-100 py-1.5 text-sm last:border-0 dark:border-slate-700">
                   <span className="text-slate-600 dark:text-slate-300">№{d.orderNumber} · {d.client}</span>
                   <span className="font-medium text-rose-600">{money(d.debt)}</span>
@@ -431,7 +482,7 @@ export default function ReportsPage() {
                   downloadCSV(
                     'profit.csv',
                     ['Заказ', 'Клиент', 'Выручка', 'Себестоимость', 'Прибыль', 'Маржа %'],
-                    profit.items.map((p: any) => [p.orderNumber, p.client, p.revenue, p.cost, p.profit, p.margin]),
+                    profit.items.map((p) => [p.orderNumber, p.client, p.revenue, p.cost, p.profit, p.margin]),
                   )
                 }
               >
@@ -480,7 +531,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {profit.items.slice(0, 50).map((p: any) => (
+                {profit.items.slice(0, 50).map((p) => (
                   <tr key={p.orderId}>
                     <td className="font-medium text-slate-700 dark:text-slate-200">№{p.orderNumber}</td>
                     <td className="text-slate-500">{p.client}</td>
@@ -509,7 +560,7 @@ export default function ReportsPage() {
                     downloadCSV(
                       'expenses.csv',
                       ['Категория', 'Сумма'],
-                      expenses.byCategory.map((c: any) => [c.category, c.amount]),
+                      expenses.byCategory.map((c) => [c.category, c.amount]),
                     )
                   }
                 >
@@ -522,7 +573,7 @@ export default function ReportsPage() {
             Расходы по категориям
           </SectionTitle>
           <div className="grid gap-2 sm:grid-cols-2">
-            {expenses.byCategory.map((c: any) => (
+            {expenses.byCategory.map((c) => (
               <div key={c.category} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800/50">
                 <span className="text-slate-600 dark:text-slate-300">{c.category}</span>
                 <span className="font-medium text-slate-800 dark:text-slate-100">{money(c.amount)}</span>
@@ -544,7 +595,7 @@ export default function ReportsPage() {
                   downloadCSV(
                     'equipment-load.csv',
                     ['Оборудование', 'Тип', 'В очереди', 'В работе', 'Готово', 'Брак'],
-                    eqLoad.map((e: any) => [e.name, e.type, e.inQueue, e.inWork, e.completed, e.rework || 0]),
+                    eqLoad.map((e) => [e.name, e.type, e.inQueue, e.inWork, e.completed, e.rework || 0]),
                   )
                 }
               >
@@ -670,7 +721,7 @@ export default function ReportsPage() {
                     downloadCSV(
                       'materials-usage.csv',
                       ['Материал', 'Расход', 'Списано', 'Итого', 'Ед.', 'Себестоимость'],
-                      matUsage.items.map((m: any) => [m.name, m.used, m.writeOff, m.total, m.unit, m.cost]),
+                      matUsage.items.map((m) => [m.name, m.used, m.writeOff, m.total, m.unit, m.cost]),
                     )
                   }
                 >
@@ -694,7 +745,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {matUsage.items.slice(0, 50).map((m: any) => (
+                {matUsage.items.slice(0, 50).map((m) => (
                   <tr key={m.productId}>
                     <td className="font-medium text-slate-700 dark:text-slate-200">{m.name}</td>
                     <td className="text-right text-slate-600 dark:text-slate-300">{m.used} {m.unit}</td>
@@ -721,7 +772,7 @@ export default function ReportsPage() {
                   downloadCSV(
                     'staff.csv',
                     ['Сотрудник', 'Роль', 'Заказов', 'Сумма продаж', 'Произв.', 'Задач'],
-                    staff.map((u: any) => [u.name, u.role, u.ordersCreated, u.salesSum, u.productionDone, u.tasksDone]),
+                    staff.map((u) => [u.name, u.role, u.ordersCreated, u.salesSum, u.productionDone, u.tasksDone]),
                   )
                 }
               >
@@ -783,7 +834,7 @@ export default function ReportsPage() {
                   <div className="pp-table-scroll">
                     <table className="pp-table">
                       <tbody>
-                        {cashFlow.incomeByCategory.map((c: any) => (
+                        {cashFlow.incomeByCategory.map((c) => (
                           <tr key={'in-' + c.category}>
                             <td className="text-slate-600 dark:text-slate-300">{c.category}</td>
                             <td className="text-right font-semibold text-emerald-600">{money(c.amount)}</td>
@@ -802,7 +853,7 @@ export default function ReportsPage() {
                   <div className="pp-table-scroll">
                     <table className="pp-table">
                       <tbody>
-                        {cashFlow.expenseByCategory.map((c: any) => (
+                        {cashFlow.expenseByCategory.map((c) => (
                           <tr key={'out-' + c.category}>
                             <td className="text-slate-600 dark:text-slate-300">{c.category}</td>
                             <td className="text-right font-semibold text-rose-600">{money(c.amount)}</td>
@@ -832,7 +883,7 @@ export default function ReportsPage() {
                   downloadCSV(
                     'returns.csv',
                     ['№', 'Дата', 'Способ', 'Причина', 'Сумма'],
-                    returns.items.map((r: any) => [
+                    returns.items.map((r) => [
                       r.number ?? '',
                       new Date(r.date).toLocaleDateString('ru-RU'),
                       r.method ?? '',
@@ -864,7 +915,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {returns.items.map((r: any) => (
+                {returns.items.map((r) => (
                   <tr key={r.id}>
                     <td className="font-medium text-slate-700 dark:text-slate-200">{r.number ?? '—'}</td>
                     <td className="text-slate-500">{new Date(r.date).toLocaleDateString('ru-RU')}</td>
@@ -897,7 +948,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {supDebts.items.map((s: any) => (
+                {supDebts.items.map((s) => (
                   <tr key={s.id}>
                     <td className="font-medium text-slate-700 dark:text-slate-200">{s.name}</td>
                     <td className="text-slate-500">{s.phone || '—'}</td>

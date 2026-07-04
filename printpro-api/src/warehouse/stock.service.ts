@@ -104,11 +104,16 @@ export class StockService {
           },
         },
       });
-      const available = Number((Number(srcAfter?.quantity ?? 0) + qty).toFixed(3));
+      const available = Number(
+        (Number(srcAfter?.quantity ?? 0) + qty).toFixed(3),
+      );
       // Остаток приёмника до перемещения (для аудита «до/после»)
       const dst = await tx.stock.findUnique({
         where: {
-          productId_branchId: { productId: dto.productId, branchId: dto.toBranchId },
+          productId_branchId: {
+            productId: dto.productId,
+            branchId: dto.toBranchId,
+          },
         },
       });
       const destBefore = dst ? Number(dst.quantity) : 0;
@@ -188,38 +193,42 @@ export class StockService {
     // 5-сек таймаут транзакции Prisma мал: поднимаем окно до 2 минут.
     await this.prisma.$transaction(
       async (tx) => {
-      for (const it of items) {
-        const counted = Number(it.countedQuantity);
-        if (!Number.isFinite(counted) || counted < 0) continue;
-        const current = await tx.stock.findUnique({
-          where: { productId_branchId: { productId: it.productId, branchId } },
-        });
-        const was = current ? Number(current.quantity) : 0;
-        const diff = Number((counted - was).toFixed(3));
-        if (diff === 0) {
-          unchanged++;
-          continue;
+        for (const it of items) {
+          const counted = Number(it.countedQuantity);
+          if (!Number.isFinite(counted) || counted < 0) continue;
+          const current = await tx.stock.findUnique({
+            where: {
+              productId_branchId: { productId: it.productId, branchId },
+            },
+          });
+          const was = current ? Number(current.quantity) : 0;
+          const diff = Number((counted - was).toFixed(3));
+          if (diff === 0) {
+            unchanged++;
+            continue;
+          }
+          await tx.stock.upsert({
+            where: {
+              productId_branchId: { productId: it.productId, branchId },
+            },
+            create: { productId: it.productId, branchId, quantity: counted },
+            update: { quantity: counted },
+          });
+          await tx.stockMovement.create({
+            data: {
+              companyId,
+              productId: it.productId,
+              branchId,
+              type: StockMovementType.ADJUST,
+              quantity: Math.abs(diff),
+              beforeQty: was,
+              afterQty: counted,
+              reason: `Инвентаризация: было ${was}, стало ${counted}`,
+              userId,
+            },
+          });
+          applied++;
         }
-        await tx.stock.upsert({
-          where: { productId_branchId: { productId: it.productId, branchId } },
-          create: { productId: it.productId, branchId, quantity: counted },
-          update: { quantity: counted },
-        });
-        await tx.stockMovement.create({
-          data: {
-            companyId,
-            productId: it.productId,
-            branchId,
-            type: StockMovementType.ADJUST,
-            quantity: Math.abs(diff),
-            beforeQty: was,
-            afterQty: counted,
-            reason: `Инвентаризация: было ${was}, стало ${counted}`,
-            userId,
-          },
-        });
-        applied++;
-      }
       },
       { timeout: 120000, maxWait: 10000 },
     );
@@ -287,7 +296,12 @@ export class StockService {
   // Себестоимость берём из закупочной цены товара.
   async writeOff(dto: WriteOffDto) {
     return this.prisma.$transaction(async (tx) => {
-      await this.ensureOwnership(tx, dto.companyId, dto.productId, dto.branchId);
+      await this.ensureOwnership(
+        tx,
+        dto.companyId,
+        dto.productId,
+        dto.branchId,
+      );
       // Условное списание: атомарно, только если остатка хватает.
       const dec = await tx.stock.updateMany({
         where: {
@@ -300,7 +314,10 @@ export class StockService {
       if (dec.count === 0) {
         const cur = await tx.stock.findUnique({
           where: {
-            productId_branchId: { productId: dto.productId, branchId: dto.branchId },
+            productId_branchId: {
+              productId: dto.productId,
+              branchId: dto.branchId,
+            },
           },
         });
         throw new BadRequestException(
@@ -309,7 +326,10 @@ export class StockService {
       }
       const after = await tx.stock.findUnique({
         where: {
-          productId_branchId: { productId: dto.productId, branchId: dto.branchId },
+          productId_branchId: {
+            productId: dto.productId,
+            branchId: dto.branchId,
+          },
         },
       });
       const afterQty = after ? Number(after.quantity) : 0;
@@ -318,7 +338,9 @@ export class StockService {
         where: { id: dto.productId },
         select: { purchasePrice: true },
       });
-      const cost = Number((Number(product?.purchasePrice ?? 0) * dto.quantity).toFixed(2));
+      const cost = Number(
+        (Number(product?.purchasePrice ?? 0) * dto.quantity).toFixed(2),
+      );
 
       const wo = await tx.writeOff.create({
         data: {
@@ -388,7 +410,9 @@ export class StockService {
         throw new NotFoundException('Списание не найдено');
       }
       if (!w.branchId) {
-        throw new BadRequestException('У списания не указан склад — отмена невозможна');
+        throw new BadRequestException(
+          'У списания не указан склад — отмена невозможна',
+        );
       }
       // Идемпотентный захват: soft-delete первым шагом. Второй параллельный вызов
       // получит count=0 и не восстановит остаток повторно (двойное сторно).
@@ -404,7 +428,11 @@ export class StockService {
       // параллельная продажа между чтением и записью была бы потеряна).
       await tx.stock.upsert({
         where: { productId_branchId: { productId: w.productId, branchId } },
-        create: { productId: w.productId, branchId, quantity: Number(w.quantity) },
+        create: {
+          productId: w.productId,
+          branchId,
+          quantity: Number(w.quantity),
+        },
         update: { quantity: { increment: Number(w.quantity) } },
       });
       const cur = await tx.stock.findUnique({

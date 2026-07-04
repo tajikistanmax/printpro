@@ -250,9 +250,13 @@ export class PublicController {
       description: it.description,
       quantity: it.quantity,
       unitPrice: it.unitPrice,
-      lineTotal: Number((Number(it.quantity) * Number(it.unitPrice)).toFixed(2)),
+      lineTotal: Number(
+        (Number(it.quantity) * Number(it.unitPrice)).toFixed(2),
+      ),
     }));
-    const total = Number(items.reduce((s, it) => s + it.lineTotal, 0).toFixed(2));
+    const total = Number(
+      items.reduce((s, it) => s + it.lineTotal, 0).toFixed(2),
+    );
 
     const node = (process.env.NODE_ID ?? 'C').toUpperCase();
     const year = new Date().getFullYear();

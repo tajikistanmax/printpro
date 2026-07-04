@@ -14,7 +14,11 @@ export const PERMISSIONS: { code: string; label: string; group: string }[] = [
 
   // Заказы и касса
   { code: 'orders.view', label: 'Просмотр заказов', group: 'Заказы' },
-  { code: 'orders.manage', label: 'Создание и изменение заказов', group: 'Заказы' },
+  {
+    code: 'orders.manage',
+    label: 'Создание и изменение заказов',
+    group: 'Заказы',
+  },
   { code: 'cash.view', label: 'Просмотр кассы', group: 'Касса' },
   { code: 'cash.operate', label: 'Проведение оплат', group: 'Касса' },
   {
@@ -24,8 +28,16 @@ export const PERMISSIONS: { code: string; label: string; group: string }[] = [
   },
 
   // Производство
-  { code: 'production.view', label: 'Просмотр производства', group: 'Производство' },
-  { code: 'production.manage', label: 'Управление производством', group: 'Производство' },
+  {
+    code: 'production.view',
+    label: 'Просмотр производства',
+    group: 'Производство',
+  },
+  {
+    code: 'production.manage',
+    label: 'Управление производством',
+    group: 'Производство',
+  },
 
   // Дизайн-макеты
   { code: 'design.view', label: 'Просмотр макетов', group: 'Дизайн' },
@@ -44,14 +56,38 @@ export const PERMISSIONS: { code: string; label: string; group: string }[] = [
 
   // Зарплата
   { code: 'payroll.view', label: 'Просмотр зарплаты', group: 'Зарплата' },
-  { code: 'payroll.manage', label: 'Расчёт и выплата зарплаты', group: 'Зарплата' },
+  {
+    code: 'payroll.manage',
+    label: 'Расчёт и выплата зарплаты',
+    group: 'Зарплата',
+  },
 
   // Администрирование
-  { code: 'users.view', label: 'Просмотр сотрудников', group: 'Администрирование' },
-  { code: 'users.manage', label: 'Управление сотрудниками', group: 'Администрирование' },
-  { code: 'roles.manage', label: 'Управление ролями и правами', group: 'Администрирование' },
-  { code: 'settings.manage', label: 'Настройки платформы', group: 'Администрирование' },
-  { code: 'audit.view', label: 'Просмотр журнала действий', group: 'Администрирование' },
+  {
+    code: 'users.view',
+    label: 'Просмотр сотрудников',
+    group: 'Администрирование',
+  },
+  {
+    code: 'users.manage',
+    label: 'Управление сотрудниками',
+    group: 'Администрирование',
+  },
+  {
+    code: 'roles.manage',
+    label: 'Управление ролями и правами',
+    group: 'Администрирование',
+  },
+  {
+    code: 'settings.manage',
+    label: 'Настройки платформы',
+    group: 'Администрирование',
+  },
+  {
+    code: 'audit.view',
+    label: 'Просмотр журнала действий',
+    group: 'Администрирование',
+  },
 ];
 
 // Системные роли и их права по умолчанию.

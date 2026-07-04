@@ -82,7 +82,9 @@ export class SettingsService {
       }
       // Значение — только скаляр; объекты/массивы в настройках не храним
       if (v !== null && typeof v === 'object') {
-        throw new BadRequestException(`Недопустимое значение настройки «${key}»`);
+        throw new BadRequestException(
+          `Недопустимое значение настройки «${key}»`,
+        );
       }
       const value = v == null ? '' : String(v);
       if (value.length > 100_000) {

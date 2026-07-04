@@ -81,9 +81,7 @@ export class DesignService {
         fileUrl: dto.fileUrl,
         fileName: dto.fileName,
         comment: dto.comment,
-        ...(dto.checklist !== undefined
-          ? { checklist: dto.checklist }
-          : {}),
+        ...(dto.checklist !== undefined ? { checklist: dto.checklist } : {}),
         ...(newFile
           ? {
               version: proof.version + 1,
@@ -97,7 +95,8 @@ export class DesignService {
       },
       include: this.includes(),
     });
-    if (newFile) await this.syncOrderFromProof(proof.orderId, ProofStatus.IN_PROGRESS);
+    if (newFile)
+      await this.syncOrderFromProof(proof.orderId, ProofStatus.IN_PROGRESS);
     return updated;
   }
 

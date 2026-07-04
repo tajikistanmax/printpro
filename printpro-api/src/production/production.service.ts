@@ -93,11 +93,12 @@ export class ProductionService {
       data.startedAt = new Date();
     }
     // Готово — фиксируем завершение, иначе сбрасываем
-    data.completedAt = status === ProductionStatus.COMPLETED ? new Date() : null;
+    data.completedAt =
+      status === ProductionStatus.COMPLETED ? new Date() : null;
 
     // Брак/переделка — сохраняем причину; иначе очищаем
     data.defectReason =
-      status === ProductionStatus.REWORK ? defectReason ?? null : null;
+      status === ProductionStatus.REWORK ? (defectReason ?? null) : null;
 
     const updated = await this.prisma.productionJob.update({
       where: { id },
@@ -251,7 +252,9 @@ export class ProductionService {
 
       for (const m of outMoves) {
         const net = Number(
-          (Number(m._sum.quantity ?? 0) - (returned.get(m.productId) ?? 0)).toFixed(3),
+          (
+            Number(m._sum.quantity ?? 0) - (returned.get(m.productId) ?? 0)
+          ).toFixed(3),
         );
         if (net <= 0) continue; // уже возвращено
         await tx.stock.upsert({

@@ -19,10 +19,7 @@ export class PricingController {
 
   @Post('preview')
   @RequirePermissions('orders.view', 'orders.manage', 'services.view')
-  preview(
-    @CurrentUser() user: JwtUser,
-    @Body() body: PriceInput,
-  ) {
+  preview(@CurrentUser() user: JwtUser, @Body() body: PriceInput) {
     return this.pricing.preview(user.companyId, body);
   }
 }

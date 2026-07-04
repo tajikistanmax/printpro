@@ -106,9 +106,9 @@ export class OrdersService {
       const unitCost =
         it.unitCost ??
         (it.serviceId
-          ? serviceCosts.get(it.serviceId) ?? 0
+          ? (serviceCosts.get(it.serviceId) ?? 0)
           : it.productId
-            ? productCosts.get(it.productId) ?? 0
+            ? (productCosts.get(it.productId) ?? 0)
             : 0);
       return {
         ...it,
@@ -200,7 +200,10 @@ export class OrdersService {
       // Префикс узла (NODE_ID) гарантирует уникальность между точками сети.
       const node = (process.env.NODE_ID ?? 'C').toUpperCase();
       const year = new Date().getFullYear();
-      const seq = String(await nextSeq(tx, dto.companyId, 'ORDER')).padStart(6, '0');
+      const seq = String(await nextSeq(tx, dto.companyId, 'ORDER')).padStart(
+        6,
+        '0',
+      );
       const orderNumber = `${prefix}-${node}-${year}-${seq}`;
 
       // Создаём заказ с позициями
@@ -313,7 +316,6 @@ export class OrdersService {
         }
       }
 
-
       return this.loadFull(tx, order.id);
     });
   }
@@ -385,7 +387,11 @@ export class OrdersService {
       }
       if (!shiftId && cashierId) {
         const openShift = await tx.cashShift.findFirst({
-          where: { companyId: order.companyId, userId: cashierId, closedAt: null },
+          where: {
+            companyId: order.companyId,
+            userId: cashierId,
+            closedAt: null,
+          },
         });
         shiftId = openShift?.id;
       }
@@ -530,7 +536,8 @@ export class OrdersService {
         const ex = await this.prisma.order.findUnique({
           where: { idempotencyKey: dto.idempotencyKey },
         });
-        if (ex && ex.status !== OrderStatus.CANCELLED) return this.findOne(ex.id);
+        if (ex && ex.status !== OrderStatus.CANCELLED)
+          return this.findOne(ex.id);
       }
       throw e;
     }
@@ -658,7 +665,9 @@ export class OrdersService {
       // окажется недоплаченным (и всё равно был бы помечен выданным).
       if (dto.payments && dto.payments.length > 0) {
         const paySum = Number(
-          dto.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0).toFixed(2),
+          dto.payments
+            .reduce((s, p) => s + (Number(p.amount) || 0), 0)
+            .toFixed(2),
         );
         if (Math.abs(paySum - total) > 0.01) {
           throw new BadRequestException(
@@ -762,7 +771,10 @@ export class OrdersService {
         await this.promocodes
           .release(dto.companyId, dto.promoCode)
           .catch((err) =>
-            console.error('quickSale rollback: не удалось откатить промокод', err),
+            console.error(
+              'quickSale rollback: не удалось откатить промокод',
+              err,
+            ),
           );
       }
       // 3) Вернуть товар на склад и отменить заказ.
@@ -812,7 +824,9 @@ export class OrdersService {
   // companyId (из токена) — удаляем только свой отложенный чек.
   async deleteHeld(id: string, companyId?: string) {
     if (companyId) {
-      const res = await this.prisma.heldSale.deleteMany({ where: { id, companyId } });
+      const res = await this.prisma.heldSale.deleteMany({
+        where: { id, companyId },
+      });
       if (res.count === 0) throw new NotFoundException('Чек не найден');
       return { ok: true };
     }
@@ -855,7 +869,9 @@ export class OrdersService {
       for (const p of order.payments) {
         netByMethod.set(
           p.method,
-          Number(((netByMethod.get(p.method) ?? 0) + Number(p.amount)).toFixed(2)),
+          Number(
+            ((netByMethod.get(p.method) ?? 0) + Number(p.amount)).toFixed(2),
+          ),
         );
       }
       const shiftId = await this.openShiftId(tx, order.companyId, userId);
@@ -885,10 +901,16 @@ export class OrdersService {
             Math.min(Number(it.quantity), remaining).toFixed(3),
           );
           if (restock <= 0) continue;
-          decremented.set(it.productId, Number((remaining - restock).toFixed(3)));
+          decremented.set(
+            it.productId,
+            Number((remaining - restock).toFixed(3)),
+          );
           const cur = await tx.stock.findUnique({
             where: {
-              productId_branchId: { productId: it.productId, branchId: order.branchId },
+              productId_branchId: {
+                productId: it.productId,
+                branchId: order.branchId,
+              },
             },
           });
           const before = cur ? Number(cur.quantity) : 0;
@@ -929,7 +951,10 @@ export class OrdersService {
         const { accrual } = await this.bonusRates(order.companyId);
         const earned = order.payments
           .filter((p) => p.method !== PaymentMethod.DEBT)
-          .reduce((s, p) => s + Number((Number(p.amount) * accrual).toFixed(2)), 0);
+          .reduce(
+            (s, p) => s + Number((Number(p.amount) * accrual).toFixed(2)),
+            0,
+          );
         if (earned > 0) {
           const client = await tx.client.findUnique({
             where: { id: order.clientId },
@@ -964,7 +989,10 @@ export class OrdersService {
           deletedAt: null,
           status: { notIn: [ProofStatus.APPROVED, ProofStatus.REJECTED] },
         },
-        data: { status: ProofStatus.REJECTED, comment: 'Заказ отменён (возврат)' },
+        data: {
+          status: ProofStatus.REJECTED,
+          comment: 'Заказ отменён (возврат)',
+        },
       });
 
       // 5. Обнуляем оплату/долг (деньги возвращены, отменённый заказ не должен
@@ -1059,7 +1087,8 @@ export class OrdersService {
           if (li?.orderItemId) {
             returnedByItem.set(
               li.orderItemId,
-              (returnedByItem.get(li.orderItemId) ?? 0) + Number(li.quantity || 0),
+              (returnedByItem.get(li.orderItemId) ?? 0) +
+                Number(li.quantity || 0),
             );
           }
         }
@@ -1095,7 +1124,11 @@ export class OrdersService {
 
         // Товар — возвращаем на склад (приход RETURN с аудитом до/после),
         // но не больше фактически списанного по этому заказу
-        if (oi.itemType === ItemType.PRODUCT && oi.productId && order.branchId) {
+        if (
+          oi.itemType === ItemType.PRODUCT &&
+          oi.productId &&
+          order.branchId
+        ) {
           const decRemaining = Math.max(0, decremented.get(oi.productId) ?? 0);
           const restock = Number(Math.min(qty, decRemaining).toFixed(3));
           if (restock <= 0) continue;
@@ -1105,15 +1138,25 @@ export class OrdersService {
           );
           const cur = await tx.stock.findUnique({
             where: {
-              productId_branchId: { productId: oi.productId, branchId: order.branchId },
+              productId_branchId: {
+                productId: oi.productId,
+                branchId: order.branchId,
+              },
             },
           });
           const before = cur ? Number(cur.quantity) : 0;
           await tx.stock.upsert({
             where: {
-              productId_branchId: { productId: oi.productId, branchId: order.branchId },
+              productId_branchId: {
+                productId: oi.productId,
+                branchId: order.branchId,
+              },
             },
-            create: { productId: oi.productId, branchId: order.branchId, quantity: restock },
+            create: {
+              productId: oi.productId,
+              branchId: order.branchId,
+              quantity: restock,
+            },
             update: { quantity: { increment: restock } },
           });
           await tx.stockMovement.create({
@@ -1180,7 +1223,10 @@ export class OrdersService {
       // Долговая часть возврата уменьшает маркер «в долг» (строка Z-отчёта),
       // чтобы возврат долговой продажи не оставлял завышенный долг в отчётах.
       const debtPart = Number(
-        Math.min(amount - moneyBack, Math.max(0, netBy(PaymentMethod.DEBT))).toFixed(2),
+        Math.min(
+          amount - moneyBack,
+          Math.max(0, netBy(PaymentMethod.DEBT)),
+        ).toFixed(2),
       );
       if (debtPart > 0) {
         await tx.payment.create({
@@ -1216,10 +1262,16 @@ export class OrdersService {
       // «валовым», а возвращённое копится в returnedTotal/returnedCost
       // (контр-выручка). Оплата уменьшается на реально возвращённые деньги.
       // Долг = итог − возвраты − оплата (не меньше нуля) — корректно и для «в долг».
-      const newReturnedTotal = Number((Number(order.returnedTotal) + amount).toFixed(2));
-      const newReturnedCost = Number((Number(order.returnedCost) + returnedCost).toFixed(2));
+      const newReturnedTotal = Number(
+        (Number(order.returnedTotal) + amount).toFixed(2),
+      );
+      const newReturnedCost = Number(
+        (Number(order.returnedCost) + returnedCost).toFixed(2),
+      );
       // Оплата уменьшается на все реально возвращённые деньги (наличные + безнал).
-      const newPaid = Number(Math.max(0, Number(order.paid) - moneyBack).toFixed(2));
+      const newPaid = Number(
+        Math.max(0, Number(order.paid) - moneyBack).toFixed(2),
+      );
       await tx.order.update({
         where: { id: orderId },
         data: {
@@ -1227,7 +1279,10 @@ export class OrdersService {
           returnedCost: newReturnedCost,
           paid: newPaid,
           balanceDue: Number(
-            Math.max(0, Number(order.total) - newReturnedTotal - newPaid).toFixed(2),
+            Math.max(
+              0,
+              Number(order.total) - newReturnedTotal - newPaid,
+            ).toFixed(2),
           ),
         },
       });
@@ -1310,7 +1365,9 @@ export class OrdersService {
     reason?: string,
     companyId?: string,
   ) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
     if (!order) throw new NotFoundException('Заказ не найден');
     if (companyId && order.companyId !== companyId) {
       throw new NotFoundException('Заказ не найден');
@@ -1473,7 +1530,9 @@ export class OrdersService {
     },
     companyId: string,
   ) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
     if (!order || order.companyId !== companyId) {
       throw new NotFoundException('Заказ не найден');
     }
@@ -1700,10 +1759,13 @@ export class OrdersService {
       const nameById = new Map(users.map((u) => [u.id, u.fullName]));
       order.statusHistory = hist.map((h: any) => ({
         ...h,
-        userName: h.userId ? nameById.get(h.userId) ?? '—' : 'система',
+        userName: h.userId ? (nameById.get(h.userId) ?? '—') : 'система',
       }));
     } else {
-      order.statusHistory = hist.map((h: any) => ({ ...h, userName: 'система' }));
+      order.statusHistory = hist.map((h: any) => ({
+        ...h,
+        userName: 'система',
+      }));
     }
     return order;
   }
@@ -1735,8 +1797,14 @@ export class OrdersService {
   }
 
   // Установить/изменить срок погашения долга по заказу
-  async setDebtDue(orderId: string, dueDate: string | null, companyId?: string) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+  async setDebtDue(
+    orderId: string,
+    dueDate: string | null,
+    companyId?: string,
+  ) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
     if (!order) throw new NotFoundException('Заказ не найден');
     if (companyId && order.companyId !== companyId) {
       throw new NotFoundException('Заказ не найден');
@@ -1770,7 +1838,11 @@ export class OrdersService {
         items: {
           include: {
             service: {
-              include: { materials: { include: { product: { include: { unit: true } } } } },
+              include: {
+                materials: {
+                  include: { product: { include: { unit: true } } },
+                },
+              },
             },
             product: { include: { unit: true } },
           },
