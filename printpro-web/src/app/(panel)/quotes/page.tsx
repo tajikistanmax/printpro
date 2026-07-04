@@ -75,11 +75,26 @@ function QuotesInner() {
   function updateLine(i: number, patch: Partial<Line>) {
     setLines((l) => l.map((ln, idx) => (idx === i ? { ...ln, ...patch } : ln)));
   }
+  // Серверный расчёт цены услуги (тираж/база/размер/опции); поле редактируемо.
+  async function repriceService(i: number, refId: string, quantity: number) {
+    if (!refId || !(Number(quantity) > 0)) return;
+    try {
+      const r = await api.post('/pricing/preview', {
+        serviceId: refId,
+        quantity: Number(quantity),
+      });
+      if (r && !r.manual) updateLine(i, { unitPrice: Number(r.unitPrice) });
+    } catch {
+      /* расчёт недоступен — оставляем цену из справочника */
+    }
+  }
+
   function pickRef(i: number, refId: string) {
     const line = lines[i];
     if (line.itemType === 'SERVICE') {
       const s = services.find((x) => x.id === refId);
       updateLine(i, { refId, description: s?.name ?? '', unitPrice: Number(s?.basePrice ?? 0) });
+      repriceService(i, refId, line.quantity);
     } else {
       const p = products.find((x) => x.id === refId);
       updateLine(i, { refId, description: p?.name ?? '', unitPrice: Number(p?.salePrice ?? 0) });
@@ -221,6 +236,10 @@ function QuotesInner() {
                     min={1}
                     step="1"
                     onChange={(e) => updateLine(i, { quantity: Number(e.target.value) })}
+                    onBlur={() => {
+                      if (l.itemType === 'SERVICE' && l.refId)
+                        repriceService(i, l.refId, l.quantity);
+                    }}
                     className="w-16"
                   />
                   <Input
