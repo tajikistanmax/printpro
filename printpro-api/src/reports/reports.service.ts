@@ -30,10 +30,11 @@ export class ReportsService {
       _count: true,
     });
 
-    // Оплаты за период по способам
+    // Оплаты за период по способам (возвраты — отрицательные Payment,
+    // поэтому суммы уже нетто; мягко удалённые исключаем)
     const payments = await this.prisma.payment.groupBy({
       by: ['method'],
-      where: { companyId, createdAt: range },
+      where: { companyId, createdAt: range, deletedAt: null },
       _sum: { amount: true },
     });
     const byMethod: Record<string, number> = {
@@ -89,6 +90,7 @@ export class ReportsService {
         companyId,
         createdAt: { gte: from, lte: to },
         method: { not: PaymentMethod.DEBT },
+        deletedAt: null,
       },
       select: { amount: true, createdAt: true },
     });
@@ -113,7 +115,14 @@ export class ReportsService {
   async salesByItem(companyId: string, from?: string, to?: string) {
     const range = this.range(from, to);
     const items = await this.prisma.orderItem.findMany({
-      where: { order: { companyId, createdAt: range } },
+      where: {
+        order: {
+          companyId,
+          createdAt: range,
+          status: { not: 'CANCELLED' },
+          deletedAt: null,
+        },
+      },
       select: {
         itemType: true,
         quantity: true,
@@ -158,6 +167,7 @@ export class ReportsService {
         companyId,
         createdAt: range,
         status: { not: 'CANCELLED' },
+        deletedAt: null,
       },
       select: {
         id: true,
@@ -347,7 +357,13 @@ export class ReportsService {
     // Заказы, созданные сотрудником (в периоде)
     const orders = await this.prisma.order.groupBy({
       by: ['createdById'],
-      where: { companyId, createdAt: range, createdById: { not: null } },
+      where: {
+        companyId,
+        createdAt: range,
+        createdById: { not: null },
+        status: { not: 'CANCELLED' },
+        deletedAt: null,
+      },
       _count: true,
       _sum: { total: true },
     });

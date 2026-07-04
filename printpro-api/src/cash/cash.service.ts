@@ -72,14 +72,19 @@ export class CashService {
     const report = await this.report(shiftId);
     const expected = report.summary.expectedCash;
 
-    await this.prisma.cashShift.update({
-      where: { id: shiftId },
+    // Атомарно: закрываем только ещё открытую смену — параллельный повторный
+    // клик получит count=0 и не перезапишет closingBalance задним числом.
+    const closed = await this.prisma.cashShift.updateMany({
+      where: { id: shiftId, closedAt: null },
       data: {
         closedAt: new Date(),
         closingBalance:
           dto.countedBalance !== undefined ? dto.countedBalance : expected,
       },
     });
+    if (closed.count === 0) {
+      throw new BadRequestException('Смена уже закрыта');
+    }
     return this.report(shiftId);
   }
 
