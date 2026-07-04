@@ -319,23 +319,38 @@ export class PurchasingService {
       }
       const branchId = receipt.branchId;
 
-      // 1. Возвращаем остатки (не уходим в минус: если товар уже израсходован —
-      //    отменить приёмку нельзя, сначала нужно разобраться с расходом).
+      // Идемпотентный захват документа: soft-delete первым шагом. Второй
+      // параллельный вызов получит count=0 (двойное сторно исключено).
+      const claim = await tx.stockReceipt.updateMany({
+        where: { id, companyId, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+      if (claim.count === 0) {
+        throw new NotFoundException('Приёмка не найдена или уже отменена');
+      }
+
+      // 1. Возвращаем остатки атомарно (guard quantity>=qty вместо чтения+записи —
+      //    иначе параллельная продажа была бы потеряна). Если товар уже
+      //    израсходован — отмена невозможна (транзакция откатится, включая захват).
       for (const it of receipt.items) {
-        const stock = await tx.stock.findUnique({
-          where: { productId_branchId: { productId: it.productId, branchId } },
+        const dec = await tx.stock.updateMany({
+          where: {
+            productId: it.productId,
+            branchId,
+            quantity: { gte: Number(it.quantity) },
+          },
+          data: { quantity: { decrement: Number(it.quantity) } },
         });
-        const before = stock ? Number(stock.quantity) : 0;
-        if (before < Number(it.quantity)) {
+        if (dec.count === 0) {
           throw new BadRequestException(
             'Нельзя отменить приёмку: товар уже частично израсходован (остаток меньше принятого количества)',
           );
         }
-        const after = Number((before - Number(it.quantity)).toFixed(3));
-        await tx.stock.update({
+        const cur = await tx.stock.findUnique({
           where: { productId_branchId: { productId: it.productId, branchId } },
-          data: { quantity: after },
         });
+        const after = cur ? Number(cur.quantity) : 0;
+        const before = Number((after + Number(it.quantity)).toFixed(3));
         await tx.stockMovement.create({
           data: {
             companyId,
@@ -349,6 +364,38 @@ export class PurchasingService {
             userId: userId ?? null,
           },
         });
+
+        // Откат цен товара: восстанавливаем из последней ОСТАВШЕЙСЯ (не удалённой)
+        // приёмки этого товара. Если других приёмок нет — цену не трогаем, чтобы
+        // ошибочная цена не «прилипала» после сторно.
+        const prevItems = await tx.stockReceiptItem.findMany({
+          where: {
+            productId: it.productId,
+            receiptId: { not: receipt.id },
+            receipt: { companyId, deletedAt: null },
+          },
+          select: {
+            cost: true,
+            salePrice: true,
+            receipt: { select: { date: true } },
+          },
+        });
+        if (prevItems.length) {
+          const latest = prevItems.reduce((a, b) =>
+            new Date(b.receipt.date) > new Date(a.receipt.date) ? b : a,
+          );
+          const priceData: { purchasePrice?: number; salePrice?: number } = {};
+          if (latest.cost != null && Number(latest.cost) > 0)
+            priceData.purchasePrice = Number(latest.cost);
+          if (latest.salePrice != null && Number(latest.salePrice) > 0)
+            priceData.salePrice = Number(latest.salePrice);
+          if (Object.keys(priceData).length) {
+            await tx.product.update({
+              where: { id: it.productId },
+              data: priceData,
+            });
+          }
+        }
       }
 
       // 2. Снимаем остаток долга по этой приёмке с поставщика
@@ -378,11 +425,7 @@ export class PurchasingService {
         });
       }
 
-      // 4. Мягкое удаление документа приёмки
-      await tx.stockReceipt.update({
-        where: { id },
-        data: { deletedAt: new Date() },
-      });
+      // Документ уже помечен удалённым при захвате (см. выше).
       return { ok: true };
     });
   }

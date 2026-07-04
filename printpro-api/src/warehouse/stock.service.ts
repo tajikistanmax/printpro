@@ -390,21 +390,28 @@ export class StockService {
       if (!w.branchId) {
         throw new BadRequestException('У списания не указан склад — отмена невозможна');
       }
-      const branchId = w.branchId;
-      const stock = await tx.stock.findUnique({
-        where: { productId_branchId: { productId: w.productId, branchId } },
+      // Идемпотентный захват: soft-delete первым шагом. Второй параллельный вызов
+      // получит count=0 и не восстановит остаток повторно (двойное сторно).
+      const claim = await tx.writeOff.updateMany({
+        where: { id, companyId, deletedAt: null },
+        data: { deletedAt: new Date() },
       });
-      const before = stock ? Number(stock.quantity) : 0;
-      const after = Number((before + Number(w.quantity)).toFixed(3));
+      if (claim.count === 0) {
+        throw new NotFoundException('Списание не найдено или уже отменено');
+      }
+      const branchId = w.branchId;
+      // Атомарный возврат количества (increment вместо абсолютной записи — иначе
+      // параллельная продажа между чтением и записью была бы потеряна).
       await tx.stock.upsert({
         where: { productId_branchId: { productId: w.productId, branchId } },
-        create: {
-          productId: w.productId,
-          branchId,
-          quantity: Number(w.quantity),
-        },
-        update: { quantity: after },
+        create: { productId: w.productId, branchId, quantity: Number(w.quantity) },
+        update: { quantity: { increment: Number(w.quantity) } },
       });
+      const cur = await tx.stock.findUnique({
+        where: { productId_branchId: { productId: w.productId, branchId } },
+      });
+      const after = cur ? Number(cur.quantity) : Number(w.quantity);
+      const before = Number((after - Number(w.quantity)).toFixed(3));
       await tx.stockMovement.create({
         data: {
           companyId,
@@ -417,10 +424,6 @@ export class StockService {
           reason: 'Отмена списания',
           userId: userId ?? null,
         },
-      });
-      await tx.writeOff.update({
-        where: { id },
-        data: { deletedAt: new Date() },
       });
       return { ok: true };
     });
