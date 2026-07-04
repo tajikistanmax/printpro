@@ -53,7 +53,13 @@ export class OrdersService {
   ) {}
 
   // ---------- Создание заказа ----------
-  async create(dto: CreateOrderDto) {
+  // opts.applyClientDiscount — применить персональную скидку клиента (%) к итогу.
+  // Включается только для печатных заказов из контроллера: POS (quickSale)
+  // применяет скидку сам после создания, повтор заказа копирует старые цены.
+  async create(
+    dto: CreateOrderDto,
+    opts: { applyClientDiscount?: boolean } = {},
+  ) {
     // 1. Клиент: по id или по телефону (найдём/создадим)
     let clientId = dto.clientId;
     if (!clientId && dto.clientPhone) {
@@ -111,9 +117,22 @@ export class OrdersService {
         lineCost: Number((it.quantity * unitCost).toFixed(2)),
       };
     });
-    const total = Number(
+    let total = Number(
       items.reduce((sum, it) => sum + it.lineTotal, 0).toFixed(2),
     );
+
+    // Персональная скидка клиента (%) — как на кассе (К5), автоматически.
+    if (opts.applyClientDiscount && clientId && total > 0) {
+      const client = await this.prisma.client.findUnique({
+        where: { id: clientId },
+        select: { discount: true },
+      });
+      const pct = Number(client?.discount ?? 0);
+      if (pct > 0) {
+        const disc = Number(((total * pct) / 100).toFixed(2));
+        total = Math.max(0, Number((total - disc).toFixed(2)));
+      }
+    }
 
     // 3. Всё в одной транзакции (либо всё, либо ничего)
     return this.prisma.$transaction(async (tx) => {

@@ -6,8 +6,10 @@ import {
   Post,
   Query,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { PublicRateLimitGuard } from '../auth/rate-limit.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IsArray, IsOptional, IsString } from 'class-validator';
 import { OrderStatus, OrderType, PaymentStatus } from '@prisma/client';
@@ -32,7 +34,9 @@ class PublicOrderDto {
 }
 
 // Публичные маршруты для сайта клиентов — БЕЗ входа.
+// Rate-limit по IP: телефоны/UUID не переберёшь на скорости (С16).
 @Controller('public')
+@UseGuards(PublicRateLimitGuard)
 export class PublicController {
   constructor(
     private readonly prisma: PrismaService,
@@ -177,7 +181,8 @@ export class PublicController {
       paymentStatus: order.paymentStatus,
       total: Number(order.total),
       paid: Number(order.paid),
-      balanceDue: Number(order.balanceDue),
+      // balanceDue намеренно не отдаём: чек по QR может открыть кто угодно,
+      // долг клиента — не публичная информация (аудит 06, P1-9)
       items: order.items.map((it) => ({
         name:
           it.description || it.service?.name || it.product?.name || 'Позиция',

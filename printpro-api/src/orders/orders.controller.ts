@@ -47,7 +47,12 @@ export class OrdersController {
   @Post()
   @RequirePermissions('orders.manage')
   create(@Body() dto: CreateOrderDto, @CurrentUser() user: JwtUser) {
-    return this.orders.create({ ...dto, companyId: user.companyId });
+    // Персональная скидка клиента применяется к печатным заказам здесь;
+    // POS (quickSale) считает её сам вместе с промокодом/бонусами.
+    return this.orders.create(
+      { ...dto, companyId: user.companyId },
+      { applyClientDiscount: true },
+    );
   }
 
   // Быстрая продажа (POS): создать + оплатить + выдать
