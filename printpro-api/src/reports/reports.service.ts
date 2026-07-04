@@ -26,7 +26,13 @@ export class ReportsService {
         status: { not: 'CANCELLED' },
         deletedAt: null,
       },
-      _sum: { total: true, paid: true, balanceDue: true, returnedTotal: true },
+      _sum: {
+        total: true,
+        paid: true,
+        balanceDue: true,
+        returnedTotal: true,
+        taxAmount: true,
+      },
       _count: true,
     });
 
@@ -65,6 +71,7 @@ export class ReportsService {
       returns, // возвраты за период
       net, // чистая выручка = выставлено − возвраты
       collected, // получено деньгами
+      tax: Number(orders._sum.taxAmount ?? 0), // налог (НДС) в заказах периода
       debt: Number(orders._sum.balanceDue ?? 0), // остаток долга по заказам периода
       // Средний чек — по чистой выручке (после возвратов), а не по валовой.
       avgCheck: ordersCount ? Number((net / ordersCount).toFixed(2)) : 0,

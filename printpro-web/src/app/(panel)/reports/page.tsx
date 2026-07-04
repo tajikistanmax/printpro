@@ -126,6 +126,7 @@ export default function ReportsPage() {
           ['Выставлено по заказам', summary.billed],
           ['Возвраты', summary.returns],
           ['Чистая выручка', summary.net],
+          ['Налог (НДС)', summary.tax ?? 0],
           ['Заказов', summary.ordersCount],
           ['Средний чек', summary.avgCheck],
           ['Долг клиентов', summary.debt],
@@ -278,6 +279,9 @@ export default function ReportsPage() {
           )}
           <StatCard icon="orders" tone="indigo" label="Заказов" value={summary.ordersCount} />
           <StatCard icon="reports" tone="violet" label="Средний чек" value={money(summary.avgCheck)} />
+          {summary.tax > 0 && (
+            <StatCard icon="reports" tone="amber" label="Налог (НДС)" value={money(summary.tax)} sub="в заказах периода" />
+          )}
         </StatGrid>
       )}
 
