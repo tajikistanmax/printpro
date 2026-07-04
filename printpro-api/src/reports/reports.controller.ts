@@ -67,11 +67,15 @@ export class ReportsController {
     return this.reports.expenses(user.companyId, from, to);
   }
 
-  // Загрузка оборудования
+  // Загрузка оборудования (очередь — снимок, «выполнено» — за период, если задан)
   @Get('equipment-load')
   @RequirePermissions('reports.view')
-  equipmentLoad(@CurrentUser() user: JwtUser) {
-    return this.reports.equipmentLoad(user.companyId);
+  equipmentLoad(
+    @CurrentUser() user: JwtUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reports.equipmentLoad(user.companyId, from, to);
   }
 
   // Долги клиентов

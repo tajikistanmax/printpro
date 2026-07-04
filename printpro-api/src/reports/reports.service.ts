@@ -111,7 +111,8 @@ export class ReportsService {
     return Array.from(map.entries()).map(([date, amount]) => ({ date, amount }));
   }
 
-  // Продажи по услугам/товарам за период (топ)
+  // Продажи по услугам/товарам за период (топ). Нетто — за вычетом частичных
+  // возвратов по этим заказам, иначе «топ» завышен и не сходится с summary.net.
   async salesByItem(companyId: string, from?: string, to?: string) {
     const range = this.range(from, to);
     const items = await this.prisma.orderItem.findMany({
@@ -124,6 +125,8 @@ export class ReportsService {
         },
       },
       select: {
+        id: true,
+        orderId: true,
         itemType: true,
         quantity: true,
         lineTotal: true,
@@ -132,6 +135,25 @@ export class ReportsService {
         product: { select: { name: true } },
       },
     });
+
+    // Частичные возвраты по этим заказам (Return.items: [{orderItemId,quantity,lineAmount}])
+    const orderIds = [...new Set(items.map((i) => i.orderId))];
+    const retByItem = new Map<string, { qty: number; amount: number }>();
+    if (orderIds.length) {
+      const returns = await this.prisma.return.findMany({
+        where: { companyId, orderId: { in: orderIds }, deletedAt: null },
+        select: { items: true },
+      });
+      for (const r of returns) {
+        for (const li of (r.items as any[]) ?? []) {
+          if (!li?.orderItemId) continue;
+          const cur = retByItem.get(li.orderItemId) ?? { qty: 0, amount: 0 };
+          cur.qty += Number(li.quantity || 0);
+          cur.amount += Number(li.lineAmount || 0);
+          retByItem.set(li.orderItemId, cur);
+        }
+      }
+    }
 
     const agg = new Map<
       string,
@@ -150,11 +172,16 @@ export class ReportsService {
         qty: 0,
         revenue: 0,
       };
-      cur.qty = Number((cur.qty + Number(it.quantity)).toFixed(3));
-      cur.revenue = Number((cur.revenue + Number(it.lineTotal)).toFixed(2));
+      const ret = retByItem.get(it.id) ?? { qty: 0, amount: 0 };
+      const netQty = Math.max(0, Number(it.quantity) - ret.qty);
+      const netRevenue = Math.max(0, Number(it.lineTotal) - ret.amount);
+      cur.qty = Number((cur.qty + netQty).toFixed(3));
+      cur.revenue = Number((cur.revenue + netRevenue).toFixed(2));
       agg.set(key, cur);
     }
-    return Array.from(agg.values()).sort((a, b) => b.revenue - a.revenue);
+    return Array.from(agg.values())
+      .filter((x) => x.qty > 0 || x.revenue > 0)
+      .sort((a, b) => b.revenue - a.revenue);
   }
 
   // Прибыль по заказам за период: выручка − себестоимость (п. 2.10 ТЗ)
@@ -267,26 +294,55 @@ export class ReportsService {
   }
 
   // Загрузка оборудования: задания по станкам и статусам (п. 2.2/2.10)
-  async equipmentLoad(companyId: string) {
+  // Загрузка оборудования. Очередь/в работе — снимок «сейчас» (текущие задания),
+  // а «выполнено» — за период (если задан), иначе за всё время. Раньше completed
+  // копился за всю историю рядом со снимком очереди и был непригоден для оценки.
+  async equipmentLoad(companyId: string, from?: string, to?: string) {
+    const hasPeriod = !!(from || to);
+    const range = hasPeriod ? this.range(from, to) : null;
+
     const equipment = await this.prisma.equipment.findMany({
       where: { companyId, deletedAt: null },
       select: { id: true, name: true, type: true, status: true },
       orderBy: { name: 'asc' },
     });
 
-    const jobs = await this.prisma.productionJob.groupBy({
+    // Текущая нагрузка: незавершённые задания (снимок, без даты)
+    const activeJobs = await this.prisma.productionJob.groupBy({
       by: ['equipmentId', 'status'],
-      where: { companyId, deletedAt: null, equipmentId: { not: null } },
+      where: {
+        companyId,
+        deletedAt: null,
+        equipmentId: { not: null },
+        status: {
+          notIn: [ProductionStatus.COMPLETED, ProductionStatus.CANCELLED],
+        },
+      },
+      _count: true,
+    });
+    // Выполнено — с фильтром периода по completedAt (если период задан)
+    const doneJobs = await this.prisma.productionJob.groupBy({
+      by: ['equipmentId'],
+      where: {
+        companyId,
+        deletedAt: null,
+        equipmentId: { not: null },
+        status: ProductionStatus.COMPLETED,
+        ...(range ? { completedAt: range } : {}),
+      },
       _count: true,
     });
 
     const byEq = new Map<string, Record<string, number>>();
-    for (const j of jobs) {
+    for (const j of activeJobs) {
       const key = j.equipmentId as string;
       const row = byEq.get(key) ?? {};
       row[j.status] = j._count;
       byEq.set(key, row);
     }
+    const completedBy = new Map(
+      doneJobs.map((j) => [j.equipmentId as string, j._count]),
+    );
 
     const active = (r: Record<string, number>) =>
       (r.PENDING ?? 0) +
@@ -294,10 +350,12 @@ export class ReportsService {
       (r.CUTTING ?? 0) +
       (r.BINDING ?? 0) +
       (r.PACKAGING ?? 0) +
+      (r.PAUSED ?? 0) +
       (r.REWORK ?? 0);
 
     return equipment.map((e) => {
       const r = byEq.get(e.id) ?? {};
+      const completed = completedBy.get(e.id) ?? 0;
       return {
         id: e.id,
         name: e.name,
@@ -306,9 +364,9 @@ export class ReportsService {
         inQueue: r.PENDING ?? 0,
         inWork: active(r) - (r.PENDING ?? 0),
         active: active(r),
-        completed: r.COMPLETED ?? 0,
+        completed,
         rework: r.REWORK ?? 0,
-        total: Object.values(r).reduce((s, n) => s + n, 0),
+        total: active(r) + completed,
       };
     });
   }
@@ -378,13 +436,16 @@ export class ReportsService {
       },
       _count: true,
     });
-    // Выполненные задачи
+    // Выполненные задачи (в периоде — по времени последнего изменения; у Task нет
+    // отдельного completedAt, updatedAt ≈ момент перевода в DONE). Без фильтра
+    // отчёт «за период» смешивал бы задачи за всю историю с заказами периода.
     const tasks = await this.prisma.task.groupBy({
       by: ['assignedUserId'],
       where: {
         companyId,
         status: TaskStatus.DONE,
         assignedUserId: { not: null },
+        updatedAt: range,
       },
       _count: true,
     });
