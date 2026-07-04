@@ -206,6 +206,38 @@ export default function ReportsPage() {
           ...staff.map((u: any) => [u.name, u.role, u.ordersCreated, u.salesSum, u.productionDone, u.tasksDone]),
         ],
       });
+    if (cashFlow)
+      sheets.push({
+        name: 'ДДС',
+        rows: [
+          ['Тип', 'Категория', 'Сумма'],
+          ...(cashFlow.incomeByCategory ?? []).map((c: any) => ['Приход', c.category, c.amount]),
+          ...(cashFlow.expenseByCategory ?? []).map((c: any) => ['Расход', c.category, c.amount]),
+          ['', 'Итого нетто', cashFlow.net],
+        ],
+      });
+    if (returns && returns.items.length)
+      sheets.push({
+        name: 'Возвраты',
+        rows: [
+          ['№', 'Дата', 'Способ', 'Причина', 'Сумма'],
+          ...returns.items.map((r: any) => [
+            r.number ?? '',
+            new Date(r.date).toLocaleDateString('ru-RU'),
+            r.method ?? '',
+            r.reason ?? '',
+            r.amount,
+          ]),
+        ],
+      });
+    if (supDebts && supDebts.items.length)
+      sheets.push({
+        name: 'Долг поставщикам',
+        rows: [
+          ['Поставщик', 'Телефон', 'Долг'],
+          ...supDebts.items.map((s: any) => [s.name, s.phone ?? '', s.debt]),
+        ],
+      });
     if (sheets.length === 0) sheets.push({ name: 'Отчёт', rows: [['Нет данных за период']] });
     downloadXlsx(`Отчёт-${period}`, sheets);
   }
