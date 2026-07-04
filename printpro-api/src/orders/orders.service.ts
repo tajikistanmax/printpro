@@ -930,10 +930,11 @@ export class OrdersService {
       });
 
       // 5. Обнуляем оплату/долг (деньги возвращены, отменённый заказ не должен
-      //    висеть в долгах клиента) и пишем историю статуса.
+      //    висеть в долгах клиента) и пишем историю статуса. paymentStatus
+      //    сбрасываем в UNPAID, иначе заказ остался бы помечен «оплачен».
       await tx.order.update({
         where: { id: orderId },
-        data: { paid: 0, balanceDue: 0 },
+        data: { paid: 0, balanceDue: 0, paymentStatus: PaymentStatus.UNPAID },
       });
       await tx.orderStatusHistory.create({
         data: {

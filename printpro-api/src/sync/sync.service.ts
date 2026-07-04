@@ -141,13 +141,13 @@ export class SyncService {
     const hb = await this.prisma.syncCursor.findUnique({
       where: { peer: 'heartbeat' },
     });
+    // Открытый эндпоинт — отдаём только неконфиденциальное. Полный URL облака и
+    // факт наличия секрета не раскрываем (разведка инфраструктуры).
     return {
       now: new Date().toISOString(),
       lastSyncAt: hb ? hb.lastPullAt.toISOString() : null,
       node: (process.env.NODE_ID ?? 'C').toUpperCase(),
       cloudConfigured: !!process.env.CLOUD_API,
-      secretConfigured: !!process.env.SYNC_SECRET,
-      cloudApi: process.env.CLOUD_API ?? null,
     };
   }
 

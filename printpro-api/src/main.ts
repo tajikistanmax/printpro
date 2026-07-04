@@ -69,15 +69,18 @@ async function bootstrap() {
   // Общий префикс для API: /api/...
   app.setGlobalPrefix('api');
 
-  // OpenAPI/Swagger — документация и песочница API: /api/docs
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('PrintPro API')
-    .setDescription('REST API платформы PrintPro')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  // OpenAPI/Swagger — документация и песочница API: /api/docs.
+  // В проде НЕ поднимаем: публичная карта API/DTO упрощает атаку.
+  if (process.env.NODE_ENV !== 'production') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('PrintPro API')
+      .setDescription('REST API платформы PrintPro')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
