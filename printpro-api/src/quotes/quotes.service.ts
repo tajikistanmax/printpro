@@ -116,38 +116,49 @@ export class QuotesService {
       throw new BadRequestException('Отклонённое КП нельзя превратить в заказ');
     }
 
-    // Атомарно «захватываем» КП до создания заказа: помечаем ACCEPTED только
-    // если оно ещё не сконвертировано и в допустимом статусе. Если гонка/
-    // повторный вызов — count === 0, и мы прекращаем работу до создания заказа.
+    // Атомарно «захватываем» КП до создания заказа. Раньше claim просто ставил
+    // ACCEPTED (который сам входил в разрешённый набор), поэтому два параллельных
+    // вызова оба проходили и создавали ДВА заказа. Теперь захват атомарно
+    // проставляет convertedOrderId сентинелом (был null) — второй вызов увидит
+    // не-null и получит count=0.
+    const sentinel = `converting:${id}`;
     const claimed = await this.prisma.quote.updateMany({
       where: {
         id,
         companyId,
         convertedOrderId: null,
-        status: {
-          in: [QuoteStatus.DRAFT, QuoteStatus.SENT, QuoteStatus.ACCEPTED],
-        },
+        status: { not: QuoteStatus.REJECTED },
       },
-      data: { status: QuoteStatus.ACCEPTED },
+      data: { convertedOrderId: sentinel, status: QuoteStatus.ACCEPTED },
     });
     if (claimed.count === 0) {
       throw new BadRequestException('КП уже превращено в заказ');
     }
 
-    const order = await this.orders.create({
-      companyId: q.companyId,
-      clientId: q.clientId ?? undefined,
-      orderType: OrderType.PRINT,
-      note: q.title ?? q.note ?? undefined,
-      items: q.items.map((it) => ({
-        itemType: it.itemType,
-        serviceId: it.serviceId ?? undefined,
-        productId: it.productId ?? undefined,
-        description: it.description ?? undefined,
-        quantity: Number(it.quantity),
-        unitPrice: Number(it.unitPrice),
-      })),
-    });
+    let order;
+    try {
+      order = await this.orders.create({
+        companyId: q.companyId,
+        clientId: q.clientId ?? undefined,
+        orderType: OrderType.PRINT,
+        note: q.title ?? q.note ?? undefined,
+        items: q.items.map((it) => ({
+          itemType: it.itemType,
+          serviceId: it.serviceId ?? undefined,
+          productId: it.productId ?? undefined,
+          description: it.description ?? undefined,
+          quantity: Number(it.quantity),
+          unitPrice: Number(it.unitPrice),
+        })),
+      });
+    } catch (e) {
+      // Откат захвата, чтобы после устранения ошибки КП можно было конвертировать.
+      await this.prisma.quote.updateMany({
+        where: { id, convertedOrderId: sentinel },
+        data: { convertedOrderId: null },
+      });
+      throw e;
+    }
 
     await this.prisma.quote.update({
       where: { id },

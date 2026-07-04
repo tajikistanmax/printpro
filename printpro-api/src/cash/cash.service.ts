@@ -91,7 +91,17 @@ export class CashService {
   // ---------- Внести / изъять деньги ----------
   async addMovement(companyId: string, userId: string, dto: CashMovementDto) {
     let shiftId = dto.shiftId;
-    if (!shiftId) {
+    if (shiftId) {
+      // Переданную смену проверяем: своя компания и ещё открыта (иначе движение
+      // ушло бы в закрытый Z-отчёт или в смену другой компании).
+      const sh = await this.prisma.cashShift.findFirst({
+        where: { id: shiftId, companyId, closedAt: null },
+        select: { id: true },
+      });
+      if (!sh) {
+        throw new BadRequestException('Смена не найдена или уже закрыта');
+      }
+    } else {
       const open = await this.prisma.cashShift.findFirst({
         where: { companyId, userId, closedAt: null },
       });

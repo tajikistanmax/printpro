@@ -140,6 +140,10 @@ export class OrdersService {
       // превышают лимит — блок. Проверяем ВНУТРИ транзакции (не до неё), чтобы
       // два параллельных заказа не проскочили лимит по отдельности.
       if (clientId) {
+        // Advisory-lock по клиенту на время транзакции: сериализует ТОЛЬКО
+        // одновременные заказы одного клиента, поэтому aggregate долга ниже
+        // читается корректно (под READ COMMITTED сам по себе он не блокирует).
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${clientId}))`;
         const client = await tx.client.findUnique({
           where: { id: clientId },
           select: { creditLimit: true },
@@ -342,8 +346,23 @@ export class OrdersService {
 
       const cashierId = userId ?? dto.userId;
 
-      // Привязка к открытой смене: явный shiftId или текущая смена кассира
+      // Привязка к открытой смене: явный shiftId или текущая смена кассира.
+      // Переданный shiftId проверяем на принадлежность компании/кассиру и что
+      // смена открыта — иначе можно было бы дописать деньги в закрытый Z-отчёт
+      // или в смену другой компании/кассира. Невалидный — игнорируем.
       let shiftId = dto.shiftId;
+      if (shiftId) {
+        const sh = await tx.cashShift.findFirst({
+          where: {
+            id: shiftId,
+            companyId: order.companyId,
+            closedAt: null,
+            ...(cashierId ? { userId: cashierId } : {}),
+          },
+          select: { id: true },
+        });
+        if (!sh) shiftId = undefined;
+      }
       if (!shiftId && cashierId) {
         const openShift = await tx.cashShift.findFirst({
           where: { companyId: order.companyId, userId: cashierId, closedAt: null },
