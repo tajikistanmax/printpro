@@ -80,6 +80,9 @@ export default function ReportsPage() {
   const [matUsage, setMatUsage] = useState<any>(null);
   const [byStatus, setByStatus] = useState<any[]>([]);
   const [overdue, setOverdue] = useState<any[]>([]);
+  const [cashFlow, setCashFlow] = useState<any>(null);
+  const [returns, setReturns] = useState<any>(null);
+  const [supDebts, setSupDebts] = useState<any>(null);
 
   // Кол-во дней в графике зависит от периода (С6: было жёстко 14)
   const dailyDays = period === 'month' ? 30 : 7;
@@ -101,6 +104,12 @@ export default function ReportsPage() {
     api.get(`/reports/materials-usage?${q}`).then(setMatUsage).catch(() => {});
     api.get(`/reports/orders-by-status?${q}`).then(setByStatus).catch(() => {});
     api.get(`/reports/overdue?companyId=${cid}`).then(setOverdue).catch(() => {});
+    api.get(`/reports/cash-flow?${q}`).then(setCashFlow).catch(() => {});
+    api.get(`/reports/returns?${q}`).then(setReturns).catch(() => {});
+    api
+      .get(`/reports/supplier-debts?companyId=${cid}`)
+      .then(setSupDebts)
+      .catch(() => {});
   }, [cid, period, dailyDays]);
 
   const maxDaily = Math.max(1, ...daily.map((d) => d.amount));
@@ -711,6 +720,152 @@ export default function ReportsPage() {
                     <td className="text-right font-semibold text-slate-800 dark:text-slate-100">{money(u.salesSum)}</td>
                     <td className="text-right text-slate-500">{u.productionDone}</td>
                     <td className="text-right text-slate-500">{u.tasksDone}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Движение денег (ДДС): приход/расход по кассе */}
+      <Card className="mt-6">
+        <SectionTitle>Движение денег (ДДС)</SectionTitle>
+        {cashFlow ? (
+          <>
+            <div className="mb-4 grid gap-3 sm:grid-cols-3">
+              <MethodCard label="Приход" value={cashFlow.totalIn} />
+              <MethodCard label="Расход" value={cashFlow.totalOut} danger />
+              <MethodCard label="Итого (нетто)" value={cashFlow.net} />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <div className="mb-1 text-xs font-medium text-slate-500">Приход по категориям</div>
+                {(cashFlow.incomeByCategory ?? []).length === 0 ? (
+                  <div className="text-sm text-slate-400">—</div>
+                ) : (
+                  <div className="pp-table-scroll">
+                    <table className="pp-table">
+                      <tbody>
+                        {cashFlow.incomeByCategory.map((c: any) => (
+                          <tr key={'in-' + c.category}>
+                            <td className="text-slate-600 dark:text-slate-300">{c.category}</td>
+                            <td className="text-right font-semibold text-emerald-600">{money(c.amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="mb-1 text-xs font-medium text-slate-500">Расход по категориям</div>
+                {(cashFlow.expenseByCategory ?? []).length === 0 ? (
+                  <div className="text-sm text-slate-400">—</div>
+                ) : (
+                  <div className="pp-table-scroll">
+                    <table className="pp-table">
+                      <tbody>
+                        {cashFlow.expenseByCategory.map((c: any) => (
+                          <tr key={'out-' + c.category}>
+                            <td className="text-slate-600 dark:text-slate-300">{c.category}</td>
+                            <td className="text-right font-semibold text-rose-600">{money(c.amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <EmptyState icon="cash" title="Нет данных" />
+        )}
+      </Card>
+
+      {/* Возвраты за период */}
+      <Card className="mt-6">
+        <SectionTitle
+          right={
+            returns && returns.items.length > 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  downloadCSV(
+                    'returns.csv',
+                    ['№', 'Дата', 'Способ', 'Причина', 'Сумма'],
+                    returns.items.map((r: any) => [
+                      r.number ?? '',
+                      new Date(r.date).toLocaleDateString('ru-RU'),
+                      r.method ?? '',
+                      r.reason ?? '',
+                      r.amount,
+                    ]),
+                  )
+                }
+              >
+                <NavIcon name="download" className="h-4 w-4" />CSV
+              </Button>
+            ) : undefined
+          }
+        >
+          Возвраты {returns ? `(${money(returns.total)})` : ''}
+        </SectionTitle>
+        {!returns || returns.items.length === 0 ? (
+          <EmptyState icon="cash" title="Возвратов нет" />
+        ) : (
+          <div className="pp-table-scroll">
+            <table className="pp-table">
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th>Дата</th>
+                  <th>Способ</th>
+                  <th>Причина</th>
+                  <th className="text-right">Сумма</th>
+                </tr>
+              </thead>
+              <tbody>
+                {returns.items.map((r: any) => (
+                  <tr key={r.id}>
+                    <td className="font-medium text-slate-700 dark:text-slate-200">{r.number ?? '—'}</td>
+                    <td className="text-slate-500">{new Date(r.date).toLocaleDateString('ru-RU')}</td>
+                    <td className="text-slate-500">{r.method ?? '—'}</td>
+                    <td className="text-slate-500">{r.reason || '—'}</td>
+                    <td className="text-right font-semibold text-rose-600">{money(r.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Долг перед поставщиками */}
+      <Card className="mt-6">
+        <SectionTitle>
+          Долг поставщикам {supDebts ? `(${money(supDebts.total)})` : ''}
+        </SectionTitle>
+        {!supDebts || supDebts.items.length === 0 ? (
+          <EmptyState icon="cash" title="Долгов нет" />
+        ) : (
+          <div className="pp-table-scroll">
+            <table className="pp-table">
+              <thead>
+                <tr>
+                  <th>Поставщик</th>
+                  <th>Телефон</th>
+                  <th className="text-right">Долг</th>
+                </tr>
+              </thead>
+              <tbody>
+                {supDebts.items.map((s: any) => (
+                  <tr key={s.id}>
+                    <td className="font-medium text-slate-700 dark:text-slate-200">{s.name}</td>
+                    <td className="text-slate-500">{s.phone || '—'}</td>
+                    <td className="text-right font-semibold text-rose-600">{money(s.debt)}</td>
                   </tr>
                 ))}
               </tbody>
