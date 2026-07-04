@@ -57,6 +57,8 @@ export default function NewOrderPage() {
 
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  // Ставка налога (НДС) — для предпросмотра итога (бэкенд начисляет её при создании)
+  const [taxPct, setTaxPct] = useState(0);
 
   useEffect(() => {
     api.get(`/services?companyId=${cid}`).then(setServices).catch(() => {});
@@ -67,6 +69,13 @@ export default function NewOrderPage() {
       .then((b) => {
         setBranches(b);
         if (b[0]) setBranchId(b[0].id);
+      })
+      .catch(() => {});
+    api
+      .get(`/settings/ui?companyId=${cid}`)
+      .then((ui) => {
+        const tp = Number(ui?.taxPercent);
+        if (Number.isFinite(tp) && tp >= 0) setTaxPct(tp);
       })
       .catch(() => {});
   }, [cid]);
@@ -124,7 +133,9 @@ export default function NewOrderPage() {
     }
   }
 
-  const total = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
+  const subtotal = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
+  const taxAmount = taxPct > 0 ? Number(((subtotal * taxPct) / 100).toFixed(2)) : 0;
+  const total = Number((subtotal + taxAmount).toFixed(2));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -537,6 +548,12 @@ export default function NewOrderPage() {
         <div className="space-y-4">
           <div className="sticky top-8 rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
             <h2 className="mb-3 font-semibold text-slate-700 dark:text-slate-200">Итог</h2>
+            {taxAmount > 0 && (
+              <div className="mb-1 flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
+                <span>в т.ч. налог (НДС {taxPct}%)</span>
+                <span>{taxAmount.toFixed(2)} c.</span>
+              </div>
+            )}
             <div className="mb-4 text-3xl font-bold text-slate-800 dark:text-slate-100">
               {total.toFixed(2)} c.
             </div>
