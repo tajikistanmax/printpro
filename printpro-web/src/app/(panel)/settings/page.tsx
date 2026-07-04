@@ -376,6 +376,29 @@ export default function SettingsPage() {
                   Если у заказа есть макет, запуск производства блокируется, пока макет не утверждён (статус «Согласован»).
                 </p>
               </Card>
+
+              <Card className="mt-6">
+                <SectionTitle>Касса и налоги</SectionTitle>
+                <Toggle
+                  label="Требовать открытую смену для оплат"
+                  checked={s.requireOpenShift === '1'}
+                  onChange={(v) => set('requireOpenShift', v ? '1' : '0')}
+                />
+                <p className="mt-2 mb-4 text-xs text-slate-400 dark:text-slate-500">
+                  Без открытой смены приём/выдача наличных запрещены — иначе деньги не попадут в Z-отчёт.
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Макс. скидка на кассе, %">
+                    <Input type="number" min="0" max="100" step="1" value={s.posMaxDiscountPercent ?? ''} onChange={(e) => set('posMaxDiscountPercent', e.target.value)} placeholder="без лимита" />
+                  </Field>
+                  <Field label="Налог (НДС), %">
+                    <Input type="number" min="0" max="100" step="0.5" value={s.taxPercent ?? ''} onChange={(e) => set('taxPercent', e.target.value)} placeholder="0" />
+                  </Field>
+                </div>
+                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                  Пусто = лимита скидки нет / налог не начисляется. Скидку сверх лимита может дать только роль с правом «Скидка сверх лимита».
+                </p>
+              </Card>
             </div>
           )}
           {section === 'branches' && (

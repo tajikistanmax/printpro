@@ -47,6 +47,10 @@ export class SettingsService {
       'posMaxDiscountPercent',
       'taxPercent',
       'requireOpenShift',
+      // Бонусная программа — фронт кассы считает списание по тому же проценту,
+      // что и бэкенд (иначе итог/сдача на экране расходятся с реальным списанием)
+      'bonusMaxRedeemPercent',
+      'bonusAccrualPercent',
     ];
     const out: Record<string, string> = {};
     for (const k of PUBLIC_KEYS) if (all[k] != null) out[k] = all[k];

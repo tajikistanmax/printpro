@@ -79,6 +79,9 @@ export default function PosPage() {
   const [promoDiscount, setPromoDiscount] = useState(0);
   const [promoMsg, setPromoMsg] = useState('');
   const [useBonus, setUseBonus] = useState('');
+  // Макс. % списания бонусов — из настроек компании (бэкенд применяет тот же
+  // предел; хардкод 30% приводил к неверному итогу/сдаче при другой настройке).
+  const [bonusMaxPct, setBonusMaxPct] = useState(30);
   const [phone, setPhone] = useState('');
   const [clientName, setClientName] = useState('');
   // Персональная скидка клиента (%) — подтягивается по телефону, применяется
@@ -137,6 +140,8 @@ export default function PosPage() {
         if (ui?.displayQr) setDisplayQr(ui.displayQr);
         if (ui?.companyName) setShopName(ui.companyName);
         if (ui) {
+          const bmp = Number(ui.bonusMaxRedeemPercent);
+          if (Number.isFinite(bmp) && bmp >= 0) setBonusMaxPct(bmp);
           setVfdCfg(readVfdConfig(ui));
           setEscposCfg(readEscposConfig(ui));
           setShopInfo({
@@ -287,7 +292,10 @@ export default function PosPage() {
   // Без выбранного клиента бонус не уменьшает итог — иначе экран покажет заниженную
   // сумму и неправильную сдачу.
   const bonusApplied = phone.trim()
-    ? Math.min(Number(useBonus) || 0, Number((afterPromo * 0.3).toFixed(2)))
+    ? Math.min(
+        Number(useBonus) || 0,
+        Number((afterPromo * (bonusMaxPct / 100)).toFixed(2)),
+      )
     : 0;
   const total = Math.max(0, Number((afterPromo - bonusApplied).toFixed(2)));
   const cartCount = cart.reduce((s, c) => s + c.quantity, 0);
