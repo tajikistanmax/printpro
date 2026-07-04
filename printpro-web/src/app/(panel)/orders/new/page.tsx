@@ -115,6 +115,23 @@ export default function NewOrderPage() {
       setMsg('Добавьте хотя бы одну позицию');
       return;
     }
+    // Валидация позиций: выбран товар/услуга или задано описание, кол-во > 0,
+    // цена не отрицательная — иначе в заказ уходят «пустые»/битые строки.
+    for (const [i, l] of lines.entries()) {
+      const hasRef = !!l.refId || !!(l.description && l.description.trim());
+      if (!hasRef) {
+        setMsg(`Позиция ${i + 1}: выберите товар/услугу или укажите описание`);
+        return;
+      }
+      if (!(Number(l.quantity) > 0)) {
+        setMsg(`Позиция ${i + 1}: количество должно быть больше 0`);
+        return;
+      }
+      if (Number(l.unitPrice) < 0) {
+        setMsg(`Позиция ${i + 1}: цена не может быть отрицательной`);
+        return;
+      }
+    }
     setBusy(true);
     try {
       const body: any = {

@@ -107,6 +107,7 @@ export default function DesignPage() {
 
   const uploadFor = useRef<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const savingRef = useRef(false); // защита от двойного создания макета
 
   function load() {
     api.get(`/design?companyId=${cid}`).then((list) => {
@@ -130,7 +131,10 @@ export default function DesignPage() {
   }
 
   async function createProof(e: React.FormEvent) {
-    e.preventDefault(); setMsg('');
+    e.preventDefault();
+    if (savingRef.current) return; // защита от двойного клика (дубль макета)
+    savingRef.current = true;
+    setMsg('');
     try {
       await api.post('/design', { companyId: cid, orderId, title: title || undefined, assignedUserId: assignee || undefined });
       setOrderId(''); setTitle(''); setAssignee('');
@@ -138,28 +142,48 @@ export default function DesignPage() {
       setMsg('✓ Макет добавлен');
       load();
     } catch (err: any) { setMsg('Ошибка: ' + err.message); }
+    finally { savingRef.current = false; }
   }
 
   async function setStatus(id: string, status: string) {
+    setMsg('');
     let cmt: string | undefined;
     if (status === 'REVISION') cmt = prompt('Что нужно поправить?') ?? undefined;
-    await api.patch(`/design/${id}/status`, { status, comment: cmt });
-    load();
+    try {
+      await api.patch(`/design/${id}/status`, { status, comment: cmt });
+      load();
+    } catch (err: any) {
+      // напр. недопустимый переход (утвердить, не отправив клиенту)
+      setMsg('Ошибка: ' + err.message);
+    }
   }
 
   async function saveComment() {
     if (!selected) return;
-    await api.patch(`/design/${selected.id}`, { comment });
-    load();
+    setMsg('');
+    try {
+      await api.patch(`/design/${selected.id}`, { comment });
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
   }
 
   async function toggleCheck(k: string) {
     if (!selected) return;
     const cur = selected.checklist ?? {};
     const next = { ...cur, [k]: !cur[k] };
+    const prev = selected.checklist;
     setSelected({ ...selected, checklist: next });
     setProofs((ps) => ps.map((p) => (p.id === selected.id ? { ...p, checklist: next } : p)));
-    try { await api.patch(`/design/${selected.id}`, { checklist: next }); } catch {}
+    try {
+      await api.patch(`/design/${selected.id}`, { checklist: next });
+    } catch (err: any) {
+      // откат оптимистичного обновления, чтобы галочка не «врала»
+      setSelected((s: any) => (s ? { ...s, checklist: prev } : s));
+      setProofs((ps) => ps.map((p) => (p.id === selected.id ? { ...p, checklist: prev } : p)));
+      setMsg('Ошибка: ' + err.message);
+    }
   }
 
   function pickFile(proofId: string) {

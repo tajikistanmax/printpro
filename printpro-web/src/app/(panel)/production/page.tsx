@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { API_BASE, DEFAULT_COMPANY_ID, SERVER_ORIGIN } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
@@ -75,8 +75,11 @@ export default function ProductionPage() {
     }
   }, [cid]);
 
+  const savingRef = useRef(false);
   async function createJob(e: React.FormEvent) {
     e.preventDefault();
+    if (savingRef.current) return; // защита от двойного клика (дубль задания)
+    savingRef.current = true;
     setMsg('');
     try {
       await api.post('/production', {
@@ -94,35 +97,54 @@ export default function ProductionPage() {
       load();
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
+    } finally {
+      savingRef.current = false;
     }
   }
 
   async function setStatus(id: string, status: string) {
-    await api.patch(`/production/${id}/status`, { status });
-    load();
+    setMsg('');
+    try {
+      await api.patch(`/production/${id}/status`, { status });
+      load();
+    } catch (err: any) {
+      // напр. барьер согласования макета или откат отменённого заказа
+      setMsg('Ошибка: ' + err.message);
+    }
   }
 
   async function sendRework(id: string) {
     const reason = prompt('Причина брака / переделки:');
     if (reason === null) return;
-    await api.patch(`/production/${id}/status`, {
-      status: 'REWORK',
-      defectReason: reason || undefined,
-    });
-    load();
+    setMsg('');
+    try {
+      await api.patch(`/production/${id}/status`, {
+        status: 'REWORK',
+        defectReason: reason || undefined,
+      });
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
   }
 
   async function uploadPhoto(id: string, file: File) {
-    const fd = new FormData();
-    fd.append('file', file);
-    const token =
-      typeof window !== 'undefined' ? localStorage.getItem('pp_token') : null;
-    await fetch(`${API_BASE}/production/${id}/photo`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      body: fd,
-    });
-    load();
+    setMsg('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const token =
+        typeof window !== 'undefined' ? localStorage.getItem('pp_token') : null;
+      const res = await fetch(`${API_BASE}/production/${id}/photo`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: fd,
+      });
+      if (!res.ok) throw new Error('Не удалось загрузить фото');
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
   }
 
   async function remove(id: string) {
