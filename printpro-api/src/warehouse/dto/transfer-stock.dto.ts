@@ -9,12 +9,3 @@ export class TransferStockDto {
   @IsNumber() @Min(0.001) quantity: number;
   @IsOptional() @IsString() userId?: string;
 }
-
-// Инвентаризация: выставить фактический остаток
-export class RecountStockDto {
-  @IsString() companyId: string;
-  @IsString() productId: string;
-  @IsString() branchId: string;
-  @IsNumber() @Min(0) countedQuantity: number;
-  @IsOptional() @IsString() userId?: string;
-}

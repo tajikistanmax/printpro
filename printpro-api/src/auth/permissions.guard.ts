@@ -37,7 +37,9 @@ export class PermissionsGuard implements CanActivate {
     });
     const codes = new Set(rolePerms.map((rp) => rp.permission.code));
 
-    const ok = required.every((code) => codes.has(code));
+    // Несколько кодов в @RequirePermissions = достаточно ЛЮБОГО из них (ИЛИ):
+    // так один маршрут (например, каталог товаров) доступен и складу, и кассе.
+    const ok = required.some((code) => codes.has(code));
     if (!ok) {
       throw new ForbiddenException('Недостаточно прав для этого действия');
     }

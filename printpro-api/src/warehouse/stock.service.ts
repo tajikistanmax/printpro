@@ -5,9 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { ReceiveStockDto } from './dto/receive-stock.dto';
-import { AdjustStockDto } from './dto/adjust-stock.dto';
-import { TransferStockDto, RecountStockDto } from './dto/transfer-stock.dto';
+import { TransferStockDto } from './dto/transfer-stock.dto';
 import { WriteOffDto } from './dto/write-off.dto';
 
 @Injectable()
@@ -35,113 +33,31 @@ export class StockService {
     return { suppliers, todayReceipts };
   }
 
-  // Приём товара (приход): увеличиваем остаток + записываем движение
-  async receive(dto: ReceiveStockDto) {
-    return this.prisma.$transaction(async (tx) => {
-      // Остаток до прихода (для аудита «до/после»)
-      const prev = await tx.stock.findUnique({
-        where: {
-          productId_branchId: { productId: dto.productId, branchId: dto.branchId },
-        },
-      });
-      const beforeQty = prev ? Number(prev.quantity) : 0;
+  // Мёртвые операции receive/adjust/recount удалены (аудит 06, §4): меняли
+  // остаток без документов и не вызывались интерфейсом. Приход — «Закупки»,
+  // инвентаризация — recountBulk.
 
-      // 1. Записываем движение склада (история)
-      await tx.stockMovement.create({
-        data: {
-          companyId: dto.companyId,
-          productId: dto.productId,
-          branchId: dto.branchId,
-          type: StockMovementType.IN,
-          quantity: dto.quantity,
-          beforeQty,
-          afterQty: Number((beforeQty + Number(dto.quantity)).toFixed(3)),
-          reason: dto.reason ?? 'Приход товара',
-          userId: dto.userId,
-        },
-      });
-
-      // 2. Обновляем (или создаём) остаток на складе
-      const stock = await tx.stock.upsert({
-        where: {
-          productId_branchId: {
-            productId: dto.productId,
-            branchId: dto.branchId,
-          },
-        },
-        create: {
-          productId: dto.productId,
-          branchId: dto.branchId,
-          quantity: dto.quantity,
-        },
-        update: { quantity: { increment: dto.quantity } },
-        include: { product: true, branch: true },
-      });
-
-      return stock;
+  // Проверка владения: товар (и филиалы, если заданы) должны принадлежать
+  // компании из токена — у Stock нет companyId, поэтому сверяем по связям.
+  private async ensureOwnership(
+    db: Prisma.TransactionClient | PrismaService,
+    companyId: string,
+    productId: string,
+    ...branchIds: (string | undefined)[]
+  ) {
+    const product = await (db as any).product.findFirst({
+      where: { id: productId, companyId, deletedAt: null },
+      select: { id: true },
     });
-  }
-
-  // Списание / корректировка (уменьшаем остаток)
-  async adjust(dto: AdjustStockDto) {
-    // Эта операция только СПИСЫВАЕТ остаток. Приходные типы (IN/RETURN) молча
-    // уменьшили бы склад — отклоняем их с подсказкой, куда идти за приходом.
-    if (dto.type === StockMovementType.IN || dto.type === StockMovementType.RETURN) {
-      throw new BadRequestException(
-        'Приход товара — через «Закупки», перемещение — через transfer, ' +
-          'инвентаризация — через пересчёт. Здесь только списание/корректировка.',
-      );
+    if (!product) throw new NotFoundException('Товар не найден');
+    for (const branchId of branchIds) {
+      if (!branchId) continue;
+      const branch = await (db as any).branch.findFirst({
+        where: { id: branchId, companyId },
+        select: { id: true },
+      });
+      if (!branch) throw new NotFoundException('Филиал не найден');
     }
-    return this.prisma.$transaction(async (tx) => {
-      // Условное списание: атомарно уменьшаем, только если остатка хватает.
-      const dec = await tx.stock.updateMany({
-        where: {
-          productId: dto.productId,
-          branchId: dto.branchId,
-          quantity: { gte: dto.quantity },
-        },
-        data: { quantity: { decrement: dto.quantity } },
-      });
-      if (dec.count === 0) {
-        const cur = await tx.stock.findUnique({
-          where: {
-            productId_branchId: {
-              productId: dto.productId,
-              branchId: dto.branchId,
-            },
-          },
-        });
-        throw new BadRequestException(
-          `Недостаточно товара на складе. Доступно: ${cur ? Number(cur.quantity) : 0}`,
-        );
-      }
-      const after = await tx.stock.findUnique({
-        where: {
-          productId_branchId: {
-            productId: dto.productId,
-            branchId: dto.branchId,
-          },
-        },
-        include: { product: true, branch: true },
-      });
-      const afterQty = after ? Number(after.quantity) : 0;
-
-      await tx.stockMovement.create({
-        data: {
-          companyId: dto.companyId,
-          productId: dto.productId,
-          branchId: dto.branchId,
-          type: dto.type,
-          quantity: dto.quantity,
-          beforeQty: Number((afterQty + Number(dto.quantity)).toFixed(3)),
-          afterQty,
-          reason: dto.reason ?? 'Списание',
-          userId: dto.userId,
-        },
-      });
-
-      return after;
-    });
   }
 
   // Перемещение между филиалами
@@ -150,6 +66,13 @@ export class StockService {
       throw new BadRequestException('Филиалы должны отличаться');
     }
     return this.prisma.$transaction(async (tx) => {
+      await this.ensureOwnership(
+        tx,
+        dto.companyId,
+        dto.productId,
+        dto.fromBranchId,
+        dto.toBranchId,
+      );
       const qty = Number(dto.quantity);
       // Списываем из источника условно (атомарно), чтобы не увести в минус.
       const dec = await tx.stock.updateMany({
@@ -238,55 +161,6 @@ export class StockService {
     });
   }
 
-  // Инвентаризация: выставить фактический остаток, зафиксировать расхождение
-  async recount(dto: RecountStockDto) {
-    return this.prisma.$transaction(async (tx) => {
-      const current = await tx.stock.findUnique({
-        where: {
-          productId_branchId: {
-            productId: dto.productId,
-            branchId: dto.branchId,
-          },
-        },
-      });
-      const was = current ? Number(current.quantity) : 0;
-      const diff = Number((dto.countedQuantity - was).toFixed(3));
-
-      await tx.stock.upsert({
-        where: {
-          productId_branchId: {
-            productId: dto.productId,
-            branchId: dto.branchId,
-          },
-        },
-        create: {
-          productId: dto.productId,
-          branchId: dto.branchId,
-          quantity: dto.countedQuantity,
-        },
-        update: { quantity: dto.countedQuantity },
-      });
-
-      if (diff !== 0) {
-        await tx.stockMovement.create({
-          data: {
-            companyId: dto.companyId,
-            productId: dto.productId,
-            branchId: dto.branchId,
-            type: StockMovementType.ADJUST,
-            quantity: Math.abs(diff),
-            beforeQty: was,
-            afterQty: dto.countedQuantity,
-            reason: `Инвентаризация: было ${was}, стало ${dto.countedQuantity}`,
-            userId: dto.userId,
-          },
-        });
-      }
-
-      return { ok: true, was, now: dto.countedQuantity, diff };
-    });
-  }
-
   // Массовая инвентаризация: выставить фактические остатки по списку товаров
   // одного филиала за один заход (атомарно). Возвращает применено/без изменений.
   async recountBulk(
@@ -296,6 +170,18 @@ export class StockService {
     userId?: string,
   ) {
     if (!branchId) throw new BadRequestException('Не указан филиал');
+    // Владение: филиал компании и только её товары (чужие id молча отбрасываем)
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, companyId },
+      select: { id: true },
+    });
+    if (!branch) throw new NotFoundException('Филиал не найден');
+    const ownProducts = await this.prisma.product.findMany({
+      where: { id: { in: items.map((i) => i.productId) }, companyId },
+      select: { id: true },
+    });
+    const ownIds = new Set(ownProducts.map((p) => p.id));
+    items = items.filter((i) => ownIds.has(i.productId));
     let applied = 0;
     let unchanged = 0;
     // Инвентаризация — атомарно (всё или ничего), но на 300+ позиций дефолтный
@@ -401,6 +287,7 @@ export class StockService {
   // Себестоимость берём из закупочной цены товара.
   async writeOff(dto: WriteOffDto) {
     return this.prisma.$transaction(async (tx) => {
+      await this.ensureOwnership(tx, dto.companyId, dto.productId, dto.branchId);
       // Условное списание: атомарно, только если остатка хватает.
       const dec = await tx.stock.updateMany({
         where: {
