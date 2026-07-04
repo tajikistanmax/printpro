@@ -350,6 +350,18 @@ export class OrdersService {
         });
         shiftId = openShift?.id;
       }
+      // Требование открытой смены (настройка requireOpenShift, по умолчанию выкл):
+      // без смены наличные выпадают из Z-отчёта и сверки, поэтому оплату не проводим.
+      if (!shiftId) {
+        const rs = await tx.setting.findFirst({
+          where: { companyId: order.companyId, key: 'requireOpenShift' },
+        });
+        if (rs?.value === '1' || rs?.value === 'true') {
+          throw new BadRequestException(
+            'Откройте кассовую смену, чтобы принять оплату',
+          );
+        }
+      }
 
       const newPaid = Number((Number(order.paid) + dto.amount).toFixed(2));
       const balanceDue = Number((Number(order.total) - newPaid).toFixed(2));
@@ -497,6 +509,30 @@ export class OrdersService {
       const rawDiscount = dto.discount && dto.discount > 0 ? dto.discount : 0;
       let discount = Math.min(rawDiscount, total);
 
+      // Лимит ручной скидки: если задан posMaxDiscountPercent и у кассира нет
+      // права pos.discountUnlimited — ручная скидка не может превышать этот % от
+      // суммы позиций (защита от 100%-скидки кассиром). Без настройки — лимита нет.
+      if (rawDiscount > 0) {
+        const maxRow = await this.prisma.setting.findFirst({
+          where: { companyId: dto.companyId, key: 'posMaxDiscountPercent' },
+        });
+        const maxPct = maxRow?.value ? Number(maxRow.value) : NaN;
+        if (Number.isFinite(maxPct) && maxPct >= 0) {
+          const unlimited = await this.userHasPermission(
+            userId,
+            'pos.discountUnlimited',
+          );
+          if (!unlimited) {
+            const maxDisc = Number(((subtotal * maxPct) / 100).toFixed(2));
+            if (rawDiscount > maxDisc + 0.01) {
+              throw new BadRequestException(
+                `Скидка ${rawDiscount} c. превышает лимит ${maxPct}% (макс ${maxDisc} c.). Требуется право «Скидка сверх лимита».`,
+              );
+            }
+          }
+        }
+      }
+
       // Персональная скидка клиента (%) — по ТЗ применяется автоматически при
       // выборе клиента. Считаем от суммы позиций (subtotal), чтобы фронт мог
       // повторить расчёт один-в-один и итог совпал при смешанной оплате.
@@ -612,6 +648,18 @@ export class OrdersService {
               })
             )?.id
           : undefined;
+        // Требование открытой смены распространяем и на продажу «в долг» —
+        // иначе она не попадёт в строку «в долг» Z-отчёта смены.
+        if (!debtShiftId) {
+          const rs = await this.prisma.setting.findFirst({
+            where: { companyId: dto.companyId, key: 'requireOpenShift' },
+          });
+          if (rs?.value === '1' || rs?.value === 'true') {
+            throw new BadRequestException(
+              'Откройте кассовую смену, чтобы оформить продажу в долг',
+            );
+          }
+        }
         await this.prisma.payment.create({
           data: {
             companyId: dto.companyId,
@@ -1450,6 +1498,25 @@ export class OrdersService {
       'Не все макеты заказа согласованы — запуск производства заблокирован. ' +
         'Утвердите все макеты (статус «Согласован») или отключите барьер в настройках.',
     );
+  }
+
+  // Есть ли у пользователя указанное право — для условных проверок в сервисе
+  // (например «скидка сверх лимита»). Пустой userId => прав нет.
+  private async userHasPermission(
+    userId: string | undefined,
+    code: string,
+  ): Promise<boolean> {
+    if (!userId) return false;
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { roleId: true },
+    });
+    if (!user?.roleId) return false;
+    const rp = await this.prisma.rolePermission.findFirst({
+      where: { roleId: user.roleId, permission: { code } },
+      select: { id: true },
+    });
+    return !!rp;
   }
 
   private async bonusRates(

@@ -17,6 +17,11 @@ export const PERMISSIONS: { code: string; label: string; group: string }[] = [
   { code: 'orders.manage', label: 'Создание и изменение заказов', group: 'Заказы' },
   { code: 'cash.view', label: 'Просмотр кассы', group: 'Касса' },
   { code: 'cash.operate', label: 'Проведение оплат', group: 'Касса' },
+  {
+    code: 'pos.discountUnlimited',
+    label: 'Скидка сверх лимита',
+    group: 'Касса',
+  },
 
   // Производство
   { code: 'production.view', label: 'Просмотр производства', group: 'Производство' },
