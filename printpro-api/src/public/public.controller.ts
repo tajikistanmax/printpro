@@ -217,7 +217,8 @@ export class PublicController {
         status: true,
         paymentStatus: true,
         total: true,
-        balanceDue: true,
+        // balanceDue НЕ отдаём: точная сумма долга — не публичная информация
+        // (согласованно с receipt/:id). Статус оплаты передаёт факт долга без суммы.
         createdAt: true,
         items: { select: { description: true, quantity: true } },
       },

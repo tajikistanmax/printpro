@@ -317,6 +317,14 @@ export class OrdersService {
       if (companyId && order.companyId !== companyId) {
         throw new NotFoundException('Заказ не найден');
       }
+      // Нельзя принять оплату по отменённому/возвращённому заказу — иначе на
+      // CANCELLED-заказ (после refund) прилетит «фантомная» выручка за уже
+      // возвращённый товар. deletedAt тоже отсекаем.
+      if (order.status === OrderStatus.CANCELLED || order.deletedAt) {
+        throw new BadRequestException(
+          'Нельзя принять оплату по отменённому заказу',
+        );
+      }
 
       // Защита от переплаты: нельзя внести больше, чем осталось к оплате.
       // Долговая оплата (method DEBT) здесь не проводится — это отдельный сценарий POS.
@@ -356,7 +364,13 @@ export class OrdersService {
       // с момента чтения. Иначе два параллельных запроса (двойной клик) прочитали бы
       // один и тот же остаток и создали переплату. Здесь второй запрос получит count=0.
       const upd = await tx.order.updateMany({
-        where: { id: orderId, paid: order.paid },
+        // status guard закрывает гонку с параллельным refund (отмена заказа)
+        where: {
+          id: orderId,
+          paid: order.paid,
+          status: { not: OrderStatus.CANCELLED },
+          deletedAt: null,
+        },
         data: {
           paid: newPaid,
           balanceDue: balanceDue < 0 ? 0 : balanceDue,
@@ -1426,11 +1440,15 @@ export class OrdersService {
       where: { orderId, deletedAt: null },
       select: { status: true },
     });
-    if (proofs.length === 0) return;
-    if (proofs.some((p) => p.status === ProofStatus.APPROVED)) return;
+    // Считаем активными все макеты, кроме отклонённых. Печать разрешена только
+    // когда КАЖДЫЙ активный макет согласован (а не «хотя бы один»): иначе тираж
+    // мог бы уйти по несогласованной второй стороне/версии.
+    const active = proofs.filter((p) => p.status !== ProofStatus.REJECTED);
+    if (active.length === 0) return;
+    if (active.every((p) => p.status === ProofStatus.APPROVED)) return;
     throw new BadRequestException(
-      'Макет заказа не согласован — запуск производства заблокирован. ' +
-        'Утвердите макет (статус «Согласован») или отключите барьер в настройках.',
+      'Не все макеты заказа согласованы — запуск производства заблокирован. ' +
+        'Утвердите все макеты (статус «Согласован») или отключите барьер в настройках.',
     );
   }
 

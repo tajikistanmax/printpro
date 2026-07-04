@@ -219,11 +219,14 @@ export class ProductionService {
       where: { orderId, deletedAt: null },
       select: { status: true },
     });
-    if (proofs.length === 0) return;
-    if (proofs.some((p) => p.status === ProofStatus.APPROVED)) return;
+    // Активны все макеты, кроме отклонённых. Печать разрешена только когда
+    // КАЖДЫЙ активный макет согласован (а не «хотя бы один»).
+    const active = proofs.filter((p) => p.status !== ProofStatus.REJECTED);
+    if (active.length === 0) return;
+    if (active.every((p) => p.status === ProofStatus.APPROVED)) return;
     throw new BadRequestException(
-      'Макет заказа не согласован — запуск производства заблокирован. ' +
-        'Утвердите макет (статус «Согласован») или отключите барьер в настройках.',
+      'Не все макеты заказа согласованы — запуск производства заблокирован. ' +
+        'Утвердите все макеты (статус «Согласован») или отключите барьер в настройках.',
     );
   }
 
@@ -280,7 +283,14 @@ export class ProductionService {
         where: { id: orderId },
         select: { status: true },
       });
-      if (order && order.status !== next) {
+      // Терминальные статусы не откатываем: выданный/отменённый заказ не должен
+      // «воскресать» в READY/IN_PROGRESS из-за позднего задания производства.
+      if (
+        order &&
+        order.status !== next &&
+        order.status !== OrderStatus.DELIVERED &&
+        order.status !== OrderStatus.CANCELLED
+      ) {
         await this.prisma.$transaction([
           this.prisma.order.update({
             where: { id: orderId },

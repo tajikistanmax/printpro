@@ -520,23 +520,47 @@ export class ReportsService {
   }
 
   // ---------- helpers ----------
-  // Диапазон дат: по умолчанию — текущий месяц
+  // Диапазон дат: по умолчанию — текущий месяц.
+  // Границы операционного дня считаем в РАБОЧЕЙ таймзоне компании, а не в TZ
+  // сервера (на Render — UTC). Иначе `setHours` снапал бы день к UTC-суткам и
+  // «сегодня»/«за смену» съезжали на несколько часов (бизнес в UTC+5, Душанбе).
+  // Смещение настраивается env BUSINESS_TZ_OFFSET_MIN (по умолчанию +300 = UTC+5).
   private range(from?: string, to?: string): { gte: Date; lte: Date } {
+    const offsetMin = Number(process.env.BUSINESS_TZ_OFFSET_MIN ?? 300);
+    const toBiz = (d: Date) => new Date(d.getTime() + offsetMin * 60000);
+    const fromBiz = (d: Date) => new Date(d.getTime() - offsetMin * 60000);
+    // 00:00 операционного дня в рабочей ТЗ (детерминированно, независимо от TZ сервера)
+    const startOfDay = (d: Date) => {
+      const b = toBiz(d);
+      b.setUTCHours(0, 0, 0, 0);
+      return fromBiz(b);
+    };
+    // 23:59:59.999 операционного дня в рабочей ТЗ
+    const endOfDay = (d: Date) => {
+      const b = toBiz(d);
+      b.setUTCHours(23, 59, 59, 999);
+      return fromBiz(b);
+    };
+
+    const now = new Date();
     let gte: Date;
-    let lte: Date;
     if (from) {
-      gte = new Date(from);
+      gte = startOfDay(new Date(from));
     } else {
-      gte = new Date();
-      gte.setDate(1);
+      // первый день текущего месяца в рабочей ТЗ
+      const b = toBiz(now);
+      b.setUTCDate(1);
+      b.setUTCHours(0, 0, 0, 0);
+      gte = fromBiz(b);
     }
-    gte.setHours(0, 0, 0, 0);
-    lte = to ? new Date(to) : new Date();
-    lte.setHours(23, 59, 59, 999);
+    // Без `to` — до текущего момента (не конец суток), чтобы не захватывать будущее
+    const lte = to ? endOfDay(new Date(to)) : now;
     return { gte, lte };
   }
 
   private dayKey(d: Date) {
-    return d.toISOString().slice(0, 10); // YYYY-MM-DD
+    // Группируем по операционному дню в рабочей ТЗ (не по UTC-суткам)
+    const offsetMin = Number(process.env.BUSINESS_TZ_OFFSET_MIN ?? 300);
+    return new Date(d.getTime() + offsetMin * 60000).toISOString().slice(0, 10); // YYYY-MM-DD
   }
 }

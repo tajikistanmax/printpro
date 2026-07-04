@@ -63,7 +63,14 @@ export class DesignService {
           ? { checklist: dto.checklist }
           : {}),
         ...(newFile
-          ? { version: proof.version + 1, status: ProofStatus.IN_PROGRESS }
+          ? {
+              version: proof.version + 1,
+              status: ProofStatus.IN_PROGRESS,
+              // Новая версия аннулирует прежнее согласование — иначе аудит
+              // «кто/когда утвердил» указывал бы на устаревший файл.
+              approvedById: null,
+              approvedAt: null,
+            }
           : {}),
       },
       include: this.includes(),

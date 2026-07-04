@@ -167,6 +167,33 @@ export class PurchasingService {
           : ReceiptPaymentStatus.DEBT;
 
     return this.prisma.$transaction(async (tx) => {
+      // 0. Мультитенант-защита: товары/филиал/поставщик обязаны принадлежать
+      // компании из токена. Иначе приёмка с чужим productId/branchId/supplierId
+      // испортила бы остатки/цены/каталог другого арендатора (companyId движения
+      // = наш, а product — чужой). productId/branchId/supplierId приходят из тела.
+      const productIds = [...new Set(dto.items.map((it) => it.productId))];
+      const owned = await tx.product.findMany({
+        where: { id: { in: productIds }, companyId: dto.companyId, deletedAt: null },
+        select: { id: true },
+      });
+      if (owned.length !== productIds.length) {
+        throw new NotFoundException('Товар не найден');
+      }
+      if (dto.branchId) {
+        const branch = await tx.branch.findFirst({
+          where: { id: dto.branchId, companyId: dto.companyId },
+          select: { id: true },
+        });
+        if (!branch) throw new NotFoundException('Филиал не найден');
+      }
+      if (dto.supplierId) {
+        const supplier = await tx.supplier.findFirst({
+          where: { id: dto.supplierId, companyId: dto.companyId },
+          select: { id: true },
+        });
+        if (!supplier) throw new NotFoundException('Поставщик не найден');
+      }
+
       // 1. Документ приёмки (с номером приходной накладной)
       const prihSeq = await nextSeq(tx, dto.companyId, 'PRIH');
       const receipt = await tx.stockReceipt.create({
