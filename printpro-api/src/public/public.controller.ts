@@ -180,6 +180,8 @@ export class PublicController {
       date: order.createdAt,
       paymentStatus: order.paymentStatus,
       total: Number(order.total),
+      taxPercent: Number(order.taxPercent),
+      taxAmount: Number(order.taxAmount),
       paid: Number(order.paid),
       // balanceDue намеренно не отдаём: чек по QR может открыть кто угодно,
       // долг клиента — не публичная информация (аудит 06, P1-9)

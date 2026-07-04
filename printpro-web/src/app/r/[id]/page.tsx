@@ -15,10 +15,24 @@ const PAY_STATUS: Record<string, { label: string; cls: string }> = {
   DEBT: { label: 'Долг', cls: 'bg-rose-100 text-rose-700' },
 };
 
+interface ReceiptItem { name: string; quantity: number; lineTotal: number }
+interface Receipt {
+  found: boolean;
+  company?: { name: string; address: string | null; phone: string | null; inn: string | null };
+  orderNumber?: string;
+  date?: string;
+  paymentStatus?: string;
+  total?: number;
+  taxPercent?: number;
+  taxAmount?: number;
+  paid?: number;
+  items?: ReceiptItem[];
+}
+
 export default function PublicReceiptPage() {
   const params = useParams();
   const id = String(params?.id ?? '');
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<Receipt | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,12 +58,12 @@ export default function PublicReceiptPage() {
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             {/* Шапка */}
             <div className="bg-gradient-to-br from-indigo-500 to-violet-600 px-6 py-6 text-center text-white">
-              <div className="text-xl font-extrabold tracking-tight">{data.company.name}</div>
-              {data.company.address && (
-                <div className="mt-1 text-xs text-white/80">{data.company.address}</div>
+              <div className="text-xl font-extrabold tracking-tight">{data.company?.name}</div>
+              {data.company?.address && (
+                <div className="mt-1 text-xs text-white/80">{data.company?.address}</div>
               )}
-              {data.company.phone && (
-                <div className="text-xs text-white/80">тел. {data.company.phone}</div>
+              {data.company?.phone && (
+                <div className="text-xs text-white/80">тел. {data.company?.phone}</div>
               )}
             </div>
 
@@ -62,19 +76,19 @@ export default function PublicReceiptPage() {
                 </div>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    PAY_STATUS[data.paymentStatus]?.cls ?? 'bg-slate-100 text-slate-600'
+                    PAY_STATUS[data.paymentStatus ?? '']?.cls ?? 'bg-slate-100 text-slate-600'
                   }`}
                 >
-                  {PAY_STATUS[data.paymentStatus]?.label ?? data.paymentStatus}
+                  {PAY_STATUS[data.paymentStatus ?? '']?.label ?? data.paymentStatus}
                 </span>
               </div>
 
               <div className="text-xs text-slate-400">
-                {new Date(data.date).toLocaleString('ru-RU')}
+                {data.date ? new Date(data.date).toLocaleString('ru-RU') : ''}
               </div>
 
               <div className="my-4 space-y-2 border-y border-dashed border-slate-200 py-4">
-                {data.items.map((it: any, i: number) => (
+                {data.items?.map((it, i) => (
                   <div key={i} className="flex justify-between text-sm">
                     <span className="min-w-0 truncate pr-2 text-slate-700">
                       {it.name} <span className="text-slate-400">×{it.quantity}</span>
@@ -86,22 +100,22 @@ export default function PublicReceiptPage() {
                 ))}
               </div>
 
+              {(data.taxAmount ?? 0) > 0 && (
+                <div className="flex items-center justify-between text-sm text-slate-500">
+                  <span>в т.ч. налог (НДС {data.taxPercent}%)</span>
+                  <span>{money(data.taxAmount ?? 0)}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-base font-semibold text-slate-500">Итого</span>
                 <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-2xl font-black text-transparent">
-                  {money(data.total)}
+                  {money(data.total ?? 0)}
                 </span>
               </div>
-              {data.balanceDue > 0 && (
-                <div className="mt-1 flex items-center justify-between text-sm text-rose-600">
-                  <span>К доплате</span>
-                  <span className="font-semibold">{money(data.balanceDue)}</span>
-                </div>
-              )}
 
-              {data.company.inn && (
+              {data.company?.inn && (
                 <div className="mt-5 text-center text-[11px] text-slate-400">
-                  ИНН {data.company.inn}
+                  ИНН {data.company?.inn}
                 </div>
               )}
               <div className="mt-1 text-center text-xs text-slate-400">Спасибо за покупку!</div>
