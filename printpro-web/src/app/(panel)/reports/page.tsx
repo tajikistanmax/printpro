@@ -16,6 +16,7 @@ import {
   EmptyState,
 } from '@/components/ui';
 import NavIcon from '@/lib/NavIcons';
+import { downloadXlsx, type Sheet } from '@/lib/xlsx-lite';
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(Math.round(n || 0)) + ' c.';
@@ -104,6 +105,102 @@ export default function ReportsPage() {
 
   const maxDaily = Math.max(1, ...daily.map((d) => d.amount));
 
+  // Выгрузка всех загруженных отчётов в одну книгу Excel (по листу на отчёт)
+  function exportExcel() {
+    const sheets: Sheet[] = [];
+    if (summary) {
+      sheets.push({
+        name: 'Сводка',
+        rows: [
+          ['Показатель', 'Значение'],
+          ['Выручка деньгами', summary.collected],
+          ['Выставлено по заказам', summary.billed],
+          ['Возвраты', summary.returns],
+          ['Чистая выручка', summary.net],
+          ['Заказов', summary.ordersCount],
+          ['Средний чек', summary.avgCheck],
+          ['Долг клиентов', summary.debt],
+          ['Наличные', summary.byMethod.cash],
+          ['Карта', summary.byMethod.card],
+          ['QR', summary.byMethod.qr ?? 0],
+          ['Перевод', summary.byMethod.transfer],
+          ['В долг', summary.byMethod.debt],
+        ],
+      });
+    }
+    if (sales.length)
+      sheets.push({
+        name: 'Продажи',
+        rows: [
+          ['Наименование', 'Тип', 'Количество', 'Выручка'],
+          ...sales.map((s) => [s.name, s.type === 'SERVICE' ? 'Услуга' : 'Товар', s.qty, s.revenue]),
+        ],
+      });
+    if (profit && profit.items.length)
+      sheets.push({
+        name: 'Прибыль',
+        rows: [
+          ['Заказ', 'Клиент', 'Выручка', 'Себестоимость', 'Прибыль', 'Маржа %'],
+          ...profit.items.map((p: any) => [p.orderNumber, p.client, p.revenue, p.cost, p.profit, p.margin]),
+        ],
+      });
+    if (matUsage && matUsage.items.length)
+      sheets.push({
+        name: 'Расход материалов',
+        rows: [
+          ['Материал', 'Расход', 'Списано', 'Итого', 'Ед.', 'Себестоимость'],
+          ...matUsage.items.map((m: any) => [m.name, m.used, m.writeOff, m.total, m.unit, m.cost]),
+        ],
+      });
+    if (byStatus.length)
+      sheets.push({
+        name: 'Заказы по статусам',
+        rows: [
+          ['Статус', 'Количество', 'Сумма'],
+          ...byStatus.map((s) => [STATUS_LABELS[s.status] ?? s.status, s.count, s.total]),
+        ],
+      });
+    if (overdue.length)
+      sheets.push({
+        name: 'Просроченные',
+        rows: [
+          ['Заказ', 'Клиент', 'Статус', 'Срок', 'Менеджер', 'Долг'],
+          ...overdue.map((o) => [o.orderNumber, o.client, STATUS_LABELS[o.status] ?? o.status, o.deadline ? new Date(o.deadline).toLocaleString('ru-RU') : '', o.manager, o.balanceDue]),
+        ],
+      });
+    if (debts && debts.items.length)
+      sheets.push({
+        name: 'Долги',
+        rows: [
+          ['Заказ', 'Клиент', 'Телефон', 'Итого', 'Оплачено', 'Долг'],
+          ...debts.items.map((d: any) => [d.orderNumber, d.client, d.phone, d.total, d.paid, d.debt]),
+        ],
+      });
+    if (expenses && expenses.byCategory.length)
+      sheets.push({
+        name: 'Расходы',
+        rows: [['Категория', 'Сумма'], ...expenses.byCategory.map((c: any) => [c.category, c.amount])],
+      });
+    if (eqLoad.length)
+      sheets.push({
+        name: 'Оборудование',
+        rows: [
+          ['Оборудование', 'Тип', 'В очереди', 'В работе', 'Готово', 'Брак'],
+          ...eqLoad.map((e: any) => [e.name, e.type, e.inQueue, e.inWork, e.completed, e.rework || 0]),
+        ],
+      });
+    if (staff.length)
+      sheets.push({
+        name: 'Сотрудники',
+        rows: [
+          ['Сотрудник', 'Роль', 'Заказов', 'Сумма продаж', 'Произв.', 'Задач'],
+          ...staff.map((u: any) => [u.name, u.role, u.ordersCreated, u.salesSum, u.productionDone, u.tasksDone]),
+        ],
+      });
+    if (sheets.length === 0) sheets.push({ name: 'Отчёт', rows: [['Нет данных за период']] });
+    downloadXlsx(`Отчёт-${period}`, sheets);
+  }
+
   return (
     <div className="print-area">
       <PageHeader
@@ -121,6 +218,7 @@ export default function ReportsPage() {
               active={period}
               onChange={setPeriod}
             />
+            <Button variant="ghost" onClick={exportExcel}><NavIcon name="download" className="h-4 w-4" />Excel</Button>
             <Button variant="ghost" onClick={() => window.print()}><NavIcon name="print" className="h-4 w-4" />PDF</Button>
           </div>
         }
