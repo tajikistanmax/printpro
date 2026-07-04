@@ -50,6 +50,8 @@ export default function CashPage() {
   // Z-отчёт (итоговый по закрытой смене) и история смен
   const [zReport, setZReport] = useState<any | null>(null);
   const [history, setHistory] = useState<any[] | null>(null);
+  // Защита от двойного клика на денежных операциях
+  const [busy, setBusy] = useState(false);
 
   function load() {
     setLoading(true);
@@ -79,7 +81,9 @@ export default function CashPage() {
 
   async function addMovement(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return;
     setMsg('');
+    setBusy(true);
     try {
       const updated = await api.post('/cash/movements', {
         type: moveType,
@@ -93,12 +97,16 @@ export default function CashPage() {
       setMsg('✓ Движение записано');
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
   async function closeShift() {
+    if (busy) return;
     if (!confirm('Закрыть смену? Касса будет закрыта.')) return;
     setMsg('');
+    setBusy(true);
     try {
       // Бэкенд возвращает итоговый отчёт закрытой смены — это и есть Z-отчёт.
       const rep = await api.post(`/cash/shifts/${shift.id}/close`, {
@@ -109,6 +117,8 @@ export default function CashPage() {
       load();
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -362,7 +372,7 @@ export default function CashPage() {
                   placeholder="напр. сдача в банк"
                 />
               </Field>
-              <Button type="submit" variant="ghost">Записать</Button>
+              <Button type="submit" variant="ghost" disabled={busy}>{busy ? 'Проведение…' : 'Записать'}</Button>
             </form>
             {msg && <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{msg}</p>}
           </Card>
@@ -381,7 +391,7 @@ export default function CashPage() {
                   placeholder={String(s.expectedCash)}
                 />
               </Field>
-              <Button variant="danger" onClick={closeShift}>Закрыть смену</Button>
+              <Button variant="danger" onClick={closeShift} disabled={busy}>{busy ? 'Закрытие…' : 'Закрыть смену'}</Button>
             </div>
             <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
               Расчётный остаток: {money(s.expectedCash)}. Если факт отличается —

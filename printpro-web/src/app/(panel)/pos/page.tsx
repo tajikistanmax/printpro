@@ -64,6 +64,9 @@ export default function PosPage() {
   const [vfdCfg, setVfdCfg] = useState<VfdConfig>(DEFAULT_VFD);
   const [scanMsg, setScanMsg] = useState('');
   const scanRef = useRef<(code: string) => void>(() => {});
+  // Замок оплаты (P0: двойной сабмит) — ref срабатывает мгновенно, state для UI
+  const payLockRef = useRef(false);
+  const [payBusy, setPayBusy] = useState(false);
   const lastScanRef = useRef<{ code: string; t: number }>({ code: '', t: 0 });
   const [shopInfo, setShopInfo] = useState<{ address?: string; phone?: string; inn?: string }>({});
   const [transferPay, setTransferPay] = useState<{ qr?: string; requisite?: string }>({});
@@ -515,6 +518,9 @@ export default function PosPage() {
 
   async function pay(overrideMethod?: string) {
     if (cart.length === 0) return;
+    // In-flight замок: повторный клик/горячая клавиша не проведут вторую оплату,
+    // пока не ответил сервер (idempotencyKey на бэке — вторая линия защиты).
+    if (payLockRef.current) return;
     setMsg('');
     const useMethod = overrideMethod ?? method;
 
@@ -532,6 +538,8 @@ export default function PosPage() {
       }
     }
 
+    payLockRef.current = true;
+    setPayBusy(true);
     try {
       const order = await api.post('/orders/quick-sale', {
         companyId: cid,
@@ -589,6 +597,9 @@ export default function PosPage() {
       );
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
+    } finally {
+      payLockRef.current = false;
+      setPayBusy(false);
     }
   }
 
@@ -748,6 +759,7 @@ export default function PosPage() {
       void pay();
     },
     payWith,
+    payBusy,
     msg,
     recentOrders,
     orderStats,

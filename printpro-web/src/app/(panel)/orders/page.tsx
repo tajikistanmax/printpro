@@ -173,6 +173,8 @@ export default function OrdersPage() {
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('CASH');
   const [msg, setMsg] = useState('');
+  // Защита от двойного клика на денежных операциях (оплата/возврат)
+  const [payBusy, setPayBusy] = useState(false);
 
   const filterQuery = () =>
     `companyId=${cid}` +
@@ -248,8 +250,9 @@ export default function OrdersPage() {
 
   async function pay(e: React.FormEvent) {
     e.preventDefault();
-    if (!selected) return;
+    if (!selected || payBusy) return;
     setMsg('');
+    setPayBusy(true);
     try {
       const updated = await api.post(`/orders/${selected.id}/payments`, {
         amount: Number(payAmount),
@@ -261,6 +264,8 @@ export default function OrdersPage() {
       loadStats();
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
+    } finally {
+      setPayBusy(false);
     }
   }
 
@@ -407,9 +412,10 @@ export default function OrdersPage() {
   }
 
   async function refund() {
-    if (!selected) return;
+    if (!selected || payBusy) return;
     if (!confirm('Оформить возврат? Деньги вернутся из кассы, товар — на склад, заказ будет отменён.')) return;
     setMsg('');
+    setPayBusy(true);
     try {
       const updated = await api.post(`/orders/${selected.id}/refund`);
       setSelected(updated);
@@ -418,6 +424,8 @@ export default function OrdersPage() {
       loadStats();
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
+    } finally {
+      setPayBusy(false);
     }
   }
 
@@ -436,7 +444,9 @@ export default function OrdersPage() {
       setMsg('Укажите количество для возврата');
       return;
     }
+    if (payBusy) return;
     setMsg('');
+    setPayBusy(true);
     try {
       const ret = await api.post(`/orders/${selected.id}/return`, { reason: 'Возврат', method: 'CASH', items });
       setMsg(`✓ Возврат ${ret.number} на ${ret.amount} c. оформлен`);
@@ -448,6 +458,8 @@ export default function OrdersPage() {
       loadStats();
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
+    } finally {
+      setPayBusy(false);
     }
   }
 
@@ -864,11 +876,11 @@ export default function OrdersPage() {
                     <option value="TRANSFER">Перевод</option>
                   </Select>
                 </Field>
-                <Button type="submit" variant="emerald">Принять</Button>
+                <Button type="submit" variant="emerald" disabled={payBusy}>{payBusy ? 'Проведение…' : 'Принять'}</Button>
               </form>
             )}
             {can('cash.operate') && selected.status !== 'CANCELLED' && Number(selected.paid) > 0 && (
-              <Button variant="danger" size="sm" className="mt-3" onClick={refund}>Оформить возврат</Button>
+              <Button variant="danger" size="sm" className="mt-3" onClick={refund} disabled={payBusy}>{payBusy ? 'Проведение…' : 'Оформить возврат'}</Button>
             )}
 
             {msg && <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{msg}</p>}

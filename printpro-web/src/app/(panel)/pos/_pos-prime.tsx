@@ -151,6 +151,7 @@ function OrderPanelPrime({ ctx }: { ctx: PosCtx }) {
   };
 
   const payDisabled =
+    c.payBusy ||
     c.cart.length === 0 ||
     (c.isMixed && c.splitLeft !== 0) ||
     (c.method === 'DEBT' && !c.phone.trim());
@@ -651,7 +652,7 @@ function OrderPanelPrime({ ctx }: { ctx: PosCtx }) {
                 setShowCashPay(false);
                 c.pay();
               }}
-              disabled={!!c.cashReceived && c.change < 0}
+              disabled={c.payBusy || (!!c.cashReceived && c.change < 0)}
               className="w-full rounded-xl bg-indigo-600 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
             >
               Подтвердить оплату

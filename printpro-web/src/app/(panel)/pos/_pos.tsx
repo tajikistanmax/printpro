@@ -97,6 +97,8 @@ export interface PosCtx {
   transferRequisite: string;
   pay: () => void;
   payWith: (method: string) => void;
+  // Оплата в процессе — кнопки оплаты блокируются (P0: двойной сабмит)
+  payBusy: boolean;
   msg: string;
   // для богатых оформлений
   recentOrders: any[];
@@ -631,18 +633,20 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
           }
         }}
         disabled={
+          c.payBusy ||
           c.cart.length === 0 ||
           (c.isMixed && c.splitLeft !== 0) ||
           (c.method === 'DEBT' && !c.phone.trim())
         }
         className="mt-4 flex w-full items-center justify-between rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
       >
-        <span>{c.method === 'DEBT' ? 'Записать в долг' : `Оплатить ${c.money(c.total)}`}</span>
+        <span>{c.payBusy ? 'Проведение…' : c.method === 'DEBT' ? 'Записать в долг' : `Оплатить ${c.money(c.total)}`}</span>
         <span className="text-xs opacity-70">F2</span>
       </button>
+      {/* «Сохранить заказ» откладывает чек, а НЕ проводит оплату */}
       <button
-        onClick={c.pay}
-        disabled={c.cart.length === 0}
+        onClick={c.hold}
+        disabled={c.payBusy || c.cart.length === 0}
         className="mt-2 flex w-full items-center justify-between rounded-xl border border-slate-200 px-5 py-3 font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
       >
         <span>Сохранить заказ</span>
@@ -771,7 +775,7 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
 
             <button
               onClick={() => { setShowCashPay(false); c.pay(); }}
-              disabled={!!c.cashReceived && c.change < 0}
+              disabled={c.payBusy || (!!c.cashReceived && c.change < 0)}
               className="w-full rounded-xl bg-indigo-600 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
             >
               Подтвердить оплату
@@ -1157,16 +1161,16 @@ function OrderPanelPro({ ctx }: { ctx: PosCtx }) {
 
       <button
         onClick={c.pay}
-        disabled={c.cart.length === 0}
+        disabled={c.payBusy || c.cart.length === 0}
         className="mt-4 flex w-full items-center justify-between rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
       >
-        <span>Оплата</span>
+        <span>{c.payBusy ? 'Проведение…' : 'Оплата'}</span>
         <span className="text-xs opacity-70">F9</span>
       </button>
       <div className="mt-2 grid grid-cols-2 gap-2">
         <button
           onClick={() => c.payWith('CARD')}
-          disabled={c.cart.length === 0}
+          disabled={c.payBusy || c.cart.length === 0}
           className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
         >
           <span>Оплата картой</span>
@@ -1212,7 +1216,7 @@ function OrderPanelPro({ ctx }: { ctx: PosCtx }) {
           </div>
           <button
             onClick={() => c.payWith('MIXED')}
-            disabled={c.cart.length === 0 || c.splitLeft !== 0}
+            disabled={c.payBusy || c.cart.length === 0 || c.splitLeft !== 0}
             className="mt-1 w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
           >
             Провести смешанную оплату
@@ -1596,16 +1600,16 @@ function OrderPanelMarket({ ctx }: { ctx: PosCtx }) {
 
       <button
         onClick={c.pay}
-        disabled={c.cart.length === 0}
+        disabled={c.payBusy || c.cart.length === 0}
         className="mt-4 flex w-full items-center justify-between rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
       >
-        <span>Оплата</span>
+        <span>{c.payBusy ? 'Проведение…' : 'Оплата'}</span>
         <span className="text-xs opacity-70">F9</span>
       </button>
       <div className="mt-2 grid grid-cols-2 gap-2">
         <button
           onClick={() => c.payWith('CARD')}
-          disabled={c.cart.length === 0}
+          disabled={c.payBusy || c.cart.length === 0}
           className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
         >
           <span>Оплата картой</span>
@@ -1651,7 +1655,7 @@ function OrderPanelMarket({ ctx }: { ctx: PosCtx }) {
           </div>
           <button
             onClick={() => c.payWith('MIXED')}
-            disabled={c.cart.length === 0 || c.splitLeft !== 0}
+            disabled={c.payBusy || c.cart.length === 0 || c.splitLeft !== 0}
             className="mt-1 w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
           >
             Провести смешанную оплату

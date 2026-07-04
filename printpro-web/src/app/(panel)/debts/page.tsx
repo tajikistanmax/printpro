@@ -52,6 +52,9 @@ export default function DebtsPage() {
   const [clientDebts, setClientDebts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
 
+  // Защита от двойного клика на денежных операциях
+  const [busy, setBusy] = useState(false);
+
   // Приём оплаты долга клиента
   const [payClient, setPayClient] = useState<any | null>(null);
   const [cAmount, setCAmount] = useState('');
@@ -87,7 +90,7 @@ export default function DebtsPage() {
   }
   async function submitClient(e: React.FormEvent) {
     e.preventDefault();
-    if (!payClient) return;
+    if (!payClient || busy) return;
     const amount = Number(cAmount);
     const debt = Number(payClient.debt) || 0;
     if (!amount || amount <= 0) {
@@ -98,12 +101,15 @@ export default function DebtsPage() {
       setCMsg(`Сумма больше долга (${money(debt)})`);
       return;
     }
+    setBusy(true);
     try {
       await api.post(`/orders/${payClient.orderId}/payments`, { amount, method: cMethod });
       setPayClient(null);
       load();
     } catch (err: any) {
       setCMsg('Ошибка: ' + err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -135,7 +141,7 @@ export default function DebtsPage() {
   }
   async function submitSupplier(e: React.FormEvent) {
     e.preventDefault();
-    if (!paySupplier) return;
+    if (!paySupplier || busy) return;
     const amount = Number(sAmount);
     const debt = Number(paySupplier.debt) || 0;
     if (!amount || amount <= 0) {
@@ -146,12 +152,15 @@ export default function DebtsPage() {
       setSMsg(`Сумма больше долга (${money(debt)})`);
       return;
     }
+    setBusy(true);
     try {
       await api.post(`/purchasing/suppliers/${paySupplier.id}/pay-debt`, { amount });
       setPaySupplier(null);
       load();
     } catch (err: any) {
       setSMsg('Ошибка: ' + err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -299,7 +308,7 @@ export default function DebtsPage() {
               {cMsg && <p className="text-sm text-rose-600">{cMsg}</p>}
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="ghost" onClick={() => setPayClient(null)} className="flex-1">Отмена</Button>
-                <Button type="submit" variant="emerald" className="flex-1">Принять</Button>
+                <Button type="submit" variant="emerald" className="flex-1" disabled={busy}>{busy ? 'Проведение…' : 'Принять'}</Button>
               </div>
             </form>
           </div>
@@ -363,7 +372,7 @@ export default function DebtsPage() {
               {sMsg && <p className="text-sm text-rose-600">{sMsg}</p>}
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="ghost" onClick={() => setPaySupplier(null)} className="flex-1">Отмена</Button>
-                <Button type="submit" variant="emerald" className="flex-1">Оплатить</Button>
+                <Button type="submit" variant="emerald" className="flex-1" disabled={busy}>{busy ? 'Проведение…' : 'Оплатить'}</Button>
               </div>
             </form>
           </div>

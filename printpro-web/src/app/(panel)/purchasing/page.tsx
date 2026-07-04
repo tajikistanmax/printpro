@@ -116,6 +116,9 @@ export default function PurchasingPage() {
   const [payAmount, setPayAmount] = useState('');
   const [payMsg, setPayMsg] = useState('');
 
+  // Защита от двойного клика на денежных операциях (приёмка/оплата/отмена)
+  const [busy, setBusy] = useState(false);
+
   // Заявка на закупку (что нужно докупить) + печать накладной-заявки
   const [reqRows, setReqRows] = useState<ReqRow[]>([]);
   const [reqQuery, setReqQuery] = useState('');
@@ -186,7 +189,7 @@ export default function PurchasingPage() {
   }
   async function submitPay(e: React.FormEvent) {
     e.preventDefault();
-    if (!payTarget) return;
+    if (!payTarget || busy) return;
     const amount = Number(payAmount);
     const debt = Number(payTarget.debt) || 0;
     if (!amount || amount <= 0) {
@@ -197,12 +200,15 @@ export default function PurchasingPage() {
       setPayMsg(`Сумма больше долга (${money(debt)})`);
       return;
     }
+    setBusy(true);
     try {
       await api.post(`/purchasing/suppliers/${payTarget.id}/pay-debt`, { amount });
       setPayTarget(null);
       load();
     } catch (err: any) {
       setPayMsg('Ошибка: ' + err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -302,6 +308,8 @@ export default function PurchasingPage() {
         return;
       }
     }
+    if (busy) return;
+    setBusy(true);
     try {
       await api.post('/purchasing/receipts', {
         companyId: cid,
@@ -316,6 +324,8 @@ export default function PurchasingPage() {
       load();
     } catch (err: any) {
       setRMsg('Ошибка: ' + err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -327,12 +337,16 @@ export default function PurchasingPage() {
   }
 
   async function cancelReceipt(r: any) {
+    if (busy) return;
     if (!confirm(`Отменить приёмку ${r.number ?? ''}? Товар вернётся со склада, долг поставщику и оплата будут сторнированы.`)) return;
+    setBusy(true);
     try {
       await api.post(`/purchasing/receipts/${r.id}/cancel`);
       load();
     } catch (err: any) {
       alert('Ошибка: ' + err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -615,7 +629,7 @@ export default function PurchasingPage() {
                         )}
                       </td>
                       <td className="text-right">
-                        <button onClick={() => cancelReceipt(r)} className="text-xs font-medium text-rose-600 hover:underline">Отменить</button>
+                        <button onClick={() => cancelReceipt(r)} disabled={busy} className="text-xs font-medium text-rose-600 hover:underline disabled:opacity-50">Отменить</button>
                       </td>
                     </tr>
                   ))}
@@ -1192,7 +1206,7 @@ export default function PurchasingPage() {
 
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="ghost" onClick={() => setReceiptModalOpen(false)} className="flex-1">Отмена</Button>
-                <Button type="submit" variant="emerald" className="flex-1">Принять на склад</Button>
+                <Button type="submit" variant="emerald" className="flex-1" disabled={busy}>{busy ? 'Проведение…' : 'Принять на склад'}</Button>
               </div>
             </form>
           </div>
@@ -1245,7 +1259,7 @@ export default function PurchasingPage() {
 
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="ghost" onClick={() => setPayTarget(null)} className="flex-1">Отмена</Button>
-                <Button type="submit" variant="emerald" className="flex-1">Оплатить</Button>
+                <Button type="submit" variant="emerald" className="flex-1" disabled={busy}>{busy ? 'Проведение…' : 'Оплатить'}</Button>
               </div>
             </form>
           </div>

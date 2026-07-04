@@ -34,6 +34,8 @@ export default function PayrollPage() {
   const [periodId, setPeriodId] = useState('');
   const [records, setRecords] = useState<any[]>([]);
   const [msg, setMsg] = useState('');
+  // Защита от двойного клика на денежных операциях
+  const [busy, setBusy] = useState(false);
 
   // Новый период
   const [pName, setPName] = useState('');
@@ -109,14 +111,24 @@ export default function PayrollPage() {
   }
 
   async function pay(id: string) {
+    if (busy) return;
     if (!confirm('Выплатить зарплату? Сумма спишется из кассы.')) return;
-    await api.post(`/payroll/records/${id}/pay`);
-    loadRecords();
+    setBusy(true);
+    try {
+      await api.post(`/payroll/records/${id}/pay`);
+      loadRecords();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function addAdvance(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return;
     setMsg('');
+    setBusy(true);
     try {
       await api.post('/payroll/advances', {
         companyId: cid,
@@ -127,6 +139,8 @@ export default function PayrollPage() {
       setMsg('✓ Аванс записан');
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -297,8 +311,8 @@ export default function PayrollPage() {
                           <Badge tone="emerald">выплачено</Badge>
                         ) : (
                           canManage && (
-                            <Button variant="emerald" size="sm" onClick={() => pay(r.id)}>
-                              Выплатить
+                            <Button variant="emerald" size="sm" onClick={() => pay(r.id)} disabled={busy}>
+                              {busy ? 'Проведение…' : 'Выплатить'}
                             </Button>
                           )
                         )}
@@ -337,8 +351,8 @@ export default function PayrollPage() {
                 required
                 className="w-28"
               />
-              <Button type="submit" variant="amber">
-                Выдать
+              <Button type="submit" variant="amber" disabled={busy}>
+                {busy ? 'Проведение…' : 'Выдать'}
               </Button>
             </form>
           </Card>

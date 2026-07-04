@@ -156,6 +156,8 @@ export default function WarehousePage() {
   const [woQty, setWoQty] = useState('');
   const [woReason, setWoReason] = useState('');
   const [woMsg, setWoMsg] = useState('');
+  // Защита от двойного клика на складских операциях (перемещение/списание/отмена)
+  const [stBusy, setStBusy] = useState(false);
 
   function load() {
     setLoading(true);
@@ -310,27 +312,34 @@ export default function WarehousePage() {
 
   // ---- перемещение / инвентаризация ----
   async function transfer(e: React.FormEvent) {
-    e.preventDefault(); setTMsg('');
+    e.preventDefault(); if (stBusy) return;
+    setTMsg(''); setStBusy(true);
     try {
       await api.post('/stock/transfer', { companyId: cid, productId: tProduct || products[0]?.id, fromBranchId: tFrom, toBranchId: tTo, quantity: Number(tQty) });
       setTQty(''); setTMsg('✓ Перемещено'); load();
     } catch (err: any) { setTMsg('Ошибка: ' + err.message); }
+    finally { setStBusy(false); }
   }
   async function writeOff(e: React.FormEvent) {
-    e.preventDefault(); setWoMsg('');
+    e.preventDefault(); if (stBusy) return;
+    setWoMsg(''); setStBusy(true);
     try {
       const r = await api.post('/stock/write-off', { companyId: cid, productId: woProduct || products[0]?.id, branchId: woBranch || branches[0]?.id, quantity: Number(woQty), reason: woReason || undefined });
       setWoQty(''); setWoReason(''); setWoMsg(`✓ Списано (себестоимость ${money(Number(r.cost))})`);
       load(); loadWriteOffs(); if (tab === 'moves') loadMovements();
     } catch (err: any) { setWoMsg('Ошибка: ' + err.message); }
+    finally { setStBusy(false); }
   }
   async function cancelWriteOffRow(id: string) {
+    if (stBusy) return;
     if (!confirm('Отменить это списание? Количество вернётся на склад.')) return;
+    setStBusy(true);
     try {
       await api.post(`/stock/write-offs/${id}/cancel`);
       setWoMsg('✓ Списание отменено');
       load(); loadWriteOffs();
     } catch (err: any) { setWoMsg('Ошибка: ' + err.message); }
+    finally { setStBusy(false); }
   }
 
   // ---- панель материала ----
@@ -658,7 +667,7 @@ export default function WarehousePage() {
                   <Field label="Куда"><Select value={tTo} onChange={(e) => setTTo(e.target.value)} required><option value="">—</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
                 </div>
                 <Field label="Количество"><Input value={tQty} onChange={(e) => setTQty(e.target.value)} type="number" step="1" placeholder="0" required /></Field>
-                <Button type="submit" variant="sky" className="w-full">Переместить</Button>
+                <Button type="submit" variant="sky" className="w-full" disabled={stBusy}>{stBusy ? 'Проведение…' : 'Переместить'}</Button>
                 {tMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{tMsg}</p>}
               </form>
             </Card>
@@ -736,7 +745,7 @@ export default function WarehousePage() {
                 <Field label="Количество"><Input value={woQty} onChange={(e) => setWoQty(e.target.value)} type="number" step="1" placeholder="0" required /></Field>
               </div>
               <Field label="Причина"><Input value={woReason} onChange={(e) => setWoReason(e.target.value)} placeholder="напр. повреждение" /></Field>
-              <Button type="submit" variant="danger" className="w-full">Списать</Button>
+              <Button type="submit" variant="danger" className="w-full" disabled={stBusy}>{stBusy ? 'Проведение…' : 'Списать'}</Button>
               {woMsg && <p className="text-sm text-slate-600 dark:text-slate-300">{woMsg}</p>}
             </form>
             <p className="mt-2 text-xs text-slate-400">Себестоимость спишется из закупочной цены материала.</p>
@@ -763,7 +772,7 @@ export default function WarehousePage() {
                           <td className="text-right tabular-nums text-slate-500 dark:text-slate-400">{money(Number(w.cost))}</td>
                           <td className="text-slate-500 dark:text-slate-400">{w.reason ?? '—'}</td>
                           <td className="text-right">
-                            <button onClick={() => cancelWriteOffRow(w.id)} className="text-xs font-medium text-rose-600 hover:underline">Отменить</button>
+                            <button onClick={() => cancelWriteOffRow(w.id)} disabled={stBusy} className="text-xs font-medium text-rose-600 hover:underline disabled:opacity-50">Отменить</button>
                           </td>
                         </tr>
                       ))}
