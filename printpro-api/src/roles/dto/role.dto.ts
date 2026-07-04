@@ -1,7 +1,6 @@
 import { IsArray, IsString } from 'class-validator';
 
 export class CreateRoleDto {
-  @IsString() companyId: string;
   @IsString() name: string;
 }
 

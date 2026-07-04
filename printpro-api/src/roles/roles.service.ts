@@ -12,8 +12,8 @@ export class RolesService {
   }
 
   // Создать роль
-  createRole(dto: CreateRoleDto) {
-    return this.prisma.role.create({ data: dto });
+  createRole(dto: CreateRoleDto, companyId: string) {
+    return this.prisma.role.create({ data: { name: dto.name, companyId } });
   }
 
   // Роли компании с их правами
@@ -25,8 +25,15 @@ export class RolesService {
   }
 
   // Установить права роли (полная замена набора) — «галочки»
-  async setPermissions(roleId: string, permissionCodes: string[]) {
-    const role = await this.prisma.role.findUnique({ where: { id: roleId } });
+  async setPermissions(
+    roleId: string,
+    permissionCodes: string[],
+    companyId: string,
+  ) {
+    // Проверка владельца: роль должна принадлежать компании из токена
+    const role = await this.prisma.role.findFirst({
+      where: { id: roleId, companyId },
+    });
     if (!role) throw new NotFoundException('Роль не найдена');
 
     // Находим id выбранных прав по их кодам

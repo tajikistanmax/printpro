@@ -2,7 +2,6 @@ import { IsEnum, IsObject, IsOptional, IsString } from 'class-validator';
 import { ProofStatus } from '@prisma/client';
 
 export class CreateProofDto {
-  @IsString() companyId: string;
   @IsString() orderId: string;
   @IsOptional() @IsString() title?: string;
   @IsOptional() @IsString() assignedUserId?: string;

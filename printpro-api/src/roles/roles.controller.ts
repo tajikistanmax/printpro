@@ -13,7 +13,14 @@ import { CreateRoleDto, SetPermissionsDto } from './dto/role.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
 
+interface JwtUser {
+  sub: string;
+  companyId: string;
+}
+
+// companyId только из токена — чужие роли недоступны
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class RolesController {
@@ -29,21 +36,25 @@ export class RolesController {
   // Роли компании
   @Get('roles')
   @RequirePermissions('roles.manage')
-  findRoles(@Query('companyId') companyId: string) {
-    return this.roles.findRoles(companyId);
+  findRoles(@CurrentUser() user: JwtUser) {
+    return this.roles.findRoles(user.companyId);
   }
 
   // Создать роль
   @Post('roles')
   @RequirePermissions('roles.manage')
-  createRole(@Body() dto: CreateRoleDto) {
-    return this.roles.createRole(dto);
+  createRole(@Body() dto: CreateRoleDto, @CurrentUser() user: JwtUser) {
+    return this.roles.createRole(dto, user.companyId);
   }
 
   // Установить права роли (галочки)
   @Put('roles/:id/permissions')
   @RequirePermissions('roles.manage')
-  setPermissions(@Param('id') id: string, @Body() dto: SetPermissionsDto) {
-    return this.roles.setPermissions(id, dto.permissionCodes);
+  setPermissions(
+    @Param('id') id: string,
+    @Body() dto: SetPermissionsDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.roles.setPermissions(id, dto.permissionCodes, user.companyId);
   }
 }

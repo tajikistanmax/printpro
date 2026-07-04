@@ -11,16 +11,16 @@ import {
 export class DesignService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateProofDto) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: dto.orderId },
+  async create(dto: CreateProofDto, companyId: string) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: dto.orderId, companyId },
     });
     if (!order) throw new NotFoundException('Заказ не найден');
 
     const status = dto.fileUrl ? ProofStatus.IN_PROGRESS : ProofStatus.TODO;
     const created = await this.prisma.designProof.create({
       data: {
-        companyId: dto.companyId,
+        companyId,
         orderId: dto.orderId,
         title: dto.title,
         assignedUserId: dto.assignedUserId,
@@ -47,8 +47,8 @@ export class DesignService {
     });
   }
 
-  async update(id: string, dto: UpdateProofDto) {
-    const proof = await this.ensure(id);
+  async update(id: string, dto: UpdateProofDto, companyId: string) {
+    const proof = await this.ensure(id, companyId);
     // Новый файл = новая версия
     const newFile = dto.fileUrl && dto.fileUrl !== proof.fileUrl;
     const updated = await this.prisma.designProof.update({
@@ -72,24 +72,36 @@ export class DesignService {
     return updated;
   }
 
-  async updateStatus(id: string, dto: UpdateProofStatusDto) {
-    const proof = await this.ensure(id);
+  async updateStatus(
+    id: string,
+    dto: UpdateProofStatusDto,
+    companyId: string,
+    userId?: string,
+  ) {
+    const proof = await this.ensure(id, companyId);
     const updated = await this.prisma.designProof.update({
       where: { id },
       data: {
         status: dto.status,
         ...(dto.comment !== undefined ? { comment: dto.comment } : {}),
+        ...(dto.status === ProofStatus.APPROVED
+          ? { approvedById: userId ?? null, approvedAt: new Date() }
+          : {}),
       },
       include: this.includes(),
     });
     // Авто-связь: статус макета подтягивает статус заказа (только в дизайн-фазе)
-    await this.syncOrderFromProof(proof.orderId, dto.status);
+    await this.syncOrderFromProof(proof.orderId, dto.status, userId);
     return updated;
   }
 
   // Двигаем статус заказа за статусом макета. Только пока заказ в дизайн-фазе —
   // не тянем назад заказы, уже ушедшие в производство/выдачу.
-  private async syncOrderFromProof(orderId: string, proofStatus: ProofStatus) {
+  private async syncOrderFromProof(
+    orderId: string,
+    proofStatus: ProofStatus,
+    userId?: string,
+  ) {
     const map: Partial<Record<ProofStatus, OrderStatus>> = {
       IN_PROGRESS: OrderStatus.IN_DESIGN,
       SENT: OrderStatus.DESIGN_APPROVAL,
@@ -116,12 +128,17 @@ export class DesignService {
       data: { status: target },
     });
     await this.prisma.orderStatusHistory.create({
-      data: { orderId, status: target, reason: 'Авто: статус макета' },
+      data: {
+        orderId,
+        status: target,
+        reason: 'Авто: статус макета',
+        ...(userId ? { userId } : {}),
+      },
     });
   }
 
-  async remove(id: string) {
-    await this.ensure(id);
+  async remove(id: string, companyId: string) {
+    await this.ensure(id, companyId);
     // Мягкое удаление — чтобы синхронизировалось между узлами
     await this.prisma.designProof.update({
       where: { id },
@@ -146,11 +163,15 @@ export class DesignService {
         },
       },
       assignedUser: { select: { id: true, fullName: true } },
+      approvedBy: { select: { id: true, fullName: true } },
     };
   }
 
-  private async ensure(id: string) {
-    const p = await this.prisma.designProof.findUnique({ where: { id } });
+  // Проверка владельца: макет должен принадлежать компании из токена
+  private async ensure(id: string, companyId: string) {
+    const p = await this.prisma.designProof.findFirst({
+      where: { id, companyId, deletedAt: null },
+    });
     if (!p) throw new NotFoundException('Макет не найден');
     return p;
   }

@@ -2,7 +2,6 @@ import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { EquipmentStatus } from '@prisma/client';
 
 export class CreateEquipmentDto {
-  @IsString() companyId: string;
   @IsOptional() @IsString() branchId?: string;
   @IsString() name: string;
   @IsOptional() @IsString() type?: string; // принтер, плоттер, ламинатор…

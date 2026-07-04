@@ -278,6 +278,7 @@ model User {
   cashShifts     CashShift[]
   productionJobs ProductionJob[]  @relation("ProductionAssignee")
   designProofs   DesignProof[]    @relation("DesignProofAssignee")
+  approvedProofs DesignProof[]    @relation("DesignProofApprover")
   workTime       WorkTimeRecord[]
   advances       SalaryAdvance[]
   salaryRecords  SalaryRecord[]
@@ -1135,6 +1136,10 @@ model DesignProof {
   checklist      Json? // чек-лист перед печатью { cmyk: true, bleed: true, ... }
   assignedUserId String?
   assignedUser   User?       @relation("DesignProofAssignee", fields: [assignedUserId], references: [id])
+  // Кто и когда утвердил макет (заполняется при переходе в APPROVED)
+  approvedById   String?
+  approvedBy     User?       @relation("DesignProofApprover", fields: [approvedById], references: [id])
+  approvedAt     DateTime?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
