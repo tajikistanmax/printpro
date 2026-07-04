@@ -33,6 +33,7 @@ import { ComplaintsModule } from './complaints/complaints.module';
 import { EmailModule } from './email/email.module';
 import { SystemModule } from './system/system.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { PricingModule } from './pricing/pricing.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { UploadsModule } from './uploads/uploads.module';
     EmailModule, // email-уведомления (SMTP)
     SystemModule, // информация о системе (версия, СУБД, аптайм)
     UploadsModule, // загрузка изображений (фото товаров/услуг, QR оплаты)
+    PricingModule, // серверный расчёт цены услуг (тираж/размер/опции/дизайн)
   ],
   controllers: [AppController],
   providers: [AppService],
