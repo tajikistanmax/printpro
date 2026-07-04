@@ -1,5 +1,27 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { OrderStatus, ProofStatus } from '@prisma/client';
+
+// Допустимые переходы статуса макета. Ключевое правило: APPROVED достижим только
+// из SENT — макет нельзя утвердить, не показав клиенту (защита от «самосогласования»
+// в обход клиента). REJECTED возможен из любого статуса. Переход в тот же статус
+// (идемпотентно) разрешён отдельно.
+const PROOF_FLOW: Record<ProofStatus, ProofStatus[]> = {
+  TODO: [ProofStatus.IN_PROGRESS, ProofStatus.REJECTED],
+  IN_PROGRESS: [ProofStatus.SENT, ProofStatus.REVISION, ProofStatus.REJECTED],
+  SENT: [
+    ProofStatus.APPROVED,
+    ProofStatus.REVISION,
+    ProofStatus.IN_PROGRESS,
+    ProofStatus.REJECTED,
+  ],
+  REVISION: [ProofStatus.IN_PROGRESS, ProofStatus.SENT, ProofStatus.REJECTED],
+  APPROVED: [ProofStatus.REVISION, ProofStatus.REJECTED],
+  REJECTED: [ProofStatus.TODO, ProofStatus.IN_PROGRESS],
+};
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateProofDto,
@@ -86,6 +108,16 @@ export class DesignService {
     userId?: string,
   ) {
     const proof = await this.ensure(id, companyId);
+    // Валидация перехода статуса макета (state machine). Тот же статус — no-op.
+    if (dto.status !== proof.status) {
+      const allowed = PROOF_FLOW[proof.status] ?? [];
+      if (!allowed.includes(dto.status)) {
+        throw new BadRequestException(
+          `Недопустимый переход статуса макета: «${proof.status}» → «${dto.status}». ` +
+            'Макет утверждается только после отправки клиенту (SENT → APPROVED).',
+        );
+      }
+    }
     const updated = await this.prisma.designProof.update({
       where: { id },
       data: {
