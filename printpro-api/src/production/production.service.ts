@@ -1,5 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { OrderStatus, ProductionStatus, StockMovementType } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  OrderStatus,
+  ProductionStatus,
+  ProofStatus,
+  StockMovementType,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateProductionJobDto,
@@ -16,6 +25,8 @@ export class ProductionService {
       where: { id: dto.orderId, companyId: dto.companyId },
     });
     if (!order) throw new NotFoundException('Заказ не найден');
+    // Барьер согласования: без утверждённого макета задание не создаётся
+    await this.ensureDesignApproved(dto.companyId, dto.orderId);
 
     return this.prisma.productionJob.create({
       data: {
@@ -73,8 +84,12 @@ export class ProductionService {
       defectReason?: string | null;
     } = { status };
 
-    // Первый переход из «ожидает» в работу — фиксируем старт
+    // Первый переход из «ожидает» в работу — фиксируем старт.
+    // Барьер согласования: стартовать печать по неутверждённому макету нельзя.
     if (status !== ProductionStatus.PENDING && !job.startedAt) {
+      if (status !== ProductionStatus.CANCELLED) {
+        await this.ensureDesignApproved(companyId, job.orderId);
+      }
       data.startedAt = new Date();
     }
     // Готово — фиксируем завершение, иначе сбрасываем
@@ -192,6 +207,26 @@ export class ProductionService {
   }
 
   // ---------- helpers ----------
+  // Барьер согласования макета (дублирует orders.ensureDesignApproved, чтобы не
+  // тянуть кросс-модульную зависимость): если у заказа есть активные макеты и ни
+  // один не утверждён — печать запрещена. Отключается requireDesignApproval='0'.
+  private async ensureDesignApproved(companyId: string, orderId: string) {
+    const setting = await this.prisma.setting.findFirst({
+      where: { companyId, key: 'requireDesignApproval' },
+    });
+    if (setting?.value === '0') return;
+    const proofs = await this.prisma.designProof.findMany({
+      where: { orderId, deletedAt: null },
+      select: { status: true },
+    });
+    if (proofs.length === 0) return;
+    if (proofs.some((p) => p.status === ProofStatus.APPROVED)) return;
+    throw new BadRequestException(
+      'Макет заказа не согласован — запуск производства заблокирован. ' +
+        'Утвердите макет (статус «Согласован») или отключите барьер в настройках.',
+    );
+  }
+
   private includes() {
     return {
       order: {

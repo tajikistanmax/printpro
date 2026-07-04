@@ -364,6 +364,18 @@ export default function SettingsPage() {
                 </div>
                 <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">По умолчанию: начисление 1% от каждой оплаты, списание до 30% от суммы чека.</p>
               </Card>
+
+              <Card className="mt-6">
+                <SectionTitle>Производство</SectionTitle>
+                <Toggle
+                  label="Печать только по согласованному макету"
+                  checked={s.requireDesignApproval !== '0'}
+                  onChange={(v) => set('requireDesignApproval', v ? '1' : '0')}
+                />
+                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                  Если у заказа есть макет, запуск производства блокируется, пока макет не утверждён (статус «Согласован»).
+                </p>
+              </Card>
             </div>
           )}
           {section === 'branches' && (

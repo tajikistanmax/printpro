@@ -1253,6 +1253,12 @@ export class OrdersService {
       );
     }
 
+    // Барьер согласования: заказ с макетом не уходит в производство, пока макет
+    // не утверждён (профильный риск типографии — тираж по несогласованному файлу).
+    if (status === OrderStatus.IN_PROGRESS) {
+      await this.ensureDesignApproved(order.companyId, orderId);
+    }
+
     await this.prisma.$transaction([
       this.prisma.order.update({ where: { id: orderId }, data: { status } }),
       this.prisma.orderStatusHistory.create({
@@ -1382,6 +1388,26 @@ export class OrdersService {
 
   // Ставки бонусной программы из настроек компании (в долях).
   // По умолчанию: начисление 1%, максимум списания 30% от чека.
+  // Барьер согласования макета: если у заказа есть активные макеты и ни один
+  // не утверждён — старт производства запрещён. Отключается настройкой
+  // requireDesignApproval = '0'. Заказы без макетов (быстрые продажи) не трогаем.
+  async ensureDesignApproved(companyId: string, orderId: string) {
+    const setting = await this.prisma.setting.findFirst({
+      where: { companyId, key: 'requireDesignApproval' },
+    });
+    if (setting?.value === '0') return;
+    const proofs = await this.prisma.designProof.findMany({
+      where: { orderId, deletedAt: null },
+      select: { status: true },
+    });
+    if (proofs.length === 0) return;
+    if (proofs.some((p) => p.status === ProofStatus.APPROVED)) return;
+    throw new BadRequestException(
+      'Макет заказа не согласован — запуск производства заблокирован. ' +
+        'Утвердите макет (статус «Согласован») или отключите барьер в настройках.',
+    );
+  }
+
   private async bonusRates(
     companyId: string,
   ): Promise<{ accrual: number; maxRedeem: number }> {
