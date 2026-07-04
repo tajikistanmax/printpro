@@ -86,6 +86,22 @@ export default function NewOrderPage() {
     setLines((l) => l.filter((_, idx) => idx !== i));
   }
 
+  // Серверный расчёт цены услуги (тираж/база/размер/опции). Держим сервер
+  // единым источником истины; поле остаётся редактируемым (ручное переопределение).
+  async function repriceService(i: number, refId: string, quantity: number) {
+    if (!refId || !(Number(quantity) > 0)) return;
+    try {
+      const r = await api.post('/pricing/preview', {
+        serviceId: refId,
+        quantity: Number(quantity),
+      });
+      // MANUAL (договорная) — цену не трогаем, вводит менеджер.
+      if (r && !r.manual) updateLine(i, { unitPrice: Number(r.unitPrice) });
+    } catch {
+      /* расчёт недоступен — оставляем цену из справочника */
+    }
+  }
+
   // При выборе товара/услуги — подставляем имя и цену
   function pickRef(i: number, refId: string) {
     const line = lines[i];
@@ -96,6 +112,8 @@ export default function NewOrderPage() {
         description: s?.name ?? '',
         unitPrice: Number(s?.basePrice ?? 0),
       });
+      // Уточняем цену серверным расчётом (тираж и т.п.)
+      repriceService(i, refId, line.quantity);
     } else {
       const p = products.find((x) => x.id === refId);
       updateLine(i, {
@@ -478,6 +496,11 @@ export default function NewOrderPage() {
                       onChange={(e) =>
                         updateLine(i, { quantity: Number(e.target.value) })
                       }
+                      onBlur={() => {
+                        // Пересчитываем цену услуги по новому тиражу
+                        if (l.itemType === 'SERVICE' && l.refId)
+                          repriceService(i, l.refId, l.quantity);
+                      }}
                       className="w-20 rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1.5 text-sm dark:bg-slate-800 dark:text-slate-100"
                       title="Количество"
                     />
