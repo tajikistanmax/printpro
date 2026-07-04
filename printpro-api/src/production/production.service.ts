@@ -110,6 +110,17 @@ export class ProductionService {
       await this.writeOffMaterials(job.id, job.orderId, userId);
     }
 
+    // Откат материалов при выходе из «готово» (переделка/пауза/отмена): возвращаем
+    // ранее списанное и снимаем флаг — чтобы повторное «готово» списало заново и
+    // учёт материалов не «дрейфовал» (списал один прогон, не списал второй).
+    if (
+      job.status === ProductionStatus.COMPLETED &&
+      status !== ProductionStatus.COMPLETED &&
+      job.materialsWrittenOff
+    ) {
+      await this.reverseMaterials(job.id, job.orderId, userId);
+    }
+
     // Подтягиваем статус заказа за производством
     await this.syncOrderStatus(job.orderId);
 
@@ -179,6 +190,91 @@ export class ProductionService {
             afterQty: after,
             reason: `Производство по заказу №${order.orderNumber}`,
             orderId: order.id,
+            userId: userId ?? null,
+          },
+        });
+      }
+    });
+  }
+
+  // Возврат материалов на склад при откате завершённого задания. Возвращаем
+  // ЧИСТЫЙ остаток списанного (списания производством минус уже сделанные
+  // возвраты) — иначе несколько циклов «готово↔переделка» переприходовали бы
+  // лишнее. Флаг снимаем атомарно (повторный/параллельный вызов → count=0).
+  private async reverseMaterials(
+    jobId: string,
+    orderId: string,
+    userId?: string,
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      const claim = await tx.productionJob.updateMany({
+        where: { id: jobId, materialsWrittenOff: true },
+        data: { materialsWrittenOff: false },
+      });
+      if (claim.count === 0) return;
+
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: { branchId: true, companyId: true, orderNumber: true },
+      });
+      if (!order?.branchId) return;
+      const branchId = order.branchId;
+
+      // Списано производством по заказу и уже возвращено — из журнала движений.
+      // Прим.: списание привязано к заказу (не к заданию), поэтому при нескольких
+      // заданиях на один заказ откат вернёт материалы всего заказа (редкий случай).
+      const [outMoves, inMoves] = await Promise.all([
+        tx.stockMovement.groupBy({
+          by: ['productId'],
+          where: {
+            orderId,
+            companyId: order.companyId,
+            type: StockMovementType.WRITE_OFF,
+            reason: { startsWith: 'Производство по заказу' },
+          },
+          _sum: { quantity: true },
+        }),
+        tx.stockMovement.groupBy({
+          by: ['productId'],
+          where: {
+            orderId,
+            companyId: order.companyId,
+            type: StockMovementType.IN,
+            reason: { startsWith: 'Возврат материалов (переделка)' },
+          },
+          _sum: { quantity: true },
+        }),
+      ]);
+      const returned = new Map(
+        inMoves.map((m) => [m.productId, Number(m._sum.quantity ?? 0)]),
+      );
+
+      for (const m of outMoves) {
+        const net = Number(
+          (Number(m._sum.quantity ?? 0) - (returned.get(m.productId) ?? 0)).toFixed(3),
+        );
+        if (net <= 0) continue; // уже возвращено
+        await tx.stock.upsert({
+          where: { productId_branchId: { productId: m.productId, branchId } },
+          create: { productId: m.productId, branchId, quantity: net },
+          update: { quantity: { increment: net } },
+        });
+        const cur = await tx.stock.findUnique({
+          where: { productId_branchId: { productId: m.productId, branchId } },
+        });
+        const after = cur ? Number(cur.quantity) : net;
+        const before = Number((after - net).toFixed(3));
+        await tx.stockMovement.create({
+          data: {
+            companyId: order.companyId,
+            productId: m.productId,
+            branchId,
+            type: StockMovementType.IN,
+            quantity: net,
+            beforeQty: before,
+            afterQty: after,
+            reason: `Возврат материалов (переделка) по заказу №${order.orderNumber}`,
+            orderId,
             userId: userId ?? null,
           },
         });
