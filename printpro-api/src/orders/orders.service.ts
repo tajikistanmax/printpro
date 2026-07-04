@@ -58,7 +58,7 @@ export class OrdersService {
   // применяет скидку сам после создания, повтор заказа копирует старые цены.
   async create(
     dto: CreateOrderDto,
-    opts: { applyClientDiscount?: boolean } = {},
+    opts: { applyClientDiscount?: boolean; applyTax?: boolean } = {},
   ) {
     // 1. Клиент: по id или по телефону (найдём/создадим)
     let clientId = dto.clientId;
@@ -131,6 +131,24 @@ export class OrdersService {
       if (pct > 0) {
         const disc = Number(((total * pct) / 100).toFixed(2));
         total = Math.max(0, Number((total - disc).toFixed(2)));
+      }
+    }
+
+    // Налог (НДС): если задан taxPercent — начисляется сверх суммы после скидок
+    // (отдельная строка в чеке/счёте). taxAmount фиксируем снимком на заказе.
+    // В POS (quickSale) налог считается ПОСЛЕ его скидок/бонусов — там applyTax=false,
+    // а налог начисляется на финальный итог в quickSale (иначе двойной налог).
+    let taxPercent = 0;
+    let taxAmount = 0;
+    if (opts.applyTax !== false) {
+      const taxRow = await this.prisma.setting.findFirst({
+        where: { companyId: dto.companyId, key: 'taxPercent' },
+      });
+      const p = taxRow?.value ? Number(taxRow.value) : 0;
+      if (Number.isFinite(p) && p > 0) {
+        taxPercent = p;
+        taxAmount = Number(((total * p) / 100).toFixed(2));
+        total = Number((total + taxAmount).toFixed(2));
       }
     }
 
@@ -209,6 +227,8 @@ export class OrdersService {
           note: dto.note,
           idempotencyKey: dto.idempotencyKey,
           total,
+          taxPercent,
+          taxAmount,
           paid: 0,
           balanceDue: total,
           paymentStatus: PaymentStatus.UNPAID,
@@ -487,19 +507,23 @@ export class OrdersService {
 
     let order: Awaited<ReturnType<typeof this.create>>;
     try {
-      order = await this.create({
-        companyId: dto.companyId,
-        branchId: dto.branchId,
-        orderType: OrderType.SALE,
-        clientPhone: dto.clientPhone,
-        clientName: dto.clientName,
-        createdById: userId,
-        decrementStock: true,
-        idempotencyKey: dto.idempotencyKey,
-        note: dto.note,
-        debtDueDate: dto.debtDueDate,
-        items: dto.items,
-      });
+      order = await this.create(
+        {
+          companyId: dto.companyId,
+          branchId: dto.branchId,
+          orderType: OrderType.SALE,
+          clientPhone: dto.clientPhone,
+          clientName: dto.clientName,
+          createdById: userId,
+          decrementStock: true,
+          idempotencyKey: dto.idempotencyKey,
+          note: dto.note,
+          debtDueDate: dto.debtDueDate,
+          items: dto.items,
+        },
+        // Налог начислим в quickSale после скидок/бонусов (иначе двойной налог)
+        { applyTax: false },
+      );
     } catch (e: any) {
       // Гонка: параллельный запрос с тем же ключом уже создал заказ
       if (e?.code === 'P2002' && dto.idempotencyKey) {
@@ -608,11 +632,25 @@ export class OrdersService {
         }
       }
 
-      if (discount > 0) {
-        total = Math.max(0, Number((total - discount).toFixed(2)));
+      total = Math.max(0, Number((total - discount).toFixed(2)));
+
+      // Налог (НДС) сверх итога после всех скидок/бонусов — снимок на заказе.
+      let taxPercent = 0;
+      let taxAmount = 0;
+      const taxRow = await this.prisma.setting.findFirst({
+        where: { companyId: dto.companyId, key: 'taxPercent' },
+      });
+      const tp = taxRow?.value ? Number(taxRow.value) : 0;
+      if (Number.isFinite(tp) && tp > 0) {
+        taxPercent = tp;
+        taxAmount = Number(((total * tp) / 100).toFixed(2));
+        total = Number((total + taxAmount).toFixed(2));
+      }
+
+      if (discount > 0 || taxAmount > 0) {
         await this.prisma.order.update({
           where: { id: order.id },
-          data: { total, balanceDue: total },
+          data: { total, balanceDue: total, taxPercent, taxAmount },
         });
       }
 
