@@ -580,6 +580,99 @@ export class ReportsService {
     }));
   }
 
+  // Движение денег (ДДС) по кассе за период: приход и расход по категориям + нетто.
+  // Раньше был только «expenses» (OUT); этот отчёт показывает обе стороны.
+  async cashFlow(companyId: string, from?: string, to?: string) {
+    const range = this.range(from, to);
+    const moves = await this.prisma.cashMovement.groupBy({
+      by: ['type', 'category'],
+      where: { companyId, createdAt: range },
+      _sum: { amount: true },
+    });
+    const inBy = new Map<string, number>();
+    const outBy = new Map<string, number>();
+    let totalIn = 0;
+    let totalOut = 0;
+    for (const m of moves) {
+      const cat = m.category?.trim() || 'Без категории';
+      const amt = Number(m._sum.amount ?? 0);
+      if (m.type === 'IN') {
+        inBy.set(cat, Number(((inBy.get(cat) ?? 0) + amt).toFixed(2)));
+        totalIn += amt;
+      } else {
+        outBy.set(cat, Number(((outBy.get(cat) ?? 0) + amt).toFixed(2)));
+        totalOut += amt;
+      }
+    }
+    const toRows = (m: Map<string, number>) =>
+      Array.from(m.entries())
+        .map(([category, amount]) => ({ category, amount }))
+        .sort((a, b) => b.amount - a.amount);
+    return {
+      from: range.gte,
+      to: range.lte,
+      totalIn: Number(totalIn.toFixed(2)),
+      totalOut: Number(totalOut.toFixed(2)),
+      net: Number((totalIn - totalOut).toFixed(2)),
+      incomeByCategory: toRows(inBy),
+      expenseByCategory: toRows(outBy),
+    };
+  }
+
+  // Отчёт по возвратам за период (документы Return): причины, суммы, способ.
+  async returnsReport(companyId: string, from?: string, to?: string) {
+    const range = this.range(from, to);
+    const returns = await this.prisma.return.findMany({
+      where: { companyId, createdAt: range, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+    const total = Number(
+      returns.reduce((s, r) => s + Number(r.amount), 0).toFixed(2),
+    );
+    return {
+      from: range.gte,
+      to: range.lte,
+      total,
+      count: returns.length,
+      items: returns.map((r) => ({
+        id: r.id,
+        number: r.number,
+        orderId: r.orderId,
+        amount: Number(r.amount),
+        method: r.method,
+        reason: r.reason ?? '',
+        date: r.createdAt,
+      })),
+    };
+  }
+
+  // Долг перед поставщиками (наш долг) — текущий срез, с суммой.
+  async supplierDebts(companyId: string) {
+    const suppliers = await this.prisma.supplier.findMany({
+      where: {
+        companyId,
+        deletedAt: null,
+        debt: { gt: new Prisma.Decimal(0) },
+      },
+      select: { id: true, name: true, phone: true, debt: true },
+      orderBy: { debt: 'desc' },
+    });
+    const total = Number(
+      suppliers.reduce((s, x) => s + Number(x.debt), 0).toFixed(2),
+    );
+    return {
+      total,
+      count: suppliers.length,
+      items: suppliers.map((s) => ({
+        id: s.id,
+        name: s.name,
+        phone: s.phone ?? '',
+        debt: Number(s.debt),
+      })),
+    };
+  }
+
   // ---------- helpers ----------
   // Диапазон дат: по умолчанию — текущий месяц.
   // Границы операционного дня считаем в РАБОЧЕЙ таймзоне компании, а не в TZ

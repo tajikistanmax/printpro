@@ -124,4 +124,33 @@ export class ReportsController {
   overdue(@CurrentUser() user: JwtUser) {
     return this.reports.overdueOrders(user.companyId);
   }
+
+  // Движение денег (ДДС): приход/расход по кассе за период
+  @Get('cash-flow')
+  @RequirePermissions('reports.view')
+  cashFlow(
+    @CurrentUser() user: JwtUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reports.cashFlow(user.companyId, from, to);
+  }
+
+  // Возвраты за период
+  @Get('returns')
+  @RequirePermissions('reports.view')
+  returns(
+    @CurrentUser() user: JwtUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reports.returnsReport(user.companyId, from, to);
+  }
+
+  // Долг перед поставщиками (текущий)
+  @Get('supplier-debts')
+  @RequirePermissions('reports.view')
+  supplierDebts(@CurrentUser() user: JwtUser) {
+    return this.reports.supplierDebts(user.companyId);
+  }
 }
