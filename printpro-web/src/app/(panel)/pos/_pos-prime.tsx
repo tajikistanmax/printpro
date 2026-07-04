@@ -375,6 +375,12 @@ function OrderPanelPrime({ ctx }: { ctx: PosCtx }) {
           </button>
         )}
 
+        {c.taxAmount > 0 && (
+          <div className="mt-2 flex items-center justify-between px-1 text-sm text-slate-500 dark:text-slate-400">
+            <span>в т.ч. налог (НДС {c.taxPct}%)</span>
+            <span>{c.money(c.taxAmount)}</span>
+          </div>
+        )}
         {/* Итого */}
         <div className="mt-4 flex items-end justify-between rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800/50">
           <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">Итого</span>

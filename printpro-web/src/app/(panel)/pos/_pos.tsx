@@ -68,6 +68,8 @@ export interface PosCtx {
   useBonus: string;
   setUseBonus: Dispatch<SetStateAction<string>>;
   total: number;
+  taxAmount: number;
+  taxPct: number;
   // оплата
   phone: string;
   setPhone: Dispatch<SetStateAction<string>>;
@@ -514,6 +516,12 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
         )}
       </div>
 
+      {c.taxAmount > 0 && (
+        <div className="mt-2 flex items-center justify-between text-sm text-slate-500">
+          <span>в т.ч. налог (НДС {c.taxPct}%)</span>
+          <span>{c.money(c.taxAmount)}</span>
+        </div>
+      )}
       <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
         <span className="text-base font-semibold text-slate-800">Итого</span>
         <span className="text-2xl font-bold text-slate-900">
@@ -1150,6 +1158,9 @@ function OrderPanelPro({ ctx }: { ctx: PosCtx }) {
         </div>
         <Row label="Сумма" value={c.money(c.subtotal)} muted />
         {c.disc > 0 && <Row label="Скидка" value={`− ${c.money(c.disc)}`} muted />}
+        {c.taxAmount > 0 && (
+          <Row label={`Налог (НДС ${c.taxPct}%)`} value={c.money(c.taxAmount)} muted />
+        )}
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
@@ -1589,6 +1600,9 @@ function OrderPanelMarket({ ctx }: { ctx: PosCtx }) {
         <Row label="Итого услуг" value={c.money(servicesSum)} muted />
         <Row label="Итого материалов" value={c.money(materialsSum)} muted />
         {c.disc > 0 && <Row label="Скидка" value={`− ${c.money(c.disc)}`} muted />}
+        {c.taxAmount > 0 && (
+          <Row label={`Налог (НДС ${c.taxPct}%)`} value={c.money(c.taxAmount)} muted />
+        )}
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">

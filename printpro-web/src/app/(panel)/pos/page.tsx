@@ -82,6 +82,8 @@ export default function PosPage() {
   // Макс. % списания бонусов — из настроек компании (бэкенд применяет тот же
   // предел; хардкод 30% приводил к неверному итогу/сдаче при другой настройке).
   const [bonusMaxPct, setBonusMaxPct] = useState(30);
+  // Ставка налога (НДС) — из настроек; начисляется сверх итога после скидок.
+  const [taxPct, setTaxPct] = useState(0);
   const [phone, setPhone] = useState('');
   const [clientName, setClientName] = useState('');
   // Персональная скидка клиента (%) — подтягивается по телефону, применяется
@@ -142,6 +144,8 @@ export default function PosPage() {
         if (ui) {
           const bmp = Number(ui.bonusMaxRedeemPercent);
           if (Number.isFinite(bmp) && bmp >= 0) setBonusMaxPct(bmp);
+          const tp = Number(ui.taxPercent);
+          if (Number.isFinite(tp) && tp >= 0) setTaxPct(tp);
           setVfdCfg(readVfdConfig(ui));
           setEscposCfg(readEscposConfig(ui));
           setShopInfo({
@@ -222,14 +226,38 @@ export default function PosPage() {
     setCatFilter('ALL');
   }
 
+  // Серверный расчёт цены услуги (тираж/база/размер/опции). Держим сервер единым
+  // источником истины; цена в корзине обновляется по фактическому количеству.
+  async function repriceCartService(
+    key: string,
+    serviceId: string,
+    quantity: number,
+  ) {
+    if (!(quantity > 0)) return;
+    try {
+      const r = await api.post('/pricing/preview', { serviceId, quantity });
+      if (r && !r.manual) {
+        setCart((prev) =>
+          prev.map((p) =>
+            p.key === key ? { ...p, unitPrice: Number(r.unitPrice) } : p,
+          ),
+        );
+      }
+    } catch {
+      /* расчёт недоступен — оставляем цену из справочника */
+    }
+  }
+
   function addItem(item: any, type: 'SERVICE' | 'PRODUCT') {
     const itemType = type;
     const id = item.id;
     const unitPrice = priceOf(item, type);
     const key = `${itemType}:${id}`;
+    const ex = cart.find((p) => p.key === key);
+    const newQty = ex ? ex.quantity + 1 : 1;
     setCart((prev) => {
-      const ex = prev.find((p) => p.key === key);
-      if (ex)
+      const found = prev.find((p) => p.key === key);
+      if (found)
         return prev.map((p) =>
           p.key === key ? { ...p, quantity: p.quantity + 1 } : p,
         );
@@ -238,6 +266,8 @@ export default function PosPage() {
         { key, itemType, id, name: item.name, unitPrice, quantity: 1 },
       ];
     });
+    // Услуга — уточняем цену серверным расчётом по новому тиражу
+    if (type === 'SERVICE') repriceCartService(key, id, newQty);
   }
 
   function setQty(key: string, q: number) {
@@ -246,6 +276,9 @@ export default function PosPage() {
         .map((p) => (p.key === key ? { ...p, quantity: Math.max(0, q) } : p))
         .filter((p) => p.quantity > 0),
     );
+    const line = cart.find((p) => p.key === key);
+    if (line && line.itemType === 'SERVICE' && q > 0)
+      repriceCartService(key, line.id, q);
   }
 
   // По номеру телефона подтягиваем персональную скидку клиента (%). Совпадение —
@@ -297,9 +330,15 @@ export default function PosPage() {
         Number((afterPromo * (bonusMaxPct / 100)).toFixed(2)),
       )
     : 0;
-  const total = Math.max(0, Number((afterPromo - bonusApplied).toFixed(2)));
+  // Итог до налога (после всех скидок/бонусов) и налог сверх — как на бэкенде
+  // (quickSale начисляет НДС после скидок). Без этого сумма к оплате и сдача на
+  // кассе разошлись бы с реально списанным.
+  const preTaxTotal = Math.max(0, Number((afterPromo - bonusApplied).toFixed(2)));
+  const taxAmount =
+    taxPct > 0 ? Number(((preTaxTotal * taxPct) / 100).toFixed(2)) : 0;
+  const total = Number((preTaxTotal + taxAmount).toFixed(2));
   const cartCount = cart.reduce((s, c) => s + c.quantity, 0);
-  const totalDiscount = Math.max(0, Number((subtotal - total).toFixed(2)));
+  const totalDiscount = Math.max(0, Number((subtotal - preTaxTotal).toFixed(2)));
   const displayOn = isEnabled('feature.customerDisplay');
 
   // Транслируем корзину на дисплей покупателя (второй экран)
@@ -737,6 +776,8 @@ export default function PosPage() {
     useBonus,
     setUseBonus,
     total,
+    taxAmount,
+    taxPct,
     phone,
     setPhone,
     clientName,
@@ -1019,6 +1060,12 @@ export default function PosPage() {
                 ))}
               </div>
               <div className="mt-3 border-t border-dashed border-slate-300 pt-2">
+                {Number(receipt.taxAmount) > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>в т.ч. налог (НДС {Number(receipt.taxPercent)}%)</span>
+                    <span>{money(Number(receipt.taxAmount))}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-bold">
                   <span>Итого</span>
                   <span>{money(Number(receipt.total))}</span>
