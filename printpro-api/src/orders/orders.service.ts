@@ -1302,8 +1302,15 @@ export class OrdersService {
       }
     }
 
-    // Уведомление о готовности заказа: Telegram + email клиенту
+    // Уведомление о готовности заказа: Telegram + email клиенту.
+    // Тумблер notifyOrderReady выключает рассылку целиком (С1/П2 аудита).
     if (status === OrderStatus.READY) {
+      const notif = await this.prisma.setting.findFirst({
+        where: { companyId: order.companyId, key: 'notifyOrderReady' },
+      });
+      if (notif?.value === 'false' || notif?.value === '0') {
+        return this.findOne(orderId);
+      }
       void this.telegram.send(
         order.companyId,
         `✅ Заказ №${order.orderNumber} готов к выдаче`,

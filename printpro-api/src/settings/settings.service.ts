@@ -1,5 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+
+// Ключ настройки: латиница/цифры/точка/дефис/подчёркивание, до 64 символов
+const KEY_RE = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/;
+// Числовые настройки с допустимыми диапазонами (иначе bonusAccrualPercent=1000
+// раздал бы бонусов больше чека)
+const NUMERIC_LIMITS: Record<string, [number, number]> = {
+  bonusAccrualPercent: [0, 100],
+  bonusMaxRedeemPercent: [0, 100],
+  orderDefaultLeadDays: [0, 365],
+};
 
 @Injectable()
 export class SettingsService {
@@ -49,9 +59,37 @@ export class SettingsService {
     return out;
   }
 
-  // Сохранить пачку настроек
-  async setMany(companyId: string, values: Record<string, string>) {
-    const entries = Object.entries(values);
+  // Сохранить пачку настроек (с валидацией ключей/значений/диапазонов)
+  async setMany(companyId: string, values: Record<string, unknown>) {
+    const raw = Object.entries(values ?? {});
+    if (raw.length > 200) {
+      throw new BadRequestException('Слишком много настроек за один запрос');
+    }
+    const entries: [string, string][] = [];
+    for (const [key, v] of raw) {
+      if (!KEY_RE.test(key)) {
+        throw new BadRequestException(`Недопустимый ключ настройки: «${key}»`);
+      }
+      // Значение — только скаляр; объекты/массивы в настройках не храним
+      if (v !== null && typeof v === 'object') {
+        throw new BadRequestException(`Недопустимое значение настройки «${key}»`);
+      }
+      const value = v == null ? '' : String(v);
+      if (value.length > 100_000) {
+        // data-URL картинок (QR оплаты) бывают большими, но не безграничными
+        throw new BadRequestException(`Значение «${key}» слишком длинное`);
+      }
+      const lim = NUMERIC_LIMITS[key];
+      if (lim && value !== '') {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n < lim[0] || n > lim[1]) {
+          throw new BadRequestException(
+            `«${key}»: допустимо число от ${lim[0]} до ${lim[1]}`,
+          );
+        }
+      }
+      entries.push([key, value]);
+    }
     await this.prisma.$transaction(
       entries.map(([key, value]) =>
         this.prisma.setting.upsert({
