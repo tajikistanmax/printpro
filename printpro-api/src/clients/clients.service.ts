@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { ClientType, Prisma } from '@prisma/client';
+import { ClientType, OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
 
@@ -186,16 +186,29 @@ export class ClientsService {
     });
     if (!client) throw new NotFoundException('Клиент не найден');
 
-    // Итоги: всего заказов, потрачено, общий долг
-    const totalSpent = client.orders.reduce(
-      (s, o) => s + Number(o.paid),
-      0,
-    );
-    const totalDebt = client.orders.reduce(
-      (s, o) => s + Number(o.balanceDue),
-      0,
-    );
-    const ordersCount = client.orders.length;
+    // Итоги считаем по ВСЕМ заказам клиента (агрегатом), а не по обрезанному
+    // take:50 списку — иначе у активного клиента (>50 заказов) долг занижен, а
+    // доступный кредит завышен, и персонал выдаст кредит сверх лимита (P0-11).
+    // Долг — без отменённых заказов.
+    const [spentAgg, debtAgg] = await Promise.all([
+      this.prisma.order.aggregate({
+        where: { companyId, clientId: id, deletedAt: null },
+        _sum: { paid: true },
+        _count: true,
+      }),
+      this.prisma.order.aggregate({
+        where: {
+          companyId,
+          clientId: id,
+          deletedAt: null,
+          status: { not: OrderStatus.CANCELLED },
+        },
+        _sum: { balanceDue: true },
+      }),
+    ]);
+    const totalSpent = Number(spentAgg._sum.paid ?? 0);
+    const totalDebt = Number(debtAgg._sum.balanceDue ?? 0);
+    const ordersCount = spentAgg._count;
     const lastOrderAt = client.orders[0]?.createdAt ?? null;
     // Неактивный — без заказов более 30 дней (п. 8.3 ТЗ)
     const inactive = lastOrderAt

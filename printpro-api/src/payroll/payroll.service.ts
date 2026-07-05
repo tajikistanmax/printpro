@@ -246,10 +246,17 @@ export class PayrollService {
     if (rec.period.isClosed) throw new BadRequestException('Период закрыт');
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.salaryRecord.update({
-        where: { id },
+      // Атомарный флип: помечаем выплаченной ТОЛЬКО если ещё не выплачена.
+      // Два параллельных запроса прошли бы устаревшую проверку rec.isPaid выше
+      // и оба создали бы расход — двойная выплата из кассы (P0-10). updateMany
+      // с where isPaid:false гарантирует, что пройдёт только один.
+      const claim = await tx.salaryRecord.updateMany({
+        where: { id, companyId, isPaid: false },
         data: { isPaid: true },
       });
+      if (claim.count !== 1) {
+        throw new BadRequestException('Уже выплачено');
+      }
       // Расход из кассы привязываем к открытой смене выплачивающего кассира
       // и категории «Зарплата» — иначе выплата не попадёт в Z-отчёт и завысит
       // остаток наличных.
