@@ -158,7 +158,10 @@ export class ReportsService {
       avgCheck: ordersCount ? this.round2(billed / ordersCount) : 0,
       expensesTotal,
       grossProfit,
-      margin: net > 0 ? this.round1((grossProfit / net) * 100) : 0,
+      // Маржа = валовая прибыль / та же item-based база выручки (Σ lineTotal −
+      // returns), что и в числителе grossProfit — иначе делили бы на order.total-
+      // base net и расходились бы с /profit при любых скидках (P0-25).
+      margin: grossRevenue > 0 ? this.round1((grossProfit / grossRevenue) * 100) : 0,
       newClients,
       byMethod: {
         cash: byMethod.CASH,
@@ -169,7 +172,9 @@ export class ReportsService {
       },
       cashCollectionRate: net > 0 ? this.round1((collected / net) * 100) : 0,
       debtGrowth: this.round2(billed - returns - collected),
-      zeroCostShare: net > 0 ? this.round1((zeroCostRevenue / net) * 100) : 0,
+      // Доля выручки без себестоимости — от той же item-based базы (P0-25).
+      zeroCostShare:
+        grossRevenue > 0 ? this.round1((zeroCostRevenue / grossRevenue) * 100) : 0,
       openShiftsCount,
     };
   }
@@ -1024,15 +1029,21 @@ export class ReportsService {
     // Бакеты
     const buckets = this.buildBuckets(range, groupBy);
     const idx = new Map(buckets.map((b, i) => [b.key, i]));
+    const bucketRefunds = new Array(buckets.length).fill(0); // возвраты кэшем по бакету (P0-4)
     for (const p of payments) {
       const i = idx.get(this.bucketKey(p.createdAt, groupBy));
       if (i !== undefined) buckets[i].collected += Number(p.amount);
     }
     for (const m of movements) {
       const cat = m.category?.trim() || 'Без категории';
-      if (cat === 'Возвраты') continue;
       const i = idx.get(this.bucketKey(m.createdAt, groupBy));
-      if (i !== undefined) buckets[i].billed += Number(m.amount); // billed используем как «отток» в бакете
+      if (i === undefined) continue;
+      // Возвраты — отдельно (как в топ-итоге), но участвуют в per-bucket net.
+      if (cat === 'Возвраты') {
+        bucketRefunds[i] += Number(m.amount);
+        continue;
+      }
+      buckets[i].billed += Number(m.amount); // billed используем как «отток» в бакете
     }
     let supplierBucketRemainder = supplierUntrackedTotal;
     for (const p of supplierPayments) {
@@ -1044,16 +1055,18 @@ export class ReportsService {
     }
 
     let cumNet = 0;
-    const bucketsOut = buckets.map((b) => {
+    const bucketsOut = buckets.map((b, i) => {
       const bin = this.round2(b.collected);
       const bout = this.round2(b.billed);
-      const bnet = this.round2(bin - bout);
+      const bref = this.round2(bucketRefunds[i]);
+      const bnet = this.round2(bin - bout - bref); // вычитаем и возвраты кэшем (P0-4)
       cumNet += bnet;
       return {
         date: b.key,
         label: b.label,
         inflow: bin,
         outflow: bout,
+        refundsCash: bref,
         net: bnet,
         cumNet: this.round2(cumNet),
       };
@@ -1064,7 +1077,10 @@ export class ReportsService {
       to: range.lte,
       inflow: this.round2(inflow),
       outflow,
-      net: this.round2(inflow - outflow),
+      // Возвраты кэшем — реальный отток из кассы, но показываются отдельной
+      // строкой refundsCash. В чистый поток их надо вычесть, иначе net завышен и
+      // не сходится с expectedClosing в этом же ответе (P0-4).
+      net: this.round2(inflow - outflow - refundsCash),
       byMethod,
       outByCategory: Array.from(outByCat.entries())
         .map(([category, amount]) => ({ category, amount }))
@@ -1216,11 +1232,12 @@ export class ReportsService {
     const items = suppliers.map((s) => {
       const debt = Number(s.debt);
       total += debt;
-      // Ближайший неоплаченный приход — для срока/просрочки
+      // Ближайший СРОК оплаты — просрочка только при заданном dueDate (P0-24).
+      // Долг без срока не считается просроченным (как в receivables).
       let nearest: Date | null = null;
       for (const r of s.receipts) {
-        const d = r.dueDate ?? r.date;
-        if (!nearest || d < nearest) nearest = d;
+        if (!r.dueDate) continue;
+        if (!nearest || r.dueDate < nearest) nearest = r.dueDate;
       }
       const overdue = nearest ? nearest < now : false;
       return {
@@ -1239,8 +1256,9 @@ export class ReportsService {
     for (const r of receipts) {
       const amount = Number(r.total) - Number(r.paidAmount);
       if (amount <= 0) continue;
-      const due = r.dueDate ?? r.date;
-      const overdue = due < now;
+      // Просрочка только при заданном сроке; без dueDate → «current» (P0-24).
+      const due = r.dueDate;
+      const overdue = due != null && due < now;
       const daysOverdue = overdue
         ? Math.floor((now.getTime() - due.getTime()) / dayMs)
         : 0;
