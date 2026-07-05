@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { SalaryType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import {
   AddAdvanceDto,
   AddWorkTimeDto,
@@ -15,7 +16,10 @@ import {
 
 @Injectable()
 export class PayrollService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   // ---------- Ставки сотрудников ----------
   async setSalary(userId: string, dto: SetSalaryDto, companyId: string) {
@@ -259,6 +263,15 @@ export class PayrollService {
           category: 'Зарплата',
           reason: `Зарплата: ${rec.user.fullName}`,
         },
+      });
+      // Аудит выплаты зарплаты (P1-9d)
+      await this.audit.recordTx(tx, {
+        companyId: rec.companyId,
+        userId,
+        action: 'money:payroll-payout',
+        entity: 'salaryRecord',
+        entityId: id,
+        after: { amount: Number(rec.total), employee: rec.user.fullName },
       });
     });
     return { ok: true };

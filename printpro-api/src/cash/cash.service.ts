@@ -5,13 +5,17 @@ import {
 } from '@nestjs/common';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CloseShiftDto, OpenShiftDto, CashMovementDto } from './dto/cash.dto';
 import { docNumber } from '../common/doc-number';
 import { nextSeq } from '../common/next-number';
 
 @Injectable()
 export class CashService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   // ---------- Открыть смену ----------
   private async assertBranch(companyId: string, branchId?: string | null) {
@@ -34,14 +38,30 @@ export class CashService {
     }
     const smenaSeq = await nextSeq(this.prisma, companyId, 'SMENA');
     try {
-      return await this.prisma.cashShift.create({
-        data: {
+      return await this.prisma.$transaction(async (tx) => {
+        const shift = await tx.cashShift.create({
+          data: {
+            companyId,
+            number: docNumber('SMENA', smenaSeq),
+            userId,
+            branchId: dto.branchId,
+            openingBalance: dto.openingBalance ?? 0,
+          },
+        });
+        // Аудит открытия смены (P1-9d)
+        await this.audit.recordTx(tx, {
           companyId,
-          number: docNumber('SMENA', smenaSeq),
           userId,
-          branchId: dto.branchId,
-          openingBalance: dto.openingBalance ?? 0,
-        },
+          action: 'money:shift-open',
+          entity: 'cashShift',
+          entityId: shift.id,
+          after: {
+            number: shift.number,
+            branchId: shift.branchId,
+            openingBalance: Number(shift.openingBalance),
+          },
+        });
+        return shift;
       });
     } catch (e) {
       // Гонка: частичный уникальный индекс «одна открытая смена на кассира»
@@ -84,14 +104,28 @@ export class CashService {
 
     const report = await this.report(shiftId, companyId);
     const expected = report.summary.expectedCash;
+    const closingBalance =
+      dto.countedBalance !== undefined ? dto.countedBalance : expected;
 
-    await this.prisma.cashShift.update({
-      where: { id: shiftId },
-      data: {
-        closedAt: new Date(),
-        closingBalance:
-          dto.countedBalance !== undefined ? dto.countedBalance : expected,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.cashShift.update({
+        where: { id: shiftId },
+        data: { closedAt: new Date(), closingBalance },
+      });
+      // Аудит закрытия смены со снимком расчётного/фактического остатка (P1-9d)
+      await this.audit.recordTx(tx, {
+        companyId,
+        userId,
+        action: 'money:shift-close',
+        entity: 'cashShift',
+        entityId: shiftId,
+        before: { openingBalance: Number(shift.openingBalance) },
+        after: {
+          expectedCash: expected,
+          countedBalance: dto.countedBalance ?? null,
+          closingBalance: Number(closingBalance),
+        },
+      });
     });
     return this.report(shiftId, companyId);
   }
@@ -119,15 +153,32 @@ export class CashService {
       });
       if (!shift) throw new NotFoundException('Open shift not found');
     }
-    await this.prisma.cashMovement.create({
-      data: {
+    await this.prisma.$transaction(async (tx) => {
+      const mv = await tx.cashMovement.create({
+        data: {
+          companyId,
+          shiftId,
+          type: dto.type,
+          amount: dto.amount,
+          category: dto.category,
+          reason: dto.reason,
+        },
+      });
+      // Аудит движения по кассе IN/OUT (P1-9d)
+      await this.audit.recordTx(tx, {
         companyId,
-        shiftId,
-        type: dto.type,
-        amount: dto.amount,
-        category: dto.category,
-        reason: dto.reason,
-      },
+        userId,
+        action: 'money:cash-movement',
+        entity: 'cashMovement',
+        entityId: mv.id,
+        after: {
+          shiftId,
+          type: dto.type,
+          amount: Number(dto.amount),
+          category: dto.category ?? null,
+          reason: dto.reason ?? null,
+        },
+      });
     });
     return this.report(shiftId, companyId);
   }

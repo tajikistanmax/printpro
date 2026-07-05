@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { StockMovementType, ReceiptPaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import {
   CreateReceiptDto,
   CreateSupplierDto,
@@ -13,7 +14,10 @@ import { nextSeq } from '../common/next-number';
 
 @Injectable()
 export class PurchasingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   // ---------- Поставщики ----------
   createSupplier(dto: CreateSupplierDto) {
@@ -116,6 +120,16 @@ export class PurchasingService {
           category: 'Поставщики',
           reason: `Оплата долга поставщику «${supplier.name}»`,
         },
+      });
+      // Аудит оплаты долга поставщику со снимком остатка долга (P1-9d)
+      await this.audit.recordTx(tx, {
+        companyId: supplier.companyId,
+        userId,
+        action: 'money:supplier-payment',
+        entity: 'supplier',
+        entityId: id,
+        before: { debt: outstanding },
+        after: { debt: Number((outstanding - pay).toFixed(2)), paid: pay },
       });
       return tx.supplier.findUnique({ where: { id } });
     });
@@ -272,6 +286,23 @@ export class PurchasingService {
           },
         });
       }
+
+      // Аудит денежной стороны приёмки (P1-9d): сумма, оплата, возникший долг
+      await this.audit.recordTx(tx, {
+        companyId: dto.companyId,
+        userId,
+        action: 'money:receipt',
+        entity: 'stockReceipt',
+        entityId: receipt.id,
+        after: {
+          number: receipt.number,
+          supplierId: dto.supplierId ?? null,
+          total,
+          paidAmount,
+          debt,
+          paymentStatus,
+        },
+      });
 
       return this.loadReceipt(tx, receipt.id);
     });

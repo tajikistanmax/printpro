@@ -26,6 +26,7 @@ import {
 } from './dto/order-actions.dto';
 import { PromocodesService } from '../promocodes/promocodes.service';
 import { EmailService } from '../email/email.service';
+import { AuditService } from '../audit/audit.service';
 
 function normalizeClientPhone(phone: string): string {
   return (phone ?? '').replace(/[\s()-]/g, '');
@@ -50,6 +51,7 @@ export class OrdersService {
     private readonly telegram: TelegramService,
     private readonly promocodes: PromocodesService,
     private readonly email: EmailService,
+    private readonly audit: AuditService,
   ) {}
 
   // ---------- Создание заказа ----------
@@ -421,6 +423,28 @@ export class OrdersService {
       }
     }
 
+    // Аудит оплаты заказа со снимком paid/balanceDue/статуса (P1-9d)
+    await this.audit.recordTx(tx, {
+      companyId: order.companyId,
+      userId: cashierId,
+      action: 'money:payment',
+      entity: 'order',
+      entityId: orderId,
+      before: {
+        paid: Number(order.paid),
+        balanceDue: Number(order.balanceDue),
+        paymentStatus: order.paymentStatus,
+      },
+      after: {
+        paid: newPaid,
+        balanceDue: balanceDue < 0 ? 0 : balanceDue,
+        paymentStatus,
+        amount: dto.amount,
+        method: dto.method,
+        shiftId,
+      },
+    });
+
     return this.loadFull(tx, orderId);
   }
 
@@ -656,6 +680,21 @@ export class OrdersService {
           userId,
           'quick sale delivered',
         );
+
+        // Сводный аудит быстрой продажи (P1-9d). Оплаченный путь дополнительно
+        // логируется по-платёжно через addPaymentTx (money:payment).
+        await this.audit.recordTx(tx, {
+          companyId: dto.companyId,
+          userId,
+          action: 'money:quick-sale',
+          entity: 'order',
+          entityId: order.id,
+          after: {
+            total,
+            debtSale: isDebtSale,
+            status: OrderStatus.DELIVERED,
+          },
+        });
 
         return this.loadFull(tx, order.id);
       });
@@ -934,6 +973,21 @@ export class OrdersService {
         'refund',
       );
 
+      // Аудит полного возврата: сколько вернули всего и сколько наличными (P1-9d)
+      await this.audit.recordTx(tx, {
+        companyId: order.companyId,
+        userId,
+        action: 'money:refund',
+        entity: 'order',
+        entityId: orderId,
+        before: { paid, status: order.status },
+        after: {
+          status: OrderStatus.CANCELLED,
+          refundedTotal: fullReturnAmount,
+          cashRefunded: cashRefund,
+        },
+      });
+
       return this.loadFull(tx, orderId);
     });
   }
@@ -1168,6 +1222,28 @@ export class OrdersService {
           });
         }
       }
+
+      // Аудит частичного возврата со снимком оплаты/возвращённого (P1-9d)
+      await this.audit.recordTx(tx, {
+        companyId: order.companyId,
+        userId,
+        action: 'money:return',
+        entity: 'order',
+        entityId: orderId,
+        before: {
+          paid: Number(order.paid),
+          returnedTotal: Number(order.returnedTotal),
+          paymentStatus: order.paymentStatus,
+        },
+        after: {
+          returnId: ret.id,
+          paid: newPaid,
+          returnedTotal: newReturnedTotal,
+          paymentStatus: newPaymentStatus,
+          refundedTotal: moneyBack,
+          cashRefunded: cashBack,
+        },
+      });
 
       return ret;
     });
