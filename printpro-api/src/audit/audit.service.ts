@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -28,6 +29,39 @@ export class AuditService {
     } catch {
       // лог не должен ломать бизнес-операцию
     }
+  }
+
+  // Запись аудита ВНУТРИ переданной транзакции (P1-9d). В отличие от record(),
+  // ошибку НЕ глушим: если аудит не записался — вся бизнес-операция откатывается
+  // (гарантия «нет движения денег/склада/прав без следа»). before/after — снимок
+  // ТОЛЬКО критичных полей; Decimal приводить к number/string на стороне вызова.
+  async recordTx(
+    tx: Prisma.TransactionClient,
+    entry: {
+      companyId?: string;
+      userId?: string;
+      action: string;
+      entity?: string;
+      entityId?: string;
+      before?: unknown;
+      after?: unknown;
+      data?: Record<string, unknown>;
+    },
+  ) {
+    await tx.auditLog.create({
+      data: {
+        companyId: entry.companyId,
+        userId: entry.userId,
+        action: entry.action,
+        entity: entry.entity,
+        entityId: entry.entityId,
+        data: {
+          ...(entry.data ?? {}),
+          before: (entry.before ?? null) as Prisma.InputJsonValue,
+          after: (entry.after ?? null) as Prisma.InputJsonValue,
+        } as Prisma.InputJsonValue,
+      },
+    });
   }
 
   async list(companyId: string, page = 1, pageSize = 50) {

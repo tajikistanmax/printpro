@@ -26,7 +26,7 @@ export class UsersController {
     @Body() dto: CreateUserDto,
     @CurrentUser() user: { sub: string; companyId: string },
   ) {
-    return this.users.create({ ...dto, companyId: user.companyId });
+    return this.users.create({ ...dto, companyId: user.companyId }, user.sub);
   }
 
   @Get()
@@ -42,7 +42,7 @@ export class UsersController {
     @Body('isActive') isActive: boolean,
     @CurrentUser() user: { sub: string; companyId: string },
   ) {
-    return this.users.setActive(id, isActive, user.companyId);
+    return this.users.setActive(id, isActive, user.companyId, user.sub);
   }
 
   // Сбросить пароль сотрудника
@@ -53,7 +53,7 @@ export class UsersController {
     @Body('password') password: string,
     @CurrentUser() user: { sub: string; companyId: string },
   ) {
-    return this.users.resetPassword(id, password, user.companyId);
+    return this.users.resetPassword(id, password, user.companyId, user.sub);
   }
 
   // Установить / сбросить PIN кассира (пустое значение — убрать PIN)
@@ -64,6 +64,6 @@ export class UsersController {
     @Body('pin') pin: string | null,
     @CurrentUser() user: { sub: string; companyId: string },
   ) {
-    return this.users.setPin(id, pin ?? null, user.companyId);
+    return this.users.setPin(id, pin ?? null, user.companyId, user.sub);
   }
 }

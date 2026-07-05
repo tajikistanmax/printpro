@@ -5,14 +5,18 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateUserDto } from './dto/create-user.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   // Создать сотрудника (пароль и PIN сохраняются в зашифрованном виде)
-  async create(dto: CreateUserDto) {
+  async create(dto: CreateUserDto, actorId?: string) {
     // Защита от повышения привилегий: роль должна принадлежать компании
     // текущего пользователя, иначе можно назначить чужую (например, админскую) роль.
     if (dto.roleId) {
@@ -24,27 +28,50 @@ export class UsersService {
     }
     const passwordHash = await AuthService.hashPassword(dto.password);
     const pinHash = dto.pin ? await AuthService.hashPassword(dto.pin) : null;
-    const user = await this.prisma.user.create({
-      data: {
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          companyId: dto.companyId,
+          fullName: dto.fullName,
+          login: dto.login,
+          passwordHash,
+          pinHash,
+          roleId: dto.roleId,
+          branchId: dto.branchId,
+          phone: dto.phone,
+          isActive: dto.isActive ?? true,
+        },
+        include: { role: true, branch: true },
+      });
+      // Аудит создания сотрудника (P1-9d) — кто, кого, с какой ролью/доступом
+      await this.audit.recordTx(tx, {
         companyId: dto.companyId,
-        fullName: dto.fullName,
-        login: dto.login,
-        passwordHash,
-        pinHash,
-        roleId: dto.roleId,
-        branchId: dto.branchId,
-        phone: dto.phone,
-        isActive: dto.isActive ?? true,
-      },
-      include: { role: true, branch: true },
+        userId: actorId,
+        action: 'rbac:user-create',
+        entity: 'user',
+        entityId: created.id,
+        after: {
+          login: created.login,
+          roleId: created.roleId,
+          isActive: created.isActive,
+          hasPin: !!pinHash,
+        },
+      });
+      return created;
     });
     return this.safe(user);
   }
 
   // Установить / сбросить PIN кассира (админом). Пустой PIN — убрать доступ по PIN.
-  async setPin(id: string, pin: string | null, companyId: string) {
+  async setPin(
+    id: string,
+    pin: string | null,
+    companyId: string,
+    actorId?: string,
+  ) {
     const exists = await this.prisma.user.findFirst({
       where: { id, companyId },
+      select: { id: true, pinHash: true },
     });
     if (!exists) throw new NotFoundException('Сотрудник не найден');
     let pinHash: string | null = null;
@@ -54,7 +81,18 @@ export class UsersService {
       }
       pinHash = await AuthService.hashPassword(pin);
     }
-    await this.prisma.user.update({ where: { id }, data: { pinHash } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id }, data: { pinHash } });
+      await this.audit.recordTx(tx, {
+        companyId,
+        userId: actorId,
+        action: 'rbac:user-pin',
+        entity: 'user',
+        entityId: id,
+        before: { hasPin: !!exists.pinHash },
+        after: { hasPin: !!pinHash },
+      });
+    });
     return { ok: true, hasPin: !!pinHash };
   }
 
@@ -69,7 +107,12 @@ export class UsersService {
   }
 
   // Сбросить пароль сотрудника (админом)
-  async resetPassword(id: string, newPassword: string, companyId: string) {
+  async resetPassword(
+    id: string,
+    newPassword: string,
+    companyId: string,
+    actorId?: string,
+  ) {
     const exists = await this.prisma.user.findFirst({
       where: { id, companyId },
     });
@@ -80,23 +123,52 @@ export class UsersService {
     const passwordHash = await AuthService.hashPassword(newPassword);
     // Инкремент tokenVersion отзывает все ранее выданные токены сотрудника
     // (старые сессии перестают проходить guard). (P1-8)
-    await this.prisma.user.update({
-      where: { id },
-      data: { passwordHash, tokenVersion: { increment: 1 } },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id },
+        data: { passwordHash, tokenVersion: { increment: 1 } },
+      });
+      // Аудит сброса пароля = отзыв сессий (P1-9d). Пароль не логируем.
+      await this.audit.recordTx(tx, {
+        companyId,
+        userId: actorId,
+        action: 'rbac:user-password-reset',
+        entity: 'user',
+        entityId: id,
+        after: { sessionsRevoked: true },
+      });
     });
     return { ok: true };
   }
 
   // Включить/выключить сотрудника
-  async setActive(id: string, isActive: boolean, companyId: string) {
+  async setActive(
+    id: string,
+    isActive: boolean,
+    companyId: string,
+    actorId?: string,
+  ) {
     const exists = await this.prisma.user.findFirst({
       where: { id, companyId },
     });
     if (!exists) throw new NotFoundException('Сотрудник не найден');
-    const user = await this.prisma.user.update({
-      where: { id },
-      data: { isActive },
-      include: { role: true, branch: true },
+    const user = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id },
+        data: { isActive },
+        include: { role: true, branch: true },
+      });
+      // Аудит вкл/выкл сотрудника (P1-9d)
+      await this.audit.recordTx(tx, {
+        companyId,
+        userId: actorId,
+        action: 'rbac:user-active',
+        entity: 'user',
+        entityId: id,
+        before: { isActive: exists.isActive },
+        after: { isActive: updated.isActive },
+      });
+      return updated;
     });
     return this.safe(user);
   }

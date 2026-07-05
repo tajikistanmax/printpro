@@ -39,7 +39,10 @@ export class RolesController {
   @Post('roles')
   @RequirePermissions('roles.manage')
   createRole(@Body() dto: CreateRoleDto, @CurrentUser() user: JwtUser) {
-    return this.roles.createRole({ ...dto, companyId: user.companyId });
+    return this.roles.createRole(
+      { ...dto, companyId: user.companyId },
+      user.sub,
+    );
   }
 
   @Put('roles/:id/permissions')
@@ -49,6 +52,11 @@ export class RolesController {
     @Body() dto: SetPermissionsDto,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.roles.setPermissions(id, user.companyId, dto.permissionCodes);
+    return this.roles.setPermissions(
+      id,
+      user.companyId,
+      dto.permissionCodes,
+      user.sub,
+    );
   }
 }
