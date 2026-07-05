@@ -609,6 +609,11 @@ model StockMovement {
   productionJobId String? // производственное задание, вызвавшее списание
   productionJob   ProductionJob? @relation(fields: [productionJobId], references: [id])
   createdAt DateTime          @default(now())
+
+  // Индексы под горячие агрегаты склада/отчётов (P0-16) — Postgres не индексирует FK сам.
+  @@index([productId])
+  @@index([branchId])
+  @@index([orderId])
 }
 
 model Supplier {
@@ -844,6 +849,8 @@ model Order {
 
   @@unique([companyId, orderNumber])
   @@index([companyId, updatedAt])
+  // debts()/история клиента фильтруют заказы по клиенту (P0-16).
+  @@index([companyId, clientId])
 }
 
 model OrderStatusHistory {
@@ -965,6 +972,9 @@ model Payment {
   syncNode  String?
 
   @@index([companyId, updatedAt])
+  // Пересчёт оплат заказа и Z-отчёт суммируют по orderId/shiftId (P0-16).
+  @@index([orderId])
+  @@index([shiftId])
 }
 
 model CashMovement {
@@ -981,6 +991,9 @@ model CashMovement {
   category  String? // категория расхода/прихода (аренда, зарплата, материалы…)
   reason    String?
   createdAt DateTime   @default(now())
+
+  // Z-отчёт смены суммирует движения по shiftId (P0-16).
+  @@index([shiftId])
 }
 
 model ClientDebt {
