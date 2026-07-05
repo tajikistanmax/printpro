@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { ReceiveStockDto } from './dto/receive-stock.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { TransferStockDto, RecountStockDto } from './dto/transfer-stock.dto';
@@ -8,7 +9,10 @@ import { WriteOffDto } from './dto/write-off.dto';
 
 @Injectable()
 export class StockService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   private async ensureProduct(
     db: Prisma.TransactionClient | PrismaService,
@@ -102,6 +106,21 @@ export class StockService {
         include: { product: true, branch: true },
       });
 
+      // Аудит прихода со снимком остатка (P1-9d)
+      await this.audit.recordTx(tx, {
+        companyId: dto.companyId,
+        userId: dto.userId,
+        action: 'stock:receive',
+        entity: 'stock',
+        entityId: dto.productId,
+        before: { qty: beforeQty },
+        after: {
+          qty: Number((beforeQty + Number(dto.quantity)).toFixed(3)),
+          quantity: Number(dto.quantity),
+          branchId: dto.branchId,
+        },
+      });
+
       return stock;
     });
   }
@@ -163,6 +182,24 @@ export class StockService {
           afterQty,
           reason: dto.reason ?? 'Списание',
           userId: dto.userId,
+        },
+      });
+
+      // Аудит списания/корректировки со снимком остатка (P1-9d)
+      await this.audit.recordTx(tx, {
+        companyId: dto.companyId,
+        userId: dto.userId,
+        action: 'stock:adjust',
+        entity: 'stock',
+        entityId: dto.productId,
+        before: {
+          qty: Number((afterQty + Number(dto.quantity)).toFixed(3)),
+        },
+        after: {
+          qty: afterQty,
+          type: dto.type,
+          quantity: Number(dto.quantity),
+          branchId: dto.branchId,
         },
       });
 
@@ -263,6 +300,23 @@ export class StockService {
         ],
       });
 
+      // Аудит перемещения между филиалами (P1-9d)
+      await this.audit.recordTx(tx, {
+        companyId: dto.companyId,
+        userId: dto.userId,
+        action: 'stock:transfer',
+        entity: 'stock',
+        entityId: dto.productId,
+        before: { fromQty: available, toQty: destBefore },
+        after: {
+          fromQty: Number((available - qty).toFixed(3)),
+          toQty: Number((destBefore + qty).toFixed(3)),
+          quantity: qty,
+          fromBranchId: dto.fromBranchId,
+          toBranchId: dto.toBranchId,
+        },
+      });
+
       return { ok: true };
     });
   }
@@ -313,6 +367,17 @@ export class StockService {
           },
         });
       }
+
+      // Аудит инвентаризации позиции со снимком остатка (P1-9d)
+      await this.audit.recordTx(tx, {
+        companyId: dto.companyId,
+        userId: dto.userId,
+        action: 'stock:recount',
+        entity: 'stock',
+        entityId: dto.productId,
+        before: { qty: was },
+        after: { qty: dto.countedQuantity, diff, branchId: dto.branchId },
+      });
 
       return { ok: true, was, now: dto.countedQuantity, diff };
     });
@@ -367,6 +432,21 @@ export class StockService {
         });
         applied++;
       }
+      // Сводный аудит массовой инвентаризации (P1-9d): детали по позициям —
+      // в StockMovement, здесь фиксируем факт и объём операции.
+      await this.audit.recordTx(tx, {
+        companyId,
+        userId,
+        action: 'stock:recount-bulk',
+        entity: 'stock',
+        entityId: branchId,
+        after: {
+          branchId,
+          itemsCount: items.length,
+          applied,
+          unchanged,
+        },
+      });
       },
       { timeout: 120000, maxWait: 10000 },
     );
@@ -454,6 +534,23 @@ export class StockService {
           afterQty,
           reason: dto.reason ?? 'Списание',
           userId: dto.userId,
+        },
+      });
+
+      // Аудит списания (бой/брак) со снимком остатка и себестоимости (P1-9d)
+      await this.audit.recordTx(tx, {
+        companyId: dto.companyId,
+        userId: dto.userId,
+        action: 'stock:write-off',
+        entity: 'stock',
+        entityId: dto.productId,
+        before: { qty: Number((afterQty + Number(dto.quantity)).toFixed(3)) },
+        after: {
+          qty: afterQty,
+          quantity: Number(dto.quantity),
+          cost,
+          reason: dto.reason ?? null,
+          branchId: dto.branchId,
         },
       });
 

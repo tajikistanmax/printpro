@@ -287,6 +287,23 @@ export class PurchasingService {
         });
       }
 
+      // Сводный аудит складской стороны приёмки (P1-9d): детали по позициям —
+      // в StockMovement (before/after остатка), здесь — факт и объём прихода.
+      await this.audit.recordTx(tx, {
+        companyId: dto.companyId,
+        userId,
+        action: 'stock:receipt',
+        entity: 'stockReceipt',
+        entityId: receipt.id,
+        after: {
+          branchId: dto.branchId,
+          itemsCount: dto.items.length,
+          totalQuantity: Number(
+            dto.items.reduce((s, it) => s + Number(it.quantity), 0).toFixed(3),
+          ),
+        },
+      });
+
       // Аудит денежной стороны приёмки (P1-9d): сумма, оплата, возникший долг
       await this.audit.recordTx(tx, {
         companyId: dto.companyId,

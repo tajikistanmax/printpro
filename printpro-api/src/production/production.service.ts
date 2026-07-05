@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { OrderStatus, ProductionStatus, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import {
   CreateProductionJobDto,
   UpdateProductionJobDto,
@@ -12,7 +13,10 @@ import {
 
 @Injectable()
 export class ProductionService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async create(dto: CreateProductionJobDto) {
     const order = await this.prisma.order.findFirst({
@@ -184,6 +188,26 @@ export class ProductionService {
           },
         });
       }
+
+      // Сводный аудит списания материалов производства (P1-9d): детали по
+      // позициям — в StockMovement (с себестоимостью, P1-2), здесь — факт и объём.
+      await this.audit.recordTx(tx, {
+        companyId: order.companyId,
+        userId: userId ?? undefined,
+        action: 'stock:production-writeoff',
+        entity: 'productionJob',
+        entityId: jobId,
+        after: {
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          itemsCount: need.size,
+          totalCost: Number(
+            [...need]
+              .reduce((s, [pid, q]) => s + (costOf.get(pid) ?? 0) * q, 0)
+              .toFixed(4),
+          ),
+        },
+      });
     });
   }
 
