@@ -80,7 +80,11 @@ export class ProductsService {
   async createProduct(dto: CreateProductDto) {
     await this.assertCategory(dto.companyId, dto.categoryId);
     await this.assertUnit(dto.companyId, dto.unitId);
-    await this.assertBarcodeFree(dto.companyId, dto.barcode);
+    // Нормализуем штрихкод один раз (trim) и храним триммнутое значение — иначе
+    // проверка уникальности (тримит) и хранение (сырое) расходятся: можно завести
+    // дубль по факту и код с пробелами не сканируется на POS. (P0-6)
+    const barcode = dto.barcode?.trim() || null;
+    await this.assertBarcodeFree(dto.companyId, barcode);
     try {
       return await this.prisma.product.create({
         data: {
@@ -91,7 +95,7 @@ export class ProductsService {
           salePrice: dto.salePrice ?? 0,
           purchasePrice: dto.purchasePrice ?? 0,
           minStock: dto.minStock ?? 0,
-          barcode: dto.barcode,
+          barcode,
           sku: dto.sku,
           size: dto.size,
           weight: dto.weight,
@@ -101,7 +105,7 @@ export class ProductsService {
         include: { category: true, unit: true },
       });
     } catch (e) {
-      this.barcodeConflict(e, dto.barcode);
+      this.barcodeConflict(e, barcode);
     }
   }
 
@@ -192,13 +196,17 @@ export class ProductsService {
   // Категории/единицы подбираются по имени (создаются при отсутствии).
   // Совпадение по имени товара (без учёта регистра) → обновляем, иначе создаём.
   async importProducts(companyId: string, rows: Array<Record<string, any>>) {
+    // Пустая/отсутствующая ячейка → undefined, чтобы при ОБНОВЛЕНИИ Prisma не
+    // затирала существующее значение нулём (повторный импорт без ценовых колонок
+    // раньше обнулял salePrice/purchasePrice/minStock). При CREATE undefined
+    // берёт дефолт 0 из схемы. (P0-5)
     const num = (v: any) => {
-      const n = Number(
-        String(v ?? '')
-          .replace(/\s/g, '')
-          .replace(',', '.'),
-      );
-      return Number.isFinite(n) ? n : 0;
+      const s = String(v ?? '')
+        .replace(/\s/g, '')
+        .replace(',', '.');
+      if (s === '') return undefined;
+      const n = Number(s);
+      return Number.isFinite(n) ? n : undefined;
     };
     const str = (v: any) => {
       const s = String(v ?? '').trim();
@@ -513,7 +521,10 @@ export class ProductsService {
           salePrice: dto.salePrice,
           purchasePrice: dto.purchasePrice,
           minStock: dto.minStock,
-          barcode: dto.barcode,
+          // Храним триммнутый штрихкод (P0-6); undefined → поле не трогаем,
+          // пустая строка → снять штрихкод (null).
+          barcode:
+            dto.barcode === undefined ? undefined : dto.barcode.trim() || null,
           sku: dto.sku,
           size: dto.size,
           weight: dto.weight,

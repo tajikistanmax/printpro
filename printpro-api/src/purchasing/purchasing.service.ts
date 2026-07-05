@@ -167,6 +167,18 @@ export class PurchasingService {
       throw new BadRequestException('Добавьте хотя бы одну позицию');
     }
 
+    // Tenant-проверка: supplierId/branchId приходят из тела запроса — убеждаемся,
+    // что они принадлежат компании из токена, иначе приёмка от компании A могла бы
+    // инкрементить долг чужого поставщика и писать в чужой склад. (P0-7)
+    if (dto.supplierId) {
+      await this.ensureSupplier(dto.supplierId, dto.companyId);
+    }
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: dto.branchId, companyId: dto.companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!branch) throw new BadRequestException('Филиал не найден');
+
     // Сумма приёмки, оплата поставщику и статус
     const total = Number(
       dto.items.reduce((s, it) => s + (it.cost ?? 0) * it.quantity, 0).toFixed(2),
