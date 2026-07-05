@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ComplaintsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(dto: {
+  async create(dto: {
     companyId: string;
     title: string;
     description?: string;
@@ -14,6 +14,22 @@ export class ComplaintsService {
     clientId?: string;
     createdById?: string;
   }) {
+    // Ссылки orderId/clientId приходят из тела — проверяем, что они принадлежат
+    // компании из токена, иначе рекламацию можно привязать к чужому заказу/клиенту.
+    if (dto.orderId) {
+      const order = await this.prisma.order.findFirst({
+        where: { id: dto.orderId, companyId: dto.companyId },
+        select: { id: true },
+      });
+      if (!order) throw new NotFoundException('Заказ не найден');
+    }
+    if (dto.clientId) {
+      const client = await this.prisma.client.findFirst({
+        where: { id: dto.clientId, companyId: dto.companyId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!client) throw new NotFoundException('Клиент не найден');
+    }
     return this.prisma.complaint.create({
       data: {
         companyId: dto.companyId,
