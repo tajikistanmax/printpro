@@ -36,8 +36,8 @@ export class AuditInterceptor implements NestInterceptor {
     // Логируем любые мутации, включая публичные и sync-эндпоинты
     // (req.user может отсутствовать — тогда companyId/userId будут null).
     // Провалы аутентификации на уровне JwtAuthGuard сюда НЕ доходят:
-    // guard'ы в NestJS выполняются раньше интерсепторов. Их нужно логировать
-    // в самом guard'е или глобальном exception-фильтре (вне этого файла).
+    // guard'ы в NestJS выполняются раньше интерсепторов. Такие 401/403
+    // логируются глобальным SecurityAuditFilter (audit/security-audit.filter.ts). P1-9e
     if (!action) return next.handle();
 
     // Раздел из пути: /api/orders/123/payments → orders
