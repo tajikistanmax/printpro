@@ -3,7 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { OrderStatus, ProductionStatus, StockMovementType } from '@prisma/client';
+import {
+  OrderStatus,
+  Prisma,
+  ProductionStatus,
+  StockMovementType,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import {
@@ -88,26 +93,40 @@ export class ProductionService {
     data.defectReason =
       status === ProductionStatus.REWORK ? defectReason ?? null : null;
 
-    const updated = await this.prisma.productionJob.update({
-      where: { id },
-      data,
-      include: this.includes(),
-    });
-
+    let updated;
     if (status === ProductionStatus.COMPLETED && !job.materialsWrittenOff) {
-      await this.writeOffMaterials(job.id, job.orderId, userId);
+      // Списание материалов и перевод в COMPLETED — в ОДНОЙ транзакции (сначала
+      // списываем): нехватка остатка откатывает завершение, job не остаётся
+      // COMPLETED без списания/снимка себестоимости (P0-8).
+      updated = await this.prisma.$transaction(async (tx) => {
+        await this.writeOffMaterials(tx, job.id, job.orderId, userId);
+        return tx.productionJob.update({
+          where: { id },
+          data,
+          include: this.includes(),
+        });
+      });
+    } else {
+      updated = await this.prisma.productionJob.update({
+        where: { id },
+        data,
+        include: this.includes(),
+      });
     }
 
     await this.syncOrderStatus(job.orderId);
     return updated;
   }
 
+  // Списание материалов внутри переданной транзакции (tx) — чтобы вызывалось в
+  // одной tx со сменой статуса задания: нехватка остатка откатит и завершение (P0-8).
   private async writeOffMaterials(
+    tx: Prisma.TransactionClient,
     jobId: string,
     orderId: string,
     userId?: string,
   ) {
-    const order = await this.prisma.order.findUnique({
+    const order = await tx.order.findUnique({
       where: { id: orderId },
       include: {
         items: { include: { service: { include: { materials: true } } } },
@@ -131,7 +150,7 @@ export class ProductionService {
 
     // Себестоимость материалов на момент списания (снимок для затрат) — P1-2.
     // Берём Product.purchasePrice — та же база, что для оценки склада в отчётах.
-    const products = await this.prisma.product.findMany({
+    const products = await tx.product.findMany({
       where: { id: { in: [...need.keys()] } },
       select: { id: true, purchasePrice: true },
     });
@@ -139,12 +158,11 @@ export class ProductionService {
       products.map((p) => [p.id, Number(p.purchasePrice ?? 0)]),
     );
 
-    await this.prisma.$transaction(async (tx) => {
-      const claim = await tx.productionJob.updateMany({
-        where: { id: jobId, materialsWrittenOff: false, deletedAt: null },
-        data: { materialsWrittenOff: true },
-      });
-      if (claim.count === 0) return;
+    const claim = await tx.productionJob.updateMany({
+      where: { id: jobId, materialsWrittenOff: false, deletedAt: null },
+      data: { materialsWrittenOff: true },
+    });
+    if (claim.count === 0) return;
 
       for (const [productId, qty] of need) {
         const current = await tx.stock.findUnique({
@@ -208,7 +226,6 @@ export class ProductionService {
           ),
         },
       });
-    });
   }
 
   async remove(id: string, companyId: string) {
@@ -299,7 +316,13 @@ export class ProductionService {
       where: { id: orderId },
       select: { status: true },
     });
-    if (order && order.status !== next) {
+    // Не откатываем терминальные/пост-продакшн статусы: поздний REWORK или
+    // пере-завершение job'а не должны возвращать выданный/отменённый заказ в
+    // производство (READY/IN_PROGRESS). (P0-9)
+    const isTerminal =
+      order?.status === OrderStatus.DELIVERED ||
+      order?.status === OrderStatus.CANCELLED;
+    if (order && order.status !== next && !isTerminal) {
       await this.prisma.$transaction([
         this.prisma.order.update({
           where: { id: orderId },
