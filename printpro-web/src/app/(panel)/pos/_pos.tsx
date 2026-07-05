@@ -642,8 +642,21 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
         <span className="text-xs opacity-70">F2</span>
       </button>
       <button
-        onClick={c.pay}
-        disabled={c.cart.length === 0}
+        onClick={() => {
+          // «Сохранить заказ» проводит ту же продажу, что и «Оплатить»:
+          // для наличных открываем окно расчёта сдачи (не пропускаем flow сдачи).
+          if (c.method === 'CASH') {
+            c.setCashReceived('');
+            setShowCashPay(true);
+          } else {
+            c.pay();
+          }
+        }}
+        disabled={
+          c.cart.length === 0 ||
+          (c.isMixed && c.splitLeft !== 0) ||
+          (c.method === 'DEBT' && !c.phone.trim())
+        }
         className="mt-2 flex w-full items-center justify-between rounded-xl border border-slate-200 px-5 py-3 font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
       >
         <span>Сохранить заказ</span>

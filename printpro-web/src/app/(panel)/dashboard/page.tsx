@@ -8,7 +8,8 @@ import { useAuth } from '@/lib/auth';
 import NavIcon from '@/lib/NavIcons';
 
 function money(n: number) {
-  return new Intl.NumberFormat('ru-RU').format(n) + ' c.';
+  // Округляем и защищаемся от null/undefined/NaN, иначе на карточке видно «NaN c.».
+  return new Intl.NumberFormat('ru-RU').format(Math.round(Number(n) || 0)) + ' c.';
 }
 
 const ORDER_STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -59,9 +60,12 @@ export default function DashboardPage() {
   const [today, setToday] = useState<any>(null);
   const [yesterday, setYesterday] = useState<any>(null);
   const [daily, setDaily] = useState<any[]>([]);
+  // Серверный агрегат по статусам (все заказы, без обрезки списка) — для KPI и разбивки.
+  const [stats, setStats] = useState<{ byStatus: Record<string, number>; total: number } | null>(null);
 
   useEffect(() => {
     api.get(`/orders?companyId=${cid}&pageSize=200`).then((r) => setOrders(r.items ?? [])).catch(() => {});
+    api.get(`/orders/stats?companyId=${cid}`).then(setStats).catch(() => {});
     api.get(`/orders/debts?companyId=${cid}`).then(setDebts).catch(() => {});
     api.get(`/stock/low?companyId=${cid}`).then(setLow).catch(() => {});
     api.get(`/tasks?companyId=${cid}`).then(setTasks).catch(() => {});
@@ -85,9 +89,9 @@ export default function DashboardPage() {
   const openTasks = tasks.filter((t) => t.status !== 'DONE' && t.status !== 'CANCELLED');
   const openComplaints = complaints.filter((c) => c.status === 'OPEN' || c.status === 'IN_REVIEW');
 
-  const inWork  = orders.filter((o) => o.status === 'IN_PROGRESS');
+  // Списки для отображения (панели «Готово — нужно выдать», «Дедлайн скоро») —
+  // из загруженной страницы заказов; для чисел KPI берём серверный агрегат ниже.
   const ready   = orders.filter((o) => o.status === 'READY');
-  const active  = orders.filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED');
 
   const soon = orders.filter((o) => {
     if (!o.deadline || o.status === 'DELIVERED' || o.status === 'CANCELLED') return false;
@@ -95,9 +99,20 @@ export default function DashboardPage() {
     return d < 2 * 24 * 3600 * 1000;
   });
 
+  // KPI и разбивка по статусам — из /orders/stats (все заказы), а не из обрезанного
+  // списка в 200 строк: иначе при росте базы цифры занижаются.
+  const byStatus = stats?.byStatus ?? {};
+  const inWorkCount = byStatus['IN_PROGRESS'] ?? 0;
+  const readyCount = byStatus['READY'] ?? 0;
+
   const statusCounts: Record<string, number> = {};
-  active.forEach((o) => { statusCounts[o.status] = (statusCounts[o.status] ?? 0) + 1; });
-  const totalActive = active.length || 1;
+  let activeCount = 0;
+  for (const [status, cnt] of Object.entries(byStatus)) {
+    if (status === 'DELIVERED' || status === 'CANCELLED') continue;
+    statusCounts[status] = cnt;
+    activeCount += cnt;
+  }
+  const totalActive = activeCount || 1;
 
   const hour = new Date(nowTs).getHours();
   const greeting = hour < 5 ? 'Доброй ночи' : hour < 12 ? 'Доброе утро' : hour < 18 ? 'Добрый день' : 'Добрый вечер';
@@ -169,16 +184,16 @@ export default function DashboardPage() {
         <KpiCard
           icon="production"
           label="В производстве"
-          value={String(inWork.length)}
+          value={String(inWorkCount)}
           grad="from-sky-500 to-blue-600 shadow-blue-500/25"
           sub="заказов в работе"
         />
         <KpiCard
           icon="check"
           label="Готово к выдаче"
-          value={String(ready.length)}
+          value={String(readyCount)}
           grad="from-emerald-500 to-teal-600 shadow-emerald-500/25"
-          sub={ready.length > 0 ? 'можно выдавать' : 'нет готовых'}
+          sub={readyCount > 0 ? 'можно выдавать' : 'нет готовых'}
         />
         <KpiCard
           icon="alert"
@@ -190,8 +205,8 @@ export default function DashboardPage() {
       </div>
 
       {/* Разбивка по статусам */}
-      {active.length > 0 && (
-        <Section title="Заказы по статусам" right={<span className="text-sm text-slate-400">активных: {active.length}</span>} className="mb-6">
+      {activeCount > 0 && (
+        <Section title="Заказы по статусам" right={<span className="text-sm text-slate-400">активных: {activeCount}</span>} className="mb-6">
           <div className="mb-3 flex h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
             {Object.entries(statusCounts).map(([status, cnt]) => {
               const pct = (cnt / totalActive) * 100;

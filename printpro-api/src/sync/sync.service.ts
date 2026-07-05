@@ -144,19 +144,27 @@ export class SyncService {
           const data = { ...row };
           delete data.updatedAt;
 
-          await (this.prisma as any)[t.model].upsert({
-            where: { id: row.id },
-            create: data,
-            update: data,
-          });
+          // Upsert данных и сброс updatedAt/syncNode — в ОДНОЙ транзакции (M-147).
+          // Иначе окно краха между upsert и raw-UPDATE оставит строку с
+          // @updatedAt = now() и syncNode = null: следующий pull примет её за
+          // локальное изменение и отправит эхом обратно в облако (а также сдвиг
+          // TS назад мог бы «омолодить» строку). Транзакция гарантирует, что
+          // либо применились оба шага, либо ни одного.
+          await this.prisma.$transaction(async (tx) => {
+            await (tx as any)[t.model].upsert({
+              where: { id: row.id },
+              create: data,
+              update: data,
+            });
 
-          // Сохраняем исходную метку времени и источник, чтобы не было эха
-          await this.prisma.$executeRawUnsafe(
-            `UPDATE "${t.table}" SET "updatedAt" = $1, "syncNode" = $2 WHERE id = $3`,
-            new Date(row.updatedAt),
-            row.syncNode ?? peer,
-            row.id,
-          );
+            // Сохраняем исходную метку времени и источник, чтобы не было эха
+            await tx.$executeRawUnsafe(
+              `UPDATE "${t.table}" SET "updatedAt" = $1, "syncNode" = $2 WHERE id = $3`,
+              new Date(row.updatedAt),
+              row.syncNode ?? peer,
+              row.id,
+            );
+          });
           applied++;
           mutatedByModel[t.model] = (mutatedByModel[t.model] ?? 0) + 1;
         } catch (e) {

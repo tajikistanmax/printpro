@@ -16,9 +16,15 @@ export class NotificationsService {
   async list(companyId: string): Promise<Notification[]> {
     const out: Notification[] = [];
 
-    // 1. Низкий остаток на складе
+    // 1. Низкий остаток на складе (удалённые товары не считаем — иначе фантомный алерт)
     const stocks = await this.prisma.stock.findMany({
-      where: { product: { companyId, minStock: { gt: new Prisma.Decimal(0) } } },
+      where: {
+        product: {
+          companyId,
+          deletedAt: null,
+          minStock: { gt: new Prisma.Decimal(0) },
+        },
+      },
       include: { product: { select: { name: true, minStock: true } } },
     });
     const lowList = stocks.filter(
@@ -33,10 +39,11 @@ export class NotificationsService {
       });
     }
 
-    // 2. Долги клиентов (отменённые заказы в долг не считаем)
+    // 2. Долги клиентов (отменённые/удалённые заказы в долг не считаем)
     const debt = await this.prisma.order.aggregate({
       where: {
         companyId,
+        deletedAt: null,
         status: { not: OrderStatus.CANCELLED },
         balanceDue: { gt: new Prisma.Decimal(0) },
       },
@@ -59,6 +66,7 @@ export class NotificationsService {
     const overdue = await this.prisma.order.aggregate({
       where: {
         companyId,
+        deletedAt: null,
         status: { not: OrderStatus.CANCELLED },
         balanceDue: { gt: new Prisma.Decimal(0) },
         debtDueDate: { lt: startOfToday },
@@ -81,6 +89,7 @@ export class NotificationsService {
     const urgent = await this.prisma.order.count({
       where: {
         companyId,
+        deletedAt: null,
         deadline: { lte: soonDate, gte: new Date() },
         status: { notIn: [OrderStatus.DELIVERED, OrderStatus.CANCELLED] },
       },
@@ -94,9 +103,9 @@ export class NotificationsService {
       });
     }
 
-    // 4. Макеты, требующие внимания
+    // 4. Макеты, требующие внимания (удалённые не считаем)
     const revision = await this.prisma.designProof.count({
-      where: { companyId, status: ProofStatus.REVISION },
+      where: { companyId, deletedAt: null, status: ProofStatus.REVISION },
     });
     if (revision > 0) {
       out.push({
@@ -109,7 +118,7 @@ export class NotificationsService {
 
     // 5. Заказы, готовые к выдаче
     const ready = await this.prisma.order.count({
-      where: { companyId, status: OrderStatus.READY },
+      where: { companyId, deletedAt: null, status: OrderStatus.READY },
     });
     if (ready > 0) {
       out.push({

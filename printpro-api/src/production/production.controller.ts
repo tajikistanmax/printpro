@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -87,6 +88,11 @@ export class ProductionController {
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    // Файл мог не прийти (пустой запрос) или быть отсеян фильтром типов —
+    // без него `file.filename` бросил бы 500. Отдаём понятный 400.
+    if (!file) {
+      throw new BadRequestException('Файл не загружен');
+    }
     return this.production.setResultPhoto(
       id,
       user.companyId,

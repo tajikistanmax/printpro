@@ -49,7 +49,9 @@ export class StockService {
       this.prisma.stockReceiptItem.findMany({
         where: {
           deletedAt: null,
-          receipt: { companyId, date: { gte: todayStart } },
+          // Исключаем позиции мягко удалённых приёмок — иначе «поступления за
+          // сегодня» завышаются на отменённые приходы.
+          receipt: { companyId, deletedAt: null, date: { gte: todayStart } },
         },
         select: { cost: true, quantity: true },
       }),
@@ -66,30 +68,12 @@ export class StockService {
     return this.prisma.$transaction(async (tx) => {
       await this.ensureProduct(tx, dto.companyId, dto.productId);
       await this.ensureBranch(tx, dto.companyId, dto.branchId);
-      // Остаток до прихода (для аудита «до/после»)
-      const prev = await tx.stock.findUnique({
-        where: {
-          productId_branchId: { productId: dto.productId, branchId: dto.branchId },
-        },
-      });
-      const beforeQty = prev ? Number(prev.quantity) : 0;
 
-      // 1. Записываем движение склада (история)
-      await tx.stockMovement.create({
-        data: {
-          companyId: dto.companyId,
-          productId: dto.productId,
-          branchId: dto.branchId,
-          type: StockMovementType.IN,
-          quantity: dto.quantity,
-          beforeQty,
-          afterQty: Number((beforeQty + Number(dto.quantity)).toFixed(3)),
-          reason: dto.reason ?? 'Приход товара',
-          userId: dto.userId,
-        },
-      });
-
-      // 2. Обновляем (или создаём) остаток на складе
+      // 1. Сначала атомарно увеличиваем (или создаём) остаток. Факт «после»
+      //    берём из результата upsert (increment под блокировкой строки), а не
+      //    из незалоченного пред-чтения — иначе при конкурентном приходе afterQty
+      //    в леджере расходится с реальным стоком. beforeQty выводим вычитанием
+      //    своей дельты, так «до/после» согласованы между собой и со стоком.
       const stock = await tx.stock.upsert({
         where: {
           productId_branchId: {
@@ -105,6 +89,23 @@ export class StockService {
         update: { quantity: { increment: dto.quantity } },
         include: { product: true, branch: true },
       });
+      const afterQty = Number(stock.quantity);
+      const beforeQty = Number((afterQty - Number(dto.quantity)).toFixed(3));
+
+      // 2. Записываем движение склада (история) с фактическими до/после
+      await tx.stockMovement.create({
+        data: {
+          companyId: dto.companyId,
+          productId: dto.productId,
+          branchId: dto.branchId,
+          type: StockMovementType.IN,
+          quantity: dto.quantity,
+          beforeQty,
+          afterQty,
+          reason: dto.reason ?? 'Приход товара',
+          userId: dto.userId,
+        },
+      });
 
       // Аудит прихода со снимком остатка (P1-9d)
       await this.audit.recordTx(tx, {
@@ -115,7 +116,7 @@ export class StockService {
         entityId: dto.productId,
         before: { qty: beforeQty },
         after: {
-          qty: Number((beforeQty + Number(dto.quantity)).toFixed(3)),
+          qty: afterQty,
           quantity: Number(dto.quantity),
           branchId: dto.branchId,
         },
@@ -326,15 +327,19 @@ export class StockService {
     return this.prisma.$transaction(async (tx) => {
       await this.ensureProduct(tx, dto.companyId, dto.productId);
       await this.ensureBranch(tx, dto.companyId, dto.branchId);
-      const current = await tx.stock.findUnique({
-        where: {
-          productId_branchId: {
-            productId: dto.productId,
-            branchId: dto.branchId,
-          },
-        },
-      });
-      const was = current ? Number(current.quantity) : 0;
+      // Инвентаризация — абсолютная перезапись остатка. Блокируем строку стока
+      // (SELECT … FOR UPDATE) до чтения «было»: иначе конкурентная продажа/приход
+      // между чтением и перезаписью терялись бы (lost update), а diff в ADJUST
+      // считался бы от устаревшего значения. Пустой результат = строки ещё нет
+      // (создадим через upsert ниже).
+      const locked = await tx.$queryRaw<Array<{ quantity: string }>>(
+        Prisma.sql`
+          SELECT "quantity" FROM "Stock"
+          WHERE "productId" = ${dto.productId} AND "branchId" = ${dto.branchId}
+          FOR UPDATE
+        `,
+      );
+      const was = locked.length ? Number(locked[0].quantity) : 0;
       const diff = Number((dto.countedQuantity - was).toFixed(3));
 
       await tx.stock.upsert({
@@ -414,10 +419,16 @@ export class StockService {
           skipped++;
           continue;
         }
-        const current = await tx.stock.findUnique({
-          where: { productId_branchId: { productId: it.productId, branchId } },
-        });
-        const was = current ? Number(current.quantity) : 0;
+        // Блокируем строку стока перед чтением «было» (как в recount): защита от
+        // lost update и неверного diff при конкурентных движениях по этой позиции.
+        const locked = await tx.$queryRaw<Array<{ quantity: string }>>(
+          Prisma.sql`
+            SELECT "quantity" FROM "Stock"
+            WHERE "productId" = ${it.productId} AND "branchId" = ${branchId}
+            FOR UPDATE
+          `,
+        );
+        const was = locked.length ? Number(locked[0].quantity) : 0;
         const diff = Number((counted - was).toFixed(3));
         if (diff === 0) {
           unchanged++;

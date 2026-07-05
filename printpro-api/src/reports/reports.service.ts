@@ -117,6 +117,11 @@ export class ReportsService {
     const returnedCost = Number(orders._sum.returnedCost ?? 0);
     const net = this.round2(billed - returns);
     const ordersCount = orders._count;
+    // Собрано деньгами именно по заказам ПЕРИОДА (order.paid, без DEBT) — та же
+    // когорта, что billed/net/debt. Используем для cashCollectionRate/debtGrowth,
+    // чтобы не смешивать с кассовыми платежами периода (гасящими долги прошлых
+    // периодов), из-за чего rate мог превышать 100% (medium).
+    const cohortCollected = this.round2(Number(orders._sum.paid ?? 0));
 
     const grossRevenue = Number(itemAgg._sum.lineTotal ?? 0) - returns;
     const grossCost = Number(itemAgg._sum.lineCost ?? 0) - returnedCost;
@@ -170,8 +175,13 @@ export class ReportsService {
         transfer: byMethod.TRANSFER,
         debt: byMethod.DEBT,
       },
-      cashCollectionRate: net > 0 ? this.round1((collected / net) * 100) : 0,
-      debtGrowth: this.round2(billed - returns - collected),
+      // Коэффициент сбора и прирост долга — по когорте заказов периода
+      // (cohortCollected = Σ order.paid), а не по кассовым платежам периода.
+      // Поле collected выше остаётся отдельной кассовой метрикой (получено
+      // деньгами за период, feed для byMethod/cashflow).
+      cashCollectionRate:
+        net > 0 ? this.round1((cohortCollected / net) * 100) : 0,
+      debtGrowth: this.round2(net - cohortCollected),
       // Доля выручки без себестоимости — от той же item-based базы (P0-25).
       zeroCostShare:
         grossRevenue > 0 ? this.round1((zeroCostRevenue / grossRevenue) * 100) : 0,
@@ -938,7 +948,7 @@ export class ReportsService {
         method: { not: PaymentMethod.DEBT },
         ...(branchId ? { order: { branchId } } : {}),
       },
-      select: { amount: true, method: true, createdAt: true },
+      select: { amount: true, method: true, createdAt: true, shiftId: true },
     });
 
     // Отток — расходы кассы (OUT). «Возвраты» отдельно (refundsCash), не в outflow.
@@ -949,7 +959,7 @@ export class ReportsService {
         createdAt: range,
         ...(branchId ? { shift: { branchId } } : {}),
       },
-      select: { amount: true, category: true, createdAt: true },
+      select: { amount: true, category: true, createdAt: true, shiftId: true },
     });
 
     // Оплаты поставщикам (нет привязки к филиалу — фильтр только по компании)
@@ -1012,22 +1022,44 @@ export class ReportsService {
         openedAt: range,
         ...(branchId ? { branchId } : {}),
       },
-      select: { openingBalance: true, closingBalance: true },
+      select: { id: true, openingBalance: true, closingBalance: true },
     });
+    // Сверка кассы — ТОЛЬКО по закрытым сменам. Раньше openingBalance суммировался
+    // по ВСЕМ сменам, а closingBalance — лишь по закрытым; из-за этого открытая
+    // смена давала фантомную недостачу в discrepancy. Теперь opening/closing и
+    // приток/отток для сверки берём по одному множеству закрытых смен (по shiftId,
+    // как в Z-отчёте), а не за весь период (medium).
+    const closedShiftIds = new Set<string>();
     let openingBalance = 0;
     let closingBalance = 0;
     let openShiftsCount = 0;
     for (const s of shifts) {
-      openingBalance += Number(s.openingBalance);
       if (s.closingBalance === null) {
         openShiftsCount += 1;
       } else {
+        openingBalance += Number(s.openingBalance);
         closingBalance += Number(s.closingBalance);
+        closedShiftIds.add(s.id);
       }
+    }
+    // Наличный приток / отток / возвраты закрытых смен (по shiftId)
+    let closedCashIn = 0;
+    for (const p of payments) {
+      if (p.method === 'CASH' && p.shiftId && closedShiftIds.has(p.shiftId)) {
+        closedCashIn += Number(p.amount);
+      }
+    }
+    let closedCashOut = 0;
+    let closedRefunds = 0;
+    for (const m of movements) {
+      if (!m.shiftId || !closedShiftIds.has(m.shiftId)) continue;
+      const a = Number(m.amount);
+      if (m.category?.trim() === 'Возвраты') closedRefunds += a;
+      else closedCashOut += a;
     }
     // Ожидаемый остаток = открытие + наличный приток − наличный отток − возвраты наличными
     const expectedClosing = this.round2(
-      openingBalance + byMethod.cash - outflowCash - refundsCash,
+      openingBalance + closedCashIn - closedCashOut - closedRefunds,
     );
 
     // Бакеты
@@ -1271,6 +1303,22 @@ export class ReportsService {
       else if (daysOverdue <= 60) aging.d31_60 += amount;
       else aging.d60plus += amount;
       if (overdue) overdueTotal += amount;
+    }
+
+    // Свести aging-бакеты к headline total. Источники разные: total = Σ
+    // Supplier.debt (каноничный долг), а бакеты собраны по неоплаченным приёмкам,
+    // поэтому Σ бакетов может не совпадать с total. Расхождение (долг без
+    // датированных приёмок / ручные корректировки) относим к «current» (не
+    // просрочено), чтобы Σ бакетов всегда сходилась с итогом (medium).
+    const bucketedRaw =
+      aging.current + aging.d1_30 + aging.d31_60 + aging.d60plus;
+    const residual = this.round2(total - bucketedRaw);
+    if (residual > 0) {
+      aging.current += residual;
+    } else if (residual < 0) {
+      // Приёмки показывают больше, чем числится по Supplier.debt (расхождение
+      // данных) — headline берём по приёмкам, чтобы бакеты сошлись с итогом.
+      total = bucketedRaw;
     }
 
     return {
@@ -1721,6 +1769,7 @@ export class ReportsService {
     let completed = 0;
     let rework = 0;
     let onTime = 0;
+    let onTimeEligible = 0;
     let overdueInWork = 0;
     let urgentInWork = 0;
     let unassignedJobs = 0;
@@ -1741,12 +1790,12 @@ export class ReportsService {
       byStatusMap.set(j.status, (byStatusMap.get(j.status) ?? 0) + 1);
       if (j.status === ProductionStatus.COMPLETED) {
         completed += 1;
-        if (
-          j.order?.deadline &&
-          j.completedAt &&
-          j.completedAt <= j.order.deadline
-        ) {
-          onTime += 1;
+        // В знаменатель onTimeRate берём только задания с измеримым сроком (есть
+        // дедлайн заказа и время завершения). Иначе завершённые задания без
+        // дедлайна занижали бы долю «в срок» (они не могут попасть в onTime).
+        if (j.order?.deadline && j.completedAt) {
+          onTimeEligible += 1;
+          if (j.completedAt <= j.order.deadline) onTime += 1;
         }
         // Lead time (часы), отрицательные отбрасываем
         if (j.completedAt) {
@@ -1792,7 +1841,8 @@ export class ReportsService {
       completed,
       rework,
       reworkRate,
-      onTimeRate: completed > 0 ? this.round1((onTime / completed) * 100) : 0,
+      onTimeRate:
+        onTimeEligible > 0 ? this.round1((onTime / onTimeEligible) * 100) : 0,
       overdueInWork,
       urgentInWork,
       unassignedJobs,

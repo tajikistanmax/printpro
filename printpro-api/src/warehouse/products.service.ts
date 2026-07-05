@@ -216,7 +216,9 @@ export class ProductsService {
     const cats = await this.prisma.productCategory.findMany({
       where: { companyId, deletedAt: null },
     });
-    const units = await this.prisma.unit.findMany({ where: { companyId } });
+    const units = await this.prisma.unit.findMany({
+      where: { companyId, deletedAt: null },
+    });
     // Кто уже владеет каким штрихкодом — чтобы не назначить один код двум товарам
     const usedBarcodes = new Map<string, string>(); // barcode -> productId
     const activeProducts = await this.prisma.product.findMany({
@@ -454,6 +456,28 @@ export class ProductsService {
         );
       }
       await this.assertCategory(cat.companyId, pid);
+      // Защита от циклов в дереве категорий. Прямого self-parent мало: цепочка
+      // A→B→C с назначением A.parent=C тоже замыкает цикл. Поднимаемся по
+      // родителям нового родителя; если встретили саму категорию — отклоняем.
+      // visited страхует от зацикливания на уже повреждённых данных.
+      if (pid) {
+        const visited = new Set<string>([id]);
+        let cursor: string | null = pid;
+        while (cursor) {
+          if (visited.has(cursor)) {
+            throw new BadRequestException(
+              'Нельзя переместить категорию внутрь её же подкатегории (цикл)',
+            );
+          }
+          visited.add(cursor);
+          const parent: { parentId: string | null } | null =
+            await this.prisma.productCategory.findUnique({
+              where: { id: cursor },
+              select: { parentId: true },
+            });
+          cursor = parent?.parentId ?? null;
+        }
+      }
       data.parentId = pid;
     }
     return this.prisma.productCategory.update({ where: { id }, data });
@@ -561,7 +585,7 @@ export class ProductsService {
 
   findUnits(companyId: string) {
     return this.prisma.unit.findMany({
-      where: { companyId },
+      where: { companyId, deletedAt: null },
       orderBy: { name: 'asc' },
     });
   }
@@ -601,6 +625,22 @@ export class ProductsService {
     ) {
       throw new NotFoundException('Unit not found');
     }
-    return this.prisma.unit.delete({ where: { id } });
+    // Единица используется активными товарами — не удаляем. Хард-delete через
+    // FK (onDelete: SetNull) молча обнулил бы unitId у всех этих товаров;
+    // сначала переназначьте товары на другую единицу.
+    const inUse = await this.prisma.product.count({
+      where: { unitId: id, companyId: unit.companyId, deletedAt: null },
+    });
+    if (inUse > 0) {
+      throw new BadRequestException(
+        `Единица используется в ${inUse} товар(ах) — сначала переназначьте их на другую единицу`,
+      );
+    }
+    // Мягкое удаление (soft-delete/синхронизация), а не хард-delete: сохраняем
+    // историю и корректный sync-tombstone.
+    return this.prisma.unit.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   }
 }

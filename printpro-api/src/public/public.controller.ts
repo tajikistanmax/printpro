@@ -11,10 +11,17 @@ import {
 } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { IsArray, IsOptional, IsString } from 'class-validator';
+import {
+  IsArray,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { OrderStatus, OrderType, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { nextSeq } from '../common/next-number';
+import { docNumber } from '../common/doc-number';
 import { ClientsService } from '../clients/clients.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { LAYOUT_UPLOAD_OPTIONS } from '../uploads/image-upload.options';
@@ -38,7 +45,14 @@ class PublicOrderDto {
   @IsOptional() @IsString() clientName?: string;
   @IsOptional() @IsString() serviceId?: string;
   @IsOptional() @IsString() description?: string;
-  @IsOptional() @IsArray() files?: PublicFileDto[];
+  // Валидируем каждый вложенный элемент (иначе можно передать произвольный
+  // fileUrl/лишние поля): @ValidateNested + @Type проверяют PublicFileDto,
+  // whitelist глобального ValidationPipe отбрасывает посторонние ключи.
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PublicFileDto)
+  files?: PublicFileDto[];
 }
 
 // Публичные маршруты для сайта клиентов — БЕЗ входа.
@@ -110,9 +124,13 @@ export class PublicController {
       dto.clientName,
     );
 
-    const orderNumber = String(
+    // Канонический номер как во внутреннем create: PREFIX-УЗЕЛ-ГОД-NNNNNN
+    // (раньше был неканоничный «00042», ломавший поиск/сверку по номеру).
+    const orderNumber = docNumber(
+      'ORD',
       await nextSeq(this.prisma, dto.companyId, 'ORDER'),
-    ).padStart(5, '0');
+      6,
+    );
 
     const order = await this.prisma.order.create({
       data: {

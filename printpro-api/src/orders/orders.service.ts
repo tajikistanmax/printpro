@@ -57,7 +57,33 @@ export class OrdersService {
 
   // ---------- Создание заказа ----------
   async create(dto: CreateOrderDto) {
-    return this.prisma.$transaction((tx) => this.createOrderTx(tx, dto));
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // Идемпотентность (finding 58): повтор с тем же ключом (двойной клик/ретрай)
+        // возвращает уже созданный заказ, а не бросает сырой P2002/500 — как в quickSale.
+        if (dto.idempotencyKey) {
+          const existing = await tx.order.findUnique({
+            where: { idempotencyKey: dto.idempotencyKey },
+          });
+          if (existing && existing.status !== OrderStatus.CANCELLED) {
+            return this.loadFull(tx, existing.id);
+          }
+        }
+        return this.createOrderTx(tx, dto);
+      });
+    } catch (e: any) {
+      // Гонка: параллельный запрос с тем же ключом создал заказ первым —
+      // отдаём его вместо ошибки уникальности (finding 58).
+      if (e?.code === 'P2002' && dto.idempotencyKey) {
+        const existing = await this.prisma.order.findUnique({
+          where: { idempotencyKey: dto.idempotencyKey },
+        });
+        if (existing && existing.status !== OrderStatus.CANCELLED) {
+          return this.findOne(existing.id);
+        }
+      }
+      throw e;
+    }
   }
 
   private async createOrderTx(
@@ -556,21 +582,39 @@ export class OrdersService {
         if (!order) throw new BadRequestException('Order was not created');
 
         let total = Number(order.total);
-        let discount = Math.min(
-          dto.discount && dto.discount > 0 ? dto.discount : 0,
-          total,
-        );
+        // Скидки применяются ПОСЛЕДОВАТЕЛЬНО к остатку (как на фронте POS:
+        // ручная → промокод → бонусы), каждая ограничена остатком. Если остаток
+        // уже обнулён предыдущей скидкой, промокод НЕ расходуется и бонусы НЕ
+        // списываются — иначе зря сгорел бы промокод и пропали бы баллы (finding 601).
+        let discount = 0;
+        let remaining = total;
 
-        if (dto.promoCode) {
-          discount += await this.consumePromoTx(
+        const manual = Math.min(
+          dto.discount && dto.discount > 0 ? dto.discount : 0,
+          remaining,
+        );
+        if (manual > 0) {
+          discount += manual;
+          remaining = Number((remaining - manual).toFixed(2));
+        }
+
+        if (dto.promoCode && remaining > 0) {
+          const promo = await this.consumePromoTx(
             tx,
             dto.companyId,
             dto.promoCode,
-            total,
+            remaining,
           );
+          discount += promo;
+          remaining = Number((remaining - promo).toFixed(2));
         }
 
-        if (dto.useBonus && dto.useBonus > 0 && order.clientId) {
+        if (
+          dto.useBonus &&
+          dto.useBonus > 0 &&
+          order.clientId &&
+          remaining > 0
+        ) {
           const client = await tx.client.findFirst({
             where: {
               id: order.clientId,
@@ -579,12 +623,13 @@ export class OrdersService {
             },
             select: { bonusPoints: true },
           });
-          const maxByPercent = Number((total * 0.3).toFixed(2));
+          const maxByPercent = Number((remaining * 0.3).toFixed(2));
           const bonusUsed = Number(
             Math.min(
               dto.useBonus,
               Number(client?.bonusPoints ?? 0),
               maxByPercent,
+              remaining,
             ).toFixed(2),
           );
           if (bonusUsed > 0) {
@@ -601,14 +646,14 @@ export class OrdersService {
               throw new BadRequestException('Not enough client bonus points');
             }
             discount += bonusUsed;
+            remaining = Number((remaining - bonusUsed).toFixed(2));
           }
         }
 
         if (discount > 0) {
-          total = Math.max(
-            0,
-            Number((total - Math.min(discount, total)).toFixed(2)),
-          );
+          // remaining уже равен grossTotal − суммарные скидки (каждая ограничена
+          // остатком, поэтому remaining ∈ [0, grossTotal]).
+          total = remaining;
           await tx.order.update({
             where: { id: order.id },
             data: { total, balanceDue: total },
@@ -808,25 +853,29 @@ export class OrdersService {
         });
       }
 
+      // Сколько уже возвращено по каждой позиции из прошлых документов возврата.
+      // Одна выборка на весь refund — используется и для склада, и для сумм/бонусов
+      // (раньше тот же запрос выполнялся дважды).
+      const priorReturns = await tx.return.findMany({
+        where: { orderId, deletedAt: null },
+        select: { items: true },
+      });
+      const returnedByItem = new Map<string, number>();
+      for (const r of priorReturns) {
+        for (const li of (r.items as any[]) ?? []) {
+          if (li?.orderItemId) {
+            returnedByItem.set(
+              li.orderItemId,
+              (returnedByItem.get(li.orderItemId) ?? 0) +
+                Number(li.quantity || 0),
+            );
+          }
+        }
+      }
+
       // 2. Возврат товаров на склад — только то, что ещё не вернули частичными
       // возвратами, иначе товар оприходуется дважды (продано 5, вернули 2, отмена → +3, не +5).
       if (order.branchId) {
-        const priorReturns = await tx.return.findMany({
-          where: { orderId, deletedAt: null },
-          select: { items: true },
-        });
-        const returnedByItem = new Map<string, number>();
-        for (const r of priorReturns) {
-          for (const li of (r.items as any[]) ?? []) {
-            if (li?.orderItemId) {
-              returnedByItem.set(
-                li.orderItemId,
-                (returnedByItem.get(li.orderItemId) ?? 0) +
-                  Number(li.quantity || 0),
-              );
-            }
-          }
-        }
         for (const it of order.items) {
           if (it.itemType === ItemType.PRODUCT && it.productId) {
             const alreadyReturned = returnedByItem.get(it.id) ?? 0;
@@ -874,29 +923,14 @@ export class OrdersService {
         }
       }
 
-      // 3. Сторнируем начисленные бонусы (1% с каждой реальной оплаты, см. addPayment).
-      //    Иначе клиент циклом «купил-вернул» бесплатно копил бы баллы.
-      const priorReturnDocs = await tx.return.findMany({
-        where: { orderId, deletedAt: null },
-        select: { items: true },
-      });
-      const alreadyReturnedByItem = new Map<string, number>();
-      for (const r of priorReturnDocs) {
-        for (const li of (r.items as any[]) ?? []) {
-          if (li?.orderItemId) {
-            alreadyReturnedByItem.set(
-              li.orderItemId,
-              (alreadyReturnedByItem.get(li.orderItemId) ?? 0) +
-                Number(li.quantity || 0),
-            );
-          }
-        }
-      }
+      // 3. Итоговые позиции и суммы полного возврата — только то, что ещё не вернули
+      //    прошлыми частичными возвратами (returnedByItem посчитан выше). Ниже по этим
+      //    суммам создаётся документ возврата и сторнируются начисленные бонусы.
       const fullReturnItems: any[] = [];
       let fullReturnAmount = 0;
       let fullReturnCost = 0;
       for (const it of order.items) {
-        const alreadyReturned = alreadyReturnedByItem.get(it.id) ?? 0;
+        const alreadyReturned = returnedByItem.get(it.id) ?? 0;
         const quantity = Number(
           (Number(it.quantity) - alreadyReturned).toFixed(3),
         );
@@ -947,12 +981,13 @@ export class OrdersService {
       }
 
       if (order.clientId) {
-        const earned = order.payments
-          .filter((p) => p.method !== PaymentMethod.DEBT)
-          .reduce(
-            (s, p) => s + Number((Number(p.amount) * 0.01).toFixed(2)),
-            0,
-          );
+        // Сторнируем бонусы (1% с реально полученных денег) только за ОСТАВШУЮСЯ
+        // оплату: частичные возвраты уже сторнировали свою долю (1% с moneyBack) и
+        // уменьшили order.paid на возвращённое. Считать 1% со ВСЕХ исходных платежей
+        // нельзя — тогда полный возврат после частичного сторнировал бы уже
+        // сторнированную долю повторно (finding 919/920). `paid` здесь — остаток
+        // фактически полученных денег (order.paid, уже за вычетом прошлых возвратов).
+        const earned = Number((paid * 0.01).toFixed(2));
         if (earned > 0) {
           const client = await tx.client.findUnique({
             where: { id: order.clientId },

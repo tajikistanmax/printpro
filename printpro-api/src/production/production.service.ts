@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -18,6 +19,8 @@ import {
 
 @Injectable()
 export class ProductionService {
+  private readonly logger = new Logger(ProductionService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -106,6 +109,18 @@ export class ProductionService {
           include: this.includes(),
         });
       });
+    } else if (status !== ProductionStatus.COMPLETED && job.materialsWrittenOff) {
+      // Уход из COMPLETED (отмена/переделка/возврат в работу): списанные материалы
+      // надо вернуть на склад — иначе остатки занижены, а леджер расходится (P1-97).
+      // Реверс и смена статуса — в ОДНОЙ транзакции, идемпотентно.
+      updated = await this.prisma.$transaction(async (tx) => {
+        await this.reverseMaterialWriteOff(tx, job, userId);
+        return tx.productionJob.update({
+          where: { id },
+          data,
+          include: this.includes(),
+        });
+      });
     } else {
       updated = await this.prisma.productionJob.update({
         where: { id },
@@ -132,7 +147,15 @@ export class ProductionService {
         items: { include: { service: { include: { materials: true } } } },
       },
     });
-    if (!order?.branchId) return;
+    if (!order?.branchId) {
+      // Без филиала списывать неоткуда: материалы не спишутся, снимок
+      // себестоимости не зафиксируется, а `materialsWrittenOff` останется false.
+      // Не молчим — логируем, чтобы расхождение в учёте склада было заметно (P1-116).
+      this.logger.warn(
+        `writeOffMaterials: заказ ${orderId} без branchId — списание материалов пропущено (job ${jobId})`,
+      );
+      return;
+    }
 
     const need = new Map<string, number>();
     for (const item of order.items) {
@@ -226,6 +249,106 @@ export class ProductionService {
           ),
         },
       });
+  }
+
+  // Реверс списания материалов при уходе задания из COMPLETED (отмена/переделка).
+  // Без реверса остатки занижены на потреблённый объём, а стоковый леджер
+  // расходится с фактическим остатком (P1-97). Идемпотентно: claim через
+  // updateMany (materialsWrittenOff true→false) пропускает ровно один реверс на
+  // цикл завершения — повторные вызовы и гонки становятся no-op. Возвращаем на
+  // склад НЕПОГАШЕННЫЙ объём (списания WRITE_OFF минус прежние реверсы IN этого
+  // задания) — корректно при нескольких циклах COMPLETED→REWORK→COMPLETED.
+  private async reverseMaterialWriteOff(
+    tx: Prisma.TransactionClient,
+    job: { id: string; orderId: string; companyId: string },
+    userId?: string,
+  ) {
+    const claim = await tx.productionJob.updateMany({
+      where: { id: job.id, materialsWrittenOff: true, deletedAt: null },
+      data: { materialsWrittenOff: false },
+    });
+    if (claim.count === 0) return;
+
+    const movements = await tx.stockMovement.findMany({
+      where: { productionJobId: job.id, deletedAt: null },
+      select: {
+        productId: true,
+        branchId: true,
+        type: true,
+        quantity: true,
+        unitCost: true,
+      },
+    });
+
+    // Аггрегация по товару: списано (WRITE_OFF), уже возвращено (IN — прежние
+    // реверсы), суммарная себестоимость списаний (для средневзвешенного снимка).
+    const perProduct = new Map<
+      string,
+      { branchId: string | null; writtenOff: number; reversed: number; cost: number }
+    >();
+    for (const m of movements) {
+      const cur =
+        perProduct.get(m.productId) ??
+        { branchId: m.branchId, writtenOff: 0, reversed: 0, cost: 0 };
+      const q = Number(m.quantity);
+      if (m.type === StockMovementType.WRITE_OFF) {
+        cur.writtenOff += q;
+        cur.cost += Number(m.unitCost ?? 0) * q;
+        if (!cur.branchId) cur.branchId = m.branchId;
+      } else if (m.type === StockMovementType.IN) {
+        cur.reversed += q;
+      }
+      perProduct.set(m.productId, cur);
+    }
+
+    let restoredCount = 0;
+    for (const [productId, agg] of perProduct) {
+      const netQty = Number((agg.writtenOff - agg.reversed).toFixed(3));
+      if (netQty <= 0 || !agg.branchId) continue;
+      const branchId = agg.branchId;
+      const current = await tx.stock.findUnique({
+        where: { productId_branchId: { productId, branchId } },
+        select: { quantity: true },
+      });
+      const beforeQty = Number(current?.quantity ?? 0);
+      await tx.stock.upsert({
+        where: { productId_branchId: { productId, branchId } },
+        create: { productId, branchId, quantity: netQty },
+        update: { quantity: { increment: netQty } },
+      });
+      // Средневзвешенная себестоимость списания — симметричный снимок для реверса.
+      const unitCost =
+        agg.writtenOff > 0 ? Number((agg.cost / agg.writtenOff).toFixed(4)) : 0;
+      // Тип IN: reports.net учитывает IN/RETURN как приход и гасит WRITE_OFF; ADJUST
+      // в стоковом отчёте не учитывается, поэтому для реверса он не годится.
+      await tx.stockMovement.create({
+        data: {
+          companyId: job.companyId,
+          productId,
+          branchId,
+          type: StockMovementType.IN,
+          quantity: netQty,
+          beforeQty,
+          afterQty: Number((beforeQty + netQty).toFixed(3)),
+          reason: `Reversal of production write-off (job ${job.id})`,
+          orderId: job.orderId,
+          userId: userId ?? null,
+          unitCost,
+          totalCost: Number((unitCost * netQty).toFixed(4)),
+          productionJobId: job.id,
+        },
+      });
+      restoredCount += 1;
+    }
+
+    await this.audit.recordTx(tx, {
+      companyId: job.companyId,
+      userId: userId ?? undefined,
+      action: 'stock:production-writeoff-reverse',
+      entity: 'productionJob',
+      entityId: job.id,
+      after: { orderId: job.orderId, itemsCount: restoredCount },
+    });
   }
 
   async remove(id: string, companyId: string) {
