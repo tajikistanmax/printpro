@@ -140,6 +140,7 @@ export class PayrollService {
       if (u.salaryType === SalaryType.HOURLY) {
         const wt = await this.prisma.workTimeRecord.aggregate({
           where: {
+            companyId: period.companyId, // scoping по компании (defense-in-depth)
             userId: u.id,
             date: { gte: period.startDate, lte: period.endDate },
           },
@@ -151,6 +152,7 @@ export class PayrollService {
       // Авансы за период
       const adv = await this.prisma.salaryAdvance.aggregate({
         where: {
+          companyId: period.companyId, // scoping по компании (defense-in-depth)
           userId: u.id,
           date: { gte: period.startDate, lte: period.endDate },
         },
