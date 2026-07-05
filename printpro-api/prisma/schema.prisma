@@ -1207,6 +1207,9 @@ model SalaryAdvance {
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   amount    Decimal   @db.Decimal(12, 2)
+  // Аванс выдан из кассового ящика (расход по смене, в Z-отчёте) или из другого
+  // источника (перевод/личные) — тогда касса не уменьшается. По умолчанию — из кассы.
+  paidFromCash Boolean @default(true)
   date      DateTime  @default(now())
   note      String?
 }

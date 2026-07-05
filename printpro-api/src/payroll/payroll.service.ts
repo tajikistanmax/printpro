@@ -75,14 +75,39 @@ export class PayrollService {
   }
 
   // ---------- Авансы ----------
-  addAdvance(dto: AddAdvanceDto) {
-    return this.prisma.salaryAdvance.create({
-      data: {
-        companyId: dto.companyId,
-        userId: dto.userId,
-        amount: dto.amount,
-        note: dto.note,
-      },
+  async addAdvance(dto: AddAdvanceDto, actorId?: string) {
+    const paidFromCash = dto.paidFromCash ?? true;
+    return this.prisma.$transaction(async (tx) => {
+      const advance = await tx.salaryAdvance.create({
+        data: {
+          companyId: dto.companyId,
+          userId: dto.userId,
+          amount: dto.amount,
+          paidFromCash,
+          note: dto.note,
+        },
+      });
+      // Аванс наличными из кассы — расход по открытой смене ВЫДАЮЩЕГО (кассира),
+      // категория «Аванс», иначе выплата не попадёт в Z-отчёт и завысит остаток
+      // кассы. Если не из кассы (перевод/личные) — движение не создаём.
+      if (paidFromCash) {
+        const emp = await tx.user.findUnique({
+          where: { id: dto.userId },
+          select: { fullName: true },
+        });
+        const shiftId = await this.openShiftId(tx, dto.companyId, actorId);
+        await tx.cashMovement.create({
+          data: {
+            companyId: dto.companyId,
+            shiftId,
+            type: 'OUT',
+            amount: dto.amount,
+            category: 'Аванс',
+            reason: `Аванс: ${emp?.fullName ?? ''}`.trim(),
+          },
+        });
+      }
+      return advance;
     });
   }
 

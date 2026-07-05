@@ -1,4 +1,11 @@
-import { IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { SalaryType } from '@prisma/client';
 
 export class SetSalaryDto {
@@ -19,6 +26,8 @@ export class AddAdvanceDto {
   @IsString() companyId: string;
   @IsString() userId: string;
   @IsNumber() @Min(0.01) amount: number;
+  // Аванс выдан из кассы (расход по смене) или из другого источника. По умолч. — из кассы.
+  @IsOptional() @IsBoolean() paidFromCash?: boolean;
   @IsOptional() @IsString() note?: string;
 }
 

@@ -42,6 +42,7 @@ export default function PayrollPage() {
   // Аванс / время
   const [aUser, setAUser] = useState('');
   const [aAmount, setAAmount] = useState('');
+  const [aFromCash, setAFromCash] = useState(true); // аванс выдан из кассы?
   const [wUser, setWUser] = useState('');
   const [wHours, setWHours] = useState('');
 
@@ -141,6 +142,7 @@ export default function PayrollPage() {
         companyId: cid,
         userId: aUser || staff[0]?.id,
         amount: Number(aAmount),
+        paidFromCash: aFromCash,
       });
       setAAmount('');
       setMsg('✓ Аванс записан');
@@ -359,6 +361,20 @@ export default function PayrollPage() {
               <Button type="submit" variant="amber">
                 Выдать
               </Button>
+              <label className="flex w-full cursor-pointer select-none items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={aFromCash}
+                  onChange={(e) => setAFromCash(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800"
+                />
+                Выдан из кассы
+                <span className="text-xs text-slate-400">
+                  {aFromCash
+                    ? '— расход по смене, войдёт в Z-отчёт (нужна открытая касса)'
+                    : '— из другого источника, кассу не уменьшает'}
+                </span>
+              </label>
             </form>
           </Card>
 

@@ -59,7 +59,10 @@ export class PayrollController {
     @Body() dto: AddAdvanceDto,
     @CurrentUser() user: { sub: string; companyId: string },
   ) {
-    return this.payroll.addAdvance({ ...dto, companyId: user.companyId });
+    return this.payroll.addAdvance(
+      { ...dto, companyId: user.companyId },
+      user.sub,
+    );
   }
 
   // Периоды
