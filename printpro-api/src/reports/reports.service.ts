@@ -712,13 +712,17 @@ export class ReportsService {
       { sharePct: number; cumPct: number; cls: 'A' | 'B' | 'C' }
     >();
     for (const r of byRevenue) {
+      // Класс определяем по кумулятивной доле, где товар НАЧИНАЕТСЯ (до его
+      // добавления): иначе доминирующий топ-товар (доля >80%) сразу перескакивал
+      // за порог и уходил в B/C вместо A (medium).
+      const cumPctBefore = totalRevenue > 0 ? (cum / totalRevenue) * 100 : 0;
       cum += r.revenue;
       const cumPct = totalRevenue > 0 ? (cum / totalRevenue) * 100 : 0;
       const sharePct = totalRevenue > 0 ? (r.revenue / totalRevenue) * 100 : 0;
       withClass.set(r.key, {
         sharePct: this.round1(sharePct),
         cumPct: this.round1(cumPct),
-        cls: classify(cumPct),
+        cls: classify(cumPctBefore),
       });
     }
 
@@ -2056,10 +2060,14 @@ export class ReportsService {
     let debt = 0;
     let returned = 0;
     const items = orders.map((o) => {
-      total += Number(o.total);
-      paid += Number(o.paid);
-      debt += Number(o.balanceDue);
-      returned += Number(o.returnedTotal);
+      // Отменённые заказы остаются в списке (для выгрузки), но НЕ входят в итоги —
+      // иначе реестр расходится с прочими отчётами (medium).
+      if (o.status !== 'CANCELLED') {
+        total += Number(o.total);
+        paid += Number(o.paid);
+        debt += Number(o.balanceDue);
+        returned += Number(o.returnedTotal);
+      }
       const overdue =
         !!o.deadline && o.deadline < now && o.status !== 'DELIVERED';
       return {
