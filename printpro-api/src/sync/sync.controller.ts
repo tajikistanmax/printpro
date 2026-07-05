@@ -8,14 +8,19 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { createHash, createHmac, timingSafeEqual } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
+import { PrismaService } from '../prisma/prisma.service';
 import { SyncService } from './sync.service';
 
 @Controller('sync')
 export class SyncController {
-  constructor(private readonly sync: SyncService) {}
+  constructor(
+    private readonly sync: SyncService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   private nodeSecrets() {
     const raw = process.env.SYNC_NODE_SECRETS ?? '';
@@ -39,30 +44,42 @@ export class SyncController {
   }
 
   // Одноразовые nonce в окне свежести (5 мин) — защита от повторного
-  // проигрывания перехваченной подписи (P0-5). In-memory на процесс; для
-  // multi-instance деплоя нужен общий store (Redis/таблица).
-  private readonly seenNonces = new Map<string, number>();
-
-  private recordNonce(node: string, nonce: string): boolean {
-    const now = Date.now();
-    // чистим просроченные, чтобы Map не рос бесконечно
-    for (const [k, exp] of this.seenNonces) {
-      if (exp <= now) this.seenNonces.delete(k);
+  // проигрывания перехваченной подписи (P0-5). Хранятся в БД (SyncNonce):
+  // переживают рестарт процесса и работают при нескольких инстансах.
+  private async recordNonce(node: string, nonce: string): Promise<boolean> {
+    // Опортунистически чистим просроченные (старше окна свежести).
+    await this.prisma.syncNonce.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
+    try {
+      await this.prisma.syncNonce.create({
+        data: {
+          node,
+          nonce,
+          expiresAt: new Date(Date.now() + 300_000),
+        },
+      });
+      return true;
+    } catch (e) {
+      // Уникальность (node, nonce) нарушена → этот nonce уже использован (повтор).
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        return false;
+      }
+      throw e;
     }
-    const key = `${node}:${nonce}`;
-    if (this.seenNonces.has(key)) return false; // повтор → отказ
-    this.seenNonces.set(key, now + 300_000);
-    return true;
   }
 
-  private check(
+  private async check(
     secret?: string,
     node?: string,
     timestamp?: string,
     signature?: string,
     nonce?: string,
     body?: unknown,
-  ) {
+  ): Promise<string> {
     const nodeSecrets = this.nodeSecrets();
     if (nodeSecrets.size > 0) {
       const nodeSecret = node ? nodeSecrets.get(node) : undefined;
@@ -90,7 +107,7 @@ export class SyncController {
         throw new ForbiddenException('Invalid sync signature');
       }
       // Проверяем nonce ПОСЛЕ подписи, чтобы неверная подпись не «сжигала» nonce.
-      if (!this.recordNonce(node, nonce)) {
+      if (!(await this.recordNonce(node, nonce))) {
         throw new ForbiddenException('Sync nonce replay');
       }
       return node;
@@ -104,7 +121,7 @@ export class SyncController {
   }
 
   @Post('pull')
-  pull(
+  async pull(
     @Headers('x-sync-secret') secret: string,
     @Headers('x-sync-node') node: string,
     @Headers('x-sync-timestamp') timestamp: string,
@@ -112,12 +129,19 @@ export class SyncController {
     @Headers('x-sync-nonce') nonce: string,
     @Body() body: { since?: string },
   ) {
-    const peer = this.check(secret, node, timestamp, signature, nonce, body);
+    const peer = await this.check(
+      secret,
+      node,
+      timestamp,
+      signature,
+      nonce,
+      body,
+    );
     return this.sync.pull(body?.since, peer);
   }
 
   @Post('push')
-  push(
+  async push(
     @Headers('x-sync-secret') secret: string,
     @Headers('x-sync-node') node: string,
     @Headers('x-sync-timestamp') timestamp: string,
@@ -125,12 +149,19 @@ export class SyncController {
     @Headers('x-sync-nonce') nonce: string,
     @Body() body: { changes: Record<string, any[]>; peer?: string },
   ) {
-    const peer = this.check(secret, node, timestamp, signature, nonce, body);
+    const peer = await this.check(
+      secret,
+      node,
+      timestamp,
+      signature,
+      nonce,
+      body,
+    );
     return this.sync.push(body?.changes ?? {}, peer === 'legacy' ? body?.peer : peer);
   }
 
   @Post('heartbeat')
-  heartbeat(
+  async heartbeat(
     @Headers('x-sync-secret') secret: string,
     @Headers('x-sync-node') node: string,
     @Headers('x-sync-timestamp') timestamp: string,
@@ -138,7 +169,7 @@ export class SyncController {
     @Headers('x-sync-nonce') nonce: string,
     @Body() body: unknown,
   ) {
-    this.check(secret, node, timestamp, signature, nonce, body);
+    await this.check(secret, node, timestamp, signature, nonce, body);
     return this.sync.heartbeat();
   }
 

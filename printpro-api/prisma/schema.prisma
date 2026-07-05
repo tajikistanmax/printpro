@@ -1223,6 +1223,21 @@ model SyncCursor {
   updatedAt  DateTime @updatedAt
 }
 
+// Одноразовые nonce sync-подписей — durable-защита от replay (P0-5).
+// Раньше nonce хранились в памяти процесса: рестарт/второй инстанс терял их и
+// подпись можно было переиграть. Теперь — в БД: уникальность (node, nonce)
+// отклоняет повтор; expiresAt чистит записи старше окна свежести (5 мин).
+model SyncNonce {
+  id        String   @id @default(uuid())
+  node      String
+  nonce     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([node, nonce])
+  @@index([expiresAt])
+}
+
 // ======================= СИСТЕМНОЕ =======================
 
 model AuditLog {
