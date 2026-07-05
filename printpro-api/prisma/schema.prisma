@@ -602,6 +602,12 @@ model StockMovement {
   order     Order?            @relation(fields: [orderId], references: [id])
   userId    String?
   user      User?             @relation(fields: [userId], references: [id])
+  // Снимок себестоимости на момент движения — для восстановления затрат
+  // производства (списание материалов) и оценки склада. (P1-2)
+  unitCost        Decimal?       @db.Decimal(12, 4) // себестоимость единицы
+  totalCost       Decimal?       @db.Decimal(12, 4) // unitCost * quantity
+  productionJobId String? // производственное задание, вызвавшее списание
+  productionJob   ProductionJob? @relation(fields: [productionJobId], references: [id])
   createdAt DateTime          @default(now())
 }
 
@@ -1034,6 +1040,8 @@ model ProductionJob {
   startedAt      DateTime?
   completedAt    DateTime?
   createdAt      DateTime         @default(now())
+
+  stockMovements StockMovement[] // списания материалов по этому заданию (P1-2)
 
   @@index([companyId, status])
 }

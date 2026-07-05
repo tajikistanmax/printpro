@@ -125,6 +125,16 @@ export class ProductionService {
     }
     if (need.size === 0) return;
 
+    // Себестоимость материалов на момент списания (снимок для затрат) — P1-2.
+    // Берём Product.purchasePrice — та же база, что для оценки склада в отчётах.
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: [...need.keys()] } },
+      select: { id: true, purchasePrice: true },
+    });
+    const costOf = new Map(
+      products.map((p) => [p.id, Number(p.purchasePrice ?? 0)]),
+    );
+
     await this.prisma.$transaction(async (tx) => {
       const claim = await tx.productionJob.updateMany({
         where: { id: jobId, materialsWrittenOff: false, deletedAt: null },
@@ -152,6 +162,8 @@ export class ProductionService {
         if (dec.count === 0) {
           throw new BadRequestException('Not enough material stock');
         }
+        const unitCost = costOf.get(productId) ?? 0;
+        const totalCost = Number((unitCost * qty).toFixed(4));
         await tx.stockMovement.create({
           data: {
             companyId: order.companyId,
@@ -165,6 +177,10 @@ export class ProductionService {
             orderId: order.id,
             // исполнитель, завершивший задание (для восстановления себестоимости)
             userId: userId ?? null,
+            // снимок себестоимости и связь с заданием — P1-2
+            unitCost,
+            totalCost,
+            productionJobId: jobId,
           },
         });
       }
