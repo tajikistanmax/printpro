@@ -276,7 +276,9 @@ export default function PosPage() {
   }, [phone]);
 
   const subtotal = cart.reduce((s, c) => s + c.unitPrice * c.quantity, 0);
-  const disc = Math.min(Number(discount) || 0, subtotal);
+  // Кламп в [0, subtotal]: отрицательная скидка на вводе раздувала бы total выше
+  // подытога (afterDisc = subtotal − отрицательное), завышая сдачу (medium).
+  const disc = Math.max(0, Math.min(Number(discount) || 0, subtotal));
   const afterDisc = Math.max(0, subtotal - disc);
   const promo = Math.min(promoDiscount, afterDisc);
   const afterPromo = Math.max(0, afterDisc - promo);
