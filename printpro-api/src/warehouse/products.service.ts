@@ -59,15 +59,35 @@ export class ProductsService {
   }
 
   // ---------- Товары ----------
+  private async assertCategory(companyId: string, categoryId?: string | null) {
+    if (!categoryId) return;
+    const category = await this.prisma.productCategory.findFirst({
+      where: { id: categoryId, companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!category) throw new NotFoundException('Category not found');
+  }
+
+  private async assertUnit(companyId: string, unitId?: string | null) {
+    if (!unitId) return;
+    const unit = await this.prisma.unit.findFirst({
+      where: { id: unitId, companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!unit) throw new NotFoundException('Unit not found');
+  }
+
   async createProduct(dto: CreateProductDto) {
+    await this.assertCategory(dto.companyId, dto.categoryId);
+    await this.assertUnit(dto.companyId, dto.unitId);
     await this.assertBarcodeFree(dto.companyId, dto.barcode);
     try {
       return await this.prisma.product.create({
         data: {
           companyId: dto.companyId,
           name: dto.name,
-          categoryId: dto.categoryId,
-          unitId: dto.unitId,
+          categoryId: dto.categoryId || null,
+          unitId: dto.unitId || null,
           salePrice: dto.salePrice ?? 0,
           purchasePrice: dto.purchasePrice ?? 0,
           minStock: dto.minStock ?? 0,
@@ -108,7 +128,9 @@ export class ProductsService {
         category: true,
         unit: true,
         stock: { include: { branch: true } },
-        serviceMaterials: { include: { service: { select: { id: true, name: true } } } },
+        serviceMaterials: {
+          include: { service: { select: { id: true, name: true } } },
+        },
         barcodeAliases: {
           where: { deletedAt: null },
           select: { id: true, barcode: true },
@@ -125,7 +147,9 @@ export class ProductsService {
     const lastItem = await this.prisma.stockReceiptItem.findFirst({
       where: { productId: id, deletedAt: null },
       orderBy: { receipt: { date: 'desc' } },
-      include: { receipt: { include: { supplier: { select: { name: true } } } } },
+      include: {
+        receipt: { include: { supplier: { select: { name: true } } } },
+      },
     });
     const lastReceipt = lastItem
       ? {
@@ -148,7 +172,10 @@ export class ProductsService {
     });
     const consumed = Number(consumedAgg._sum.quantity ?? 0);
     const avgPerDay = consumed > 0 ? Number((consumed / 30).toFixed(2)) : 0;
-    const stockTotal = product.stock.reduce((s, r) => s + Number(r.quantity), 0);
+    const stockTotal = product.stock.reduce(
+      (s, r) => s + Number(r.quantity),
+      0,
+    );
     const daysLeft = avgPerDay > 0 ? Math.floor(stockTotal / avgPerDay) : null;
 
     return {
@@ -164,12 +191,13 @@ export class ProductsService {
   // Принимает строки {name, category, unit, salePrice, purchasePrice, minStock, sku, barcode}.
   // Категории/единицы подбираются по имени (создаются при отсутствии).
   // Совпадение по имени товара (без учёта регистра) → обновляем, иначе создаём.
-  async importProducts(
-    companyId: string,
-    rows: Array<Record<string, any>>,
-  ) {
+  async importProducts(companyId: string, rows: Array<Record<string, any>>) {
     const num = (v: any) => {
-      const n = Number(String(v ?? '').replace(/\s/g, '').replace(',', '.'));
+      const n = Number(
+        String(v ?? '')
+          .replace(/\s/g, '')
+          .replace(',', '.'),
+      );
       return Number.isFinite(n) ? n : 0;
     };
     const str = (v: any) => {
@@ -213,66 +241,71 @@ export class ProductsService {
       }
 
       try {
-      let categoryId: string | null = null;
-      const catName = String(r.category ?? '').trim();
-      if (catName) {
-        const key = catName.toLowerCase();
-        categoryId = catMap.get(key) ?? null;
-        if (!categoryId) {
-          const c = await this.prisma.productCategory.create({
-            data: { companyId, name: catName },
-          });
-          categoryId = c.id;
-          catMap.set(key, c.id);
+        let categoryId: string | null = null;
+        const catName = String(r.category ?? '').trim();
+        if (catName) {
+          const key = catName.toLowerCase();
+          categoryId = catMap.get(key) ?? null;
+          if (!categoryId) {
+            const c = await this.prisma.productCategory.create({
+              data: { companyId, name: catName },
+            });
+            categoryId = c.id;
+            catMap.set(key, c.id);
+          }
         }
-      }
 
-      let unitId: string | null = null;
-      const unitName = String(r.unit ?? '').trim();
-      if (unitName) {
-        const key = unitName.toLowerCase();
-        unitId = unitMap.get(key) ?? null;
-        if (!unitId) {
-          const u = await this.prisma.unit.create({
-            data: { companyId, name: unitName, shortName: unitName },
-          });
-          unitId = u.id;
-          unitMap.set(key, u.id);
+        let unitId: string | null = null;
+        const unitName = String(r.unit ?? '').trim();
+        if (unitName) {
+          const key = unitName.toLowerCase();
+          unitId = unitMap.get(key) ?? null;
+          if (!unitId) {
+            const u = await this.prisma.unit.create({
+              data: { companyId, name: unitName, shortName: unitName },
+            });
+            unitId = u.id;
+            unitMap.set(key, u.id);
+          }
         }
-      }
 
-      const data = {
-        name,
-        categoryId,
-        unitId,
-        salePrice: num(r.salePrice ?? r.price),
-        purchasePrice: num(r.purchasePrice),
-        minStock: num(r.minStock),
-        sku: str(r.sku),
-        barcode: str(r.barcode),
-      };
+        const data = {
+          name,
+          categoryId,
+          unitId,
+          salePrice: num(r.salePrice ?? r.price),
+          purchasePrice: num(r.purchasePrice),
+          minStock: num(r.minStock),
+          sku: str(r.sku),
+          barcode: str(r.barcode),
+        };
 
-      const existing = await this.prisma.product.findFirst({
-        where: {
-          companyId,
-          deletedAt: null,
-          name: { equals: name, mode: 'insensitive' },
-        },
-      });
-      // Если штрихкод уже занят другим товаром — не назначаем его (импорт не падает)
-      if (data.barcode) {
-        const owner = usedBarcodes.get(data.barcode);
-        if (owner && owner !== existing?.id) data.barcode = undefined;
-      }
-      if (existing) {
-        await this.prisma.product.update({ where: { id: existing.id }, data });
-        if (data.barcode) usedBarcodes.set(data.barcode, existing.id);
-        updated++;
-      } else {
-        const p = await this.prisma.product.create({ data: { companyId, ...data } });
-        if (data.barcode) usedBarcodes.set(data.barcode, p.id);
-        created++;
-      }
+        const existing = await this.prisma.product.findFirst({
+          where: {
+            companyId,
+            deletedAt: null,
+            name: { equals: name, mode: 'insensitive' },
+          },
+        });
+        // Если штрихкод уже занят другим товаром — не назначаем его (импорт не падает)
+        if (data.barcode) {
+          const owner = usedBarcodes.get(data.barcode);
+          if (owner && owner !== existing?.id) data.barcode = undefined;
+        }
+        if (existing) {
+          await this.prisma.product.update({
+            where: { id: existing.id },
+            data,
+          });
+          if (data.barcode) usedBarcodes.set(data.barcode, existing.id);
+          updated++;
+        } else {
+          const p = await this.prisma.product.create({
+            data: { companyId, ...data },
+          });
+          if (data.barcode) usedBarcodes.set(data.barcode, p.id);
+          created++;
+        }
       } catch {
         // Ошибка на строке (конфликт данных и т.п.) не должна рушить весь импорт
         skipped++;
@@ -316,13 +349,20 @@ export class ProductsService {
   }
 
   // ---------- Доп. штрихкоды (алиасы) ----------
-  async addBarcodeAlias(productId: string, barcode: string) {
+  async addBarcodeAlias(
+    productId: string,
+    barcode: string,
+    companyId?: string,
+  ) {
     const code = (barcode ?? '').trim();
     if (!code) throw new NotFoundException('Пустой штрихкод');
-    const product = await this.prisma.product.findUniqueOrThrow({
+    const product = await this.prisma.product.findUnique({
       where: { id: productId },
       select: { companyId: true },
     });
+    if (!product || (companyId && product.companyId !== companyId)) {
+      throw new NotFoundException('Product not found');
+    }
     // Не даём назначить чужой штрихкод (уже у другого товара или его доп. кода)
     await this.assertBarcodeFree(product.companyId, code, productId);
     try {
@@ -330,22 +370,34 @@ export class ProductsService {
         data: { productId, barcode: code },
         select: { id: true, barcode: true },
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Штрихкод доп. кодов уникален глобально — понятная ошибка вместо 500.
-      if (e?.code === 'P2002') {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
         throw new BadRequestException(`Штрихкод ${code} уже используется`);
       }
       throw e;
     }
   }
 
-  async removeBarcodeAlias(aliasId: string) {
+  async removeBarcodeAlias(aliasId: string, companyId?: string) {
+    const alias = await this.prisma.productBarcodeAlias.findFirst({
+      where: {
+        id: aliasId,
+        ...(companyId ? { product: { companyId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (!alias) throw new NotFoundException('Barcode alias not found');
     await this.prisma.productBarcodeAlias.delete({ where: { id: aliasId } });
     return { ok: true };
   }
 
   // ---------- Категории товаров ----------
-  createCategory(dto: CreateCategoryDto) {
+  async createCategory(dto: CreateCategoryDto) {
+    await this.assertCategory(dto.companyId, dto.parentId);
     return this.prisma.productCategory.create({
       data: {
         companyId: dto.companyId,
@@ -366,8 +418,12 @@ export class ProductsService {
   async updateCategory(
     id: string,
     dto: { name?: string; isDefault?: boolean; parentId?: string | null },
+    companyId?: string,
   ) {
-    const cat = await this.prisma.productCategory.findUniqueOrThrow({ where: { id } });
+    const cat = await this.prisma.productCategory.findUnique({ where: { id } });
+    if (!cat || cat.deletedAt || (companyId && cat.companyId !== companyId)) {
+      throw new NotFoundException('Category not found');
+    }
     if (dto.isDefault) {
       await this.prisma.productCategory.updateMany({
         where: { companyId: cat.companyId, isDefault: true },
@@ -385,8 +441,11 @@ export class ProductsService {
     if (dto.parentId !== undefined) {
       const pid = dto.parentId || null;
       if (pid === id) {
-        throw new BadRequestException('Категория не может быть своим родителем');
+        throw new BadRequestException(
+          'Категория не может быть своим родителем',
+        );
       }
+      await this.assertCategory(cat.companyId, pid);
       data.parentId = pid;
     }
     return this.prisma.productCategory.update({ where: { id }, data });
@@ -423,11 +482,21 @@ export class ProductsService {
     });
   }
 
-  async updateProduct(id: string, dto: Partial<CreateProductDto>, companyId?: string) {
-    const current = await this.prisma.product.findUniqueOrThrow({ where: { id } });
-    if (companyId && current.companyId !== companyId) {
+  async updateProduct(
+    id: string,
+    dto: Partial<CreateProductDto>,
+    companyId?: string,
+  ) {
+    const current = await this.prisma.product.findUnique({ where: { id } });
+    if (
+      !current ||
+      current.deletedAt ||
+      (companyId && current.companyId !== companyId)
+    ) {
       throw new NotFoundException('Товар не найден');
     }
+    await this.assertCategory(current.companyId, dto.categoryId);
+    await this.assertUnit(current.companyId, dto.unitId);
     if (dto.barcode != null && dto.barcode.trim() !== (current.barcode ?? '')) {
       await this.assertBarcodeFree(current.companyId, dto.barcode, id);
     }
@@ -459,8 +528,12 @@ export class ProductsService {
   }
 
   async removeProduct(id: string, companyId?: string) {
-    const current = await this.prisma.product.findUniqueOrThrow({ where: { id } });
-    if (companyId && current.companyId !== companyId) {
+    const current = await this.prisma.product.findUnique({ where: { id } });
+    if (
+      !current ||
+      current.deletedAt ||
+      (companyId && current.companyId !== companyId)
+    ) {
       throw new NotFoundException('Товар не найден');
     }
     // Мягкое удаление: сохраняем историю продаж/движений, но убираем из каталога
@@ -476,15 +549,22 @@ export class ProductsService {
   }
 
   findUnits(companyId: string) {
-    return this.prisma.unit.findMany({ where: { companyId }, orderBy: { name: 'asc' } });
+    return this.prisma.unit.findMany({
+      where: { companyId },
+      orderBy: { name: 'asc' },
+    });
   }
 
   // Переименовать / назначить единицу по умолчанию (одна на компанию)
   async updateUnit(
     id: string,
     dto: { name?: string; shortName?: string; isDefault?: boolean },
+    companyId?: string,
   ) {
-    const u = await this.prisma.unit.findUniqueOrThrow({ where: { id } });
+    const u = await this.prisma.unit.findUnique({ where: { id } });
+    if (!u || u.deletedAt || (companyId && u.companyId !== companyId)) {
+      throw new NotFoundException('Unit not found');
+    }
     if (dto.isDefault) {
       await this.prisma.unit.updateMany({
         where: { companyId: u.companyId, isDefault: true },
@@ -501,8 +581,15 @@ export class ProductsService {
     });
   }
 
-  async removeUnit(id: string) {
-    await this.prisma.unit.findUniqueOrThrow({ where: { id } });
+  async removeUnit(id: string, companyId?: string) {
+    const unit = await this.prisma.unit.findUnique({ where: { id } });
+    if (
+      !unit ||
+      unit.deletedAt ||
+      (companyId && unit.companyId !== companyId)
+    ) {
+      throw new NotFoundException('Unit not found');
+    }
     return this.prisma.unit.delete({ where: { id } });
   }
 }

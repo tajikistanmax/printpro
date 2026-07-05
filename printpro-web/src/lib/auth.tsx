@@ -2,8 +2,10 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   ReactNode,
 } from 'react';
@@ -40,21 +42,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    const resetAuth = () => setUser(null);
+    window.addEventListener('pp:unauthorized', resetAuth);
+    return () => window.removeEventListener('pp:unauthorized', resetAuth);
+  }, []);
+
   // При загрузке — если есть токен, узнаём кто мы
   useEffect(() => {
     const token = localStorage.getItem('pp_token');
     if (!token) {
-      setLoading(false);
-      return;
+      const id = window.setTimeout(() => setLoading(false), 0);
+      return () => window.clearTimeout(id);
     }
     api
       .get<AuthUser>('/auth/me')
       .then((me) => setUser(me))
-      .catch(() => localStorage.removeItem('pp_token'))
+      .catch(() => {
+        localStorage.removeItem('pp_token');
+        setUser(null);
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  async function login(login: string, password: string) {
+  const login = useCallback(async (login: string, password: string) => {
     const res = await api.post<{ token: string }>('/auth/login', {
       companyId: DEFAULT_COMPANY_ID,
       login,
@@ -63,10 +74,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('pp_token', res.token);
     const me = await api.get<AuthUser>('/auth/me');
     setUser(me);
-  }
+  }, []);
 
   // Быстрый вход кассира по PIN
-  async function loginPin(pin: string) {
+  const loginPin = useCallback(async (pin: string) => {
     const res = await api.post<{ token: string }>('/auth/pos-login', {
       companyId: DEFAULT_COMPANY_ID,
       pin,
@@ -74,19 +85,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('pp_token', res.token);
     const me = await api.get<AuthUser>('/auth/me');
     setUser(me);
-  }
+  }, []);
 
-  function logout() {
+  const logout = useCallback(() => {
     localStorage.removeItem('pp_token');
     setUser(null);
-  }
+  }, []);
 
-  function can(permission: string) {
+  const can = useCallback((permission: string) => {
     return !!user?.permissions?.includes(permission);
-  }
+  }, [user]);
+
+  const value = useMemo(
+    () => ({ user, loading, login, loginPin, logout, can }),
+    [user, loading, login, loginPin, logout, can],
+  );
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, loginPin, logout, can }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
@@ -111,7 +111,7 @@ export default function ServicesPage() {
   // Материалы
   const [matForm, setMatForm] = useState<Record<string, { productId: string; qty: string }>>({});
 
-  function load() {
+  const load = useCallback(() => {
     setLoading(true);
     Promise.all([
       api.get(`/services?companyId=${cid}`),
@@ -125,9 +125,12 @@ export default function ServicesPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }
+  }, [cid]);
 
-  useEffect(() => { load(); }, [cid]);
+  useEffect(() => {
+    const id = setTimeout(load, 0);
+    return () => clearTimeout(id);
+  }, [load]);
 
   // Выручка от услуг за текущий месяц (реальные данные из отчётов)
   useEffect(() => {

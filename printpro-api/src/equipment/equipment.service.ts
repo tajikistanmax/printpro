@@ -7,7 +7,17 @@ import { CreateEquipmentDto, UpdateEquipmentDto } from './dto/equipment.dto';
 export class EquipmentService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(dto: CreateEquipmentDto) {
+  private async ensureBranch(companyId: string, branchId?: string | null) {
+    if (!branchId) return;
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!branch) throw new NotFoundException('Branch not found');
+  }
+
+  async create(dto: CreateEquipmentDto) {
+    await this.ensureBranch(dto.companyId, dto.branchId);
     return this.prisma.equipment.create({
       data: {
         companyId: dto.companyId,
@@ -31,8 +41,9 @@ export class EquipmentService {
     });
   }
 
-  async update(id: string, dto: UpdateEquipmentDto) {
-    await this.ensure(id);
+  async update(id: string, companyId: string, dto: UpdateEquipmentDto) {
+    await this.ensure(id, companyId);
+    await this.ensureBranch(companyId, dto.branchId);
     return this.prisma.equipment.update({
       where: { id },
       data: dto,
@@ -40,8 +51,8 @@ export class EquipmentService {
     });
   }
 
-  async remove(id: string) {
-    await this.ensure(id);
+  async remove(id: string, companyId: string) {
+    await this.ensure(id, companyId);
     // Мягкое удаление — чтобы синхронизировалось между узлами
     await this.prisma.equipment.update({
       where: { id },
@@ -54,8 +65,10 @@ export class EquipmentService {
     return { branch: { select: { id: true, name: true } } };
   }
 
-  private async ensure(id: string) {
-    const e = await this.prisma.equipment.findUnique({ where: { id } });
+  private async ensure(id: string, companyId: string) {
+    const e = await this.prisma.equipment.findFirst({
+      where: { id, companyId, deletedAt: null },
+    });
     if (!e) throw new NotFoundException('Оборудование не найдено');
     return e;
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
@@ -98,12 +98,13 @@ export default function SettingsPage() {
     api.get('/system/info').then(setSys).catch(() => {});
   }, [cid]);
 
-  function loadBranches() {
+  const loadBranches = useCallback(() => {
     api.get(`/branches?companyId=${cid}&all=1`).then(setBranches).catch(() => {});
-  }
+  }, [cid]);
+
   useEffect(() => {
     if (section === 'branches') loadBranches();
-  }, [section, cid]);
+  }, [section, loadBranches]);
 
   function set(key: string, value: string) {
     setS((prev) => ({ ...prev, [key]: value }));
@@ -1359,6 +1360,7 @@ function SyncSection() {
   const [st, setSt] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [nowTs] = useState(() => Date.now());
 
   function loadStatus() {
     api.get('/sync/status').then(setSt).catch(() => {});
@@ -1389,7 +1391,7 @@ function SyncSection() {
     ? new Date(st.lastSyncAt).toLocaleString('ru-RU')
     : 'ещё не было';
   const fresh =
-    st?.lastSyncAt && Date.now() - new Date(st.lastSyncAt).getTime() < 5 * 60 * 1000;
+    st?.lastSyncAt && nowTs - new Date(st.lastSyncAt).getTime() < 5 * 60 * 1000;
 
   return (
     <div className="space-y-6">
@@ -1552,20 +1554,6 @@ function FeaturesSection({ s, set }: { s: Record<string, string>; set: (k: strin
           </div>
         ))}
       </div>
-    </Card>
-  );
-}
-
-function BackupSection({ downloadBackup }: { downloadBackup: () => void }) {
-  return (
-    <Card>
-      <SectionTitle>Резервная копия</SectionTitle>
-      <p className="-mt-1 mb-4 text-xs text-slate-400 dark:text-slate-500">
-        Скачивает все данные компании (заказы, клиенты, склад, финансы и т.д.) одним JSON-файлом. Храните копию в надёжном месте.
-      </p>
-      <Button variant="ghost" onClick={downloadBackup} className="font-medium">
-        <NavIcon name="download" className="h-4 w-4" />Скачать резервную копию (JSON)
-      </Button>
     </Card>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
@@ -41,15 +41,18 @@ export default function TasksPage() {
   const [assignee, setAssignee] = useState('');
   const [msg, setMsg] = useState('');
 
-  function load() {
+  const load = useCallback(() => {
     api.get(`/tasks?companyId=${cid}`).then(setTasks).catch(() => {});
-  }
+  }, [cid]);
+
+  const canViewUsers = can('users.view');
+
   useEffect(() => {
     load();
-    if (can('users.view')) {
+    if (canViewUsers) {
       api.get(`/users?companyId=${cid}`).then(setUsers).catch(() => {});
     }
-  }, [cid]);
+  }, [cid, load, canViewUsers]);
 
   async function createTask(e: React.FormEvent) {
     e.preventDefault();

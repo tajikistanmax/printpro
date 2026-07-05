@@ -73,15 +73,12 @@ export function escposSupported(): boolean {
   return typeof navigator !== 'undefined' && 'serial' in navigator;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let activePort: any = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let activeWriter: any = null;
 let openedBaud = 0;
 
 export async function requestEscposPort(): Promise<boolean> {
   if (!escposSupported()) return false;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const port = await (navigator as any).serial.requestPort();
   if (!port) return false;
   activePort = port;
@@ -91,7 +88,6 @@ export async function requestEscposPort(): Promise<boolean> {
 async function getGrantedPort() {
   if (!escposSupported()) return null;
   if (activePort) return activePort;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ports = await (navigator as any).serial.getPorts();
   activePort = ports[0] ?? null;
   return activePort;

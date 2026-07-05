@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { API_BASE, DEFAULT_COMPANY_ID, SERVER_ORIGIN } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
@@ -44,6 +44,7 @@ export default function ProductionPage() {
   const cid = DEFAULT_COMPANY_ID;
   const { can } = useAuth();
   const canManage = can('production.manage');
+  const canViewUsers = can('users.view');
 
   const [jobs, setJobs] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
@@ -55,9 +56,10 @@ export default function ProductionPage() {
   const [equipment, setEquipment] = useState<any[]>([]);
   const [msg, setMsg] = useState('');
 
-  function load() {
+  const load = useCallback(() => {
     api.get(`/production?companyId=${cid}`).then(setJobs).catch(() => {});
-  }
+  }, [cid]);
+
   useEffect(() => {
     load();
     if (canManage) {
@@ -69,11 +71,11 @@ export default function ProductionPage() {
         .get(`/equipment?companyId=${cid}&status=ACTIVE`)
         .then(setEquipment)
         .catch(() => {});
-      if (can('users.view')) {
+      if (canViewUsers) {
         api.get(`/users?companyId=${cid}`).then(setUsers).catch(() => {});
       }
     }
-  }, [cid]);
+  }, [cid, load, canManage, canViewUsers]);
 
   async function createJob(e: React.FormEvent) {
     e.preventDefault();
@@ -266,6 +268,7 @@ export default function ProductionPage() {
                           rel="noopener noreferrer"
                           className="mt-2 block"
                         >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={`${SERVER_ORIGIN}${j.resultPhotoUrl}`}
                             alt="результат"

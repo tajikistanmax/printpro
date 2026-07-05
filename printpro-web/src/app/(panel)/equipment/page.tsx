@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
@@ -54,21 +54,22 @@ export default function EquipmentPage() {
   const [serial, setSerial] = useState('');
   const [branchId, setBranchId] = useState('');
 
-  function load() {
+  const load = useCallback(() => {
     setLoading(true);
     api
       .get(`/equipment?companyId=${cid}`)
       .then(setList)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }
+  }, [cid]);
   useEffect(() => {
-    load();
+    const id = setTimeout(load, 0);
     api
       .get(`/branches?companyId=${cid}`)
       .then((b) => { setBranches(b); if (b[0]) setBranchId(b[0].id); })
       .catch(() => {});
-  }, [cid]);
+    return () => clearTimeout(id);
+  }, [cid, load]);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();

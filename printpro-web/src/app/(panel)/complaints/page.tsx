@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
@@ -68,12 +68,12 @@ export default function ComplaintsPage() {
   const [orderId, setOrderId] = useState('');
   const [formMsg, setFormMsg] = useState('');
 
-  function load() {
+  const load = useCallback(() => {
     const q = filter ? `?companyId=${cid}&status=${filter}` : `?companyId=${cid}`;
     api.get(`/complaints${q}`).then(setList).catch(() => {});
-  }
+  }, [cid, filter]);
 
-  useEffect(() => { load(); }, [cid, filter]);
+  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     if (showForm) {

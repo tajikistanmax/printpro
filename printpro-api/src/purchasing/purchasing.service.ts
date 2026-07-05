@@ -126,12 +126,13 @@ export class PurchasingService {
     tx: any,
     companyId: string,
     userId?: string,
-  ): Promise<string | undefined> {
-    if (!userId) return undefined;
+  ): Promise<string> {
+    if (!userId) throw new BadRequestException('Open cash shift not found');
     const shift = await tx.cashShift.findFirst({
-      where: { companyId, userId, closedAt: null },
+      where: { companyId, userId, closedAt: null, deletedAt: null },
     });
-    return shift?.id;
+    if (!shift) throw new BadRequestException('Open cash shift not found');
+    return shift.id;
   }
 
   listSuppliers(companyId: string) {

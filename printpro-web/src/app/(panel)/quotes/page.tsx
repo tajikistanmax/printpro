@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
@@ -11,7 +11,6 @@ import {
   StatCard,
   Card,
   SectionTitle,
-  Field,
   Input,
   Select,
   Button,
@@ -57,14 +56,15 @@ function QuotesInner() {
   const [lines, setLines] = useState<Line[]>([]);
   const [creating, setCreating] = useState(false);
 
-  function load() {
+  const load = useCallback(() => {
     api.get(`/quotes?companyId=${cid}`).then(setQuotes).catch(() => {});
-  }
+  }, [cid]);
+
   useEffect(() => {
     load();
     api.get(`/services?companyId=${cid}`).then(setServices).catch(() => {});
     api.get(`/products?companyId=${cid}`).then(setProducts).catch(() => {});
-  }, [cid]);
+  }, [cid, load]);
 
   function addLine(itemType: 'SERVICE' | 'PRODUCT') {
     setLines((l) => [

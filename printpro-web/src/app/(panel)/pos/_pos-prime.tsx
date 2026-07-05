@@ -130,7 +130,6 @@ function OrderPanelPrime({ ctx }: { ctx: PosCtx }) {
   const [newClientName, setNewClientName] = useState('');
   useEffect(() => {
     if (clientQuery.trim().length < 2) {
-      setClientResults([]);
       return;
     }
     const t = setTimeout(() => {
@@ -141,6 +140,8 @@ function OrderPanelPrime({ ctx }: { ctx: PosCtx }) {
     }, 250);
     return () => clearTimeout(t);
   }, [clientQuery]);
+  const visibleClientResults =
+    clientQuery.trim().length >= 2 ? clientResults : [];
 
   const openClientPicker = () => {
     setClientQuery('');
@@ -528,12 +529,12 @@ function OrderPanelPrime({ ctx }: { ctx: PosCtx }) {
               className="mb-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             />
             <div className="mb-4 max-h-56 flex-1 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
-              {clientResults.length === 0 ? (
+              {visibleClientResults.length === 0 ? (
                 <div className="py-8 text-center text-sm text-slate-400">
                   {clientQuery.trim().length < 2 ? 'Введите имя или телефон' : 'Ничего не найдено'}
                 </div>
               ) : (
-                clientResults.map((cl) => (
+                visibleClientResults.map((cl) => (
                   <button
                     key={cl.id}
                     onClick={() => {

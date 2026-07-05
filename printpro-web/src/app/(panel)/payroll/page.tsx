@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
@@ -11,7 +11,6 @@ import {
   Card,
   TableCard,
   SectionTitle,
-  Field,
   Input,
   Select,
   Button,
@@ -46,7 +45,7 @@ export default function PayrollPage() {
   const [wUser, setWUser] = useState('');
   const [wHours, setWHours] = useState('');
 
-  function loadBase() {
+  const loadBase = useCallback(() => {
     api.get(`/payroll/staff?companyId=${cid}`).then(setStaff).catch(() => {});
     api
       .get(`/payroll/periods?companyId=${cid}`)
@@ -55,14 +54,20 @@ export default function PayrollPage() {
         if (p[0] && !periodId) setPeriodId(p[0].id);
       })
       .catch(() => {});
-  }
-  useEffect(loadBase, [cid]);
+  }, [cid, periodId]);
+  useEffect(() => {
+    const id = setTimeout(loadBase, 0);
+    return () => clearTimeout(id);
+  }, [loadBase]);
 
-  function loadRecords() {
+  const loadRecords = useCallback(() => {
     if (!periodId) return setRecords([]);
     api.get(`/payroll/periods/${periodId}/records`).then(setRecords).catch(() => {});
-  }
-  useEffect(loadRecords, [periodId]);
+  }, [periodId]);
+  useEffect(() => {
+    const id = setTimeout(loadRecords, 0);
+    return () => clearTimeout(id);
+  }, [loadRecords]);
 
   async function saveSalary(u: any, salaryType: string, rate: string) {
     await api.patch(`/payroll/staff/${u.id}`, {

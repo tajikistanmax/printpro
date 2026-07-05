@@ -10,6 +10,32 @@ import { WriteOffDto } from './dto/write-off.dto';
 export class StockService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async ensureProduct(
+    db: Prisma.TransactionClient | PrismaService,
+    companyId: string,
+    productId: string,
+  ) {
+    const product = await db.product.findFirst({
+      where: { id: productId, companyId, deletedAt: null },
+      select: { id: true, purchasePrice: true },
+    });
+    if (!product) throw new BadRequestException('Product not found');
+    return product;
+  }
+
+  private async ensureBranch(
+    db: Prisma.TransactionClient | PrismaService,
+    companyId: string,
+    branchId: string,
+  ) {
+    const branch = await db.branch.findFirst({
+      where: { id: branchId, companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!branch) throw new BadRequestException('Branch not found');
+    return branch;
+  }
+
   // Сводка для карточек склада: поставщиков + поступления сегодня (по закупкам)
   async stats(companyId: string) {
     const todayStart = new Date();
@@ -34,6 +60,8 @@ export class StockService {
   // Приём товара (приход): увеличиваем остаток + записываем движение
   async receive(dto: ReceiveStockDto) {
     return this.prisma.$transaction(async (tx) => {
+      await this.ensureProduct(tx, dto.companyId, dto.productId);
+      await this.ensureBranch(tx, dto.companyId, dto.branchId);
       // Остаток до прихода (для аудита «до/после»)
       const prev = await tx.stock.findUnique({
         where: {
@@ -89,6 +117,8 @@ export class StockService {
       );
     }
     return this.prisma.$transaction(async (tx) => {
+      await this.ensureProduct(tx, dto.companyId, dto.productId);
+      await this.ensureBranch(tx, dto.companyId, dto.branchId);
       // Условное списание: атомарно уменьшаем, только если остатка хватает.
       const dec = await tx.stock.updateMany({
         where: {
@@ -146,6 +176,9 @@ export class StockService {
       throw new BadRequestException('Филиалы должны отличаться');
     }
     return this.prisma.$transaction(async (tx) => {
+      await this.ensureProduct(tx, dto.companyId, dto.productId);
+      await this.ensureBranch(tx, dto.companyId, dto.fromBranchId);
+      await this.ensureBranch(tx, dto.companyId, dto.toBranchId);
       const qty = Number(dto.quantity);
       // Списываем из источника условно (атомарно), чтобы не увести в минус.
       const dec = await tx.stock.updateMany({
@@ -237,6 +270,8 @@ export class StockService {
   // Инвентаризация: выставить фактический остаток, зафиксировать расхождение
   async recount(dto: RecountStockDto) {
     return this.prisma.$transaction(async (tx) => {
+      await this.ensureProduct(tx, dto.companyId, dto.productId);
+      await this.ensureBranch(tx, dto.companyId, dto.branchId);
       const current = await tx.stock.findUnique({
         where: {
           productId_branchId: {
@@ -298,9 +333,11 @@ export class StockService {
     // 5-сек таймаут транзакции Prisma мал: поднимаем окно до 2 минут.
     await this.prisma.$transaction(
       async (tx) => {
+      await this.ensureBranch(tx, companyId, branchId);
       for (const it of items) {
         const counted = Number(it.countedQuantity);
         if (!Number.isFinite(counted) || counted < 0) continue;
+        await this.ensureProduct(tx, companyId, it.productId);
         const current = await tx.stock.findUnique({
           where: { productId_branchId: { productId: it.productId, branchId } },
         });
@@ -364,6 +401,8 @@ export class StockService {
   // Себестоимость берём из закупочной цены товара.
   async writeOff(dto: WriteOffDto) {
     return this.prisma.$transaction(async (tx) => {
+      const product = await this.ensureProduct(tx, dto.companyId, dto.productId);
+      await this.ensureBranch(tx, dto.companyId, dto.branchId);
       // Условное списание: атомарно, только если остатка хватает.
       const dec = await tx.stock.updateMany({
         where: {
@@ -390,10 +429,6 @@ export class StockService {
       });
       const afterQty = after ? Number(after.quantity) : 0;
 
-      const product = await tx.product.findUnique({
-        where: { id: dto.productId },
-        select: { purchasePrice: true },
-      });
       const cost = Number((Number(product?.purchasePrice ?? 0) * dto.quantity).toFixed(2));
 
       const wo = await tx.writeOff.create({
@@ -434,7 +469,7 @@ export class StockService {
     });
     const productIds = [...new Set(rows.map((r) => r.productId))];
     const products = await this.prisma.product.findMany({
-      where: { id: { in: productIds } },
+      where: { id: { in: productIds }, companyId },
       select: { id: true, name: true, unit: { select: { shortName: true } } },
     });
     const map = new Map(products.map((p) => [p.id, p]));

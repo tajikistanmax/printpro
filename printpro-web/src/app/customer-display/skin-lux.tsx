@@ -26,9 +26,8 @@ const METHOD_LABEL: Record<string, string> = {
 /* ------------------------------- иконки ------------------------------- */
 type IcoProps = { className?: string };
 const svg =
-  (node: ReactNode): FC<IcoProps> =>
-  ({ className }) =>
-    (
+  (node: ReactNode): FC<IcoProps> => {
+    const Icon: FC<IcoProps> = ({ className }) => (
       <svg
         viewBox="0 0 24 24"
         className={className ?? 'h-5 w-5'}
@@ -42,6 +41,9 @@ const svg =
         {node}
       </svg>
     );
+    Icon.displayName = 'CustomerDisplayIcon';
+    return Icon;
+  };
 
 const IcoCard = svg(<><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M3 10h18" /></>);
 const IcoFlyer = svg(<><path d="M6 3h9l4 4v14H6z" /><path d="M15 3v4h4M9 12h6M9 16h4" /></>);

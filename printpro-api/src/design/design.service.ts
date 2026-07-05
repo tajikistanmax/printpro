@@ -12,10 +12,12 @@ export class DesignService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateProofDto) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: dto.orderId },
+    const order = await this.prisma.order.findFirst({
+      where: { id: dto.orderId, companyId: dto.companyId, deletedAt: null },
     });
     if (!order) throw new NotFoundException('Заказ не найден');
+
+    await this.ensureAssignedUser(dto.companyId, dto.assignedUserId);
 
     return this.prisma.designProof.create({
       data: {
@@ -44,8 +46,9 @@ export class DesignService {
     });
   }
 
-  async update(id: string, dto: UpdateProofDto) {
-    const proof = await this.ensure(id);
+  async update(id: string, companyId: string, dto: UpdateProofDto) {
+    const proof = await this.ensure(id, companyId);
+    await this.ensureAssignedUser(companyId, dto.assignedUserId);
     // Новый файл = новая версия
     const newFile = dto.fileUrl && dto.fileUrl !== proof.fileUrl;
     return this.prisma.designProof.update({
@@ -67,8 +70,8 @@ export class DesignService {
     });
   }
 
-  async updateStatus(id: string, dto: UpdateProofStatusDto) {
-    await this.ensure(id);
+  async updateStatus(id: string, companyId: string, dto: UpdateProofStatusDto) {
+    await this.ensure(id, companyId);
     return this.prisma.designProof.update({
       where: { id },
       data: {
@@ -79,8 +82,8 @@ export class DesignService {
     });
   }
 
-  async remove(id: string) {
-    await this.ensure(id);
+  async remove(id: string, companyId: string) {
+    await this.ensure(id, companyId);
     // Мягкое удаление — чтобы синхронизировалось между узлами
     await this.prisma.designProof.update({
       where: { id },
@@ -108,9 +111,20 @@ export class DesignService {
     };
   }
 
-  private async ensure(id: string) {
-    const p = await this.prisma.designProof.findUnique({ where: { id } });
+  private async ensure(id: string, companyId: string) {
+    const p = await this.prisma.designProof.findFirst({
+      where: { id, companyId, deletedAt: null },
+    });
     if (!p) throw new NotFoundException('Макет не найден');
     return p;
+  }
+
+  private async ensureAssignedUser(companyId: string, userId?: string) {
+    if (!userId) return;
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('Assigned user not found');
   }
 }

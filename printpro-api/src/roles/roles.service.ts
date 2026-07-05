@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRoleDto } from './dto/role.dto';
 
@@ -12,7 +16,7 @@ export class RolesService {
   }
 
   // Создать роль
-  createRole(dto: CreateRoleDto) {
+  createRole(dto: CreateRoleDto & { companyId: string }) {
     return this.prisma.role.create({ data: dto });
   }
 
@@ -25,9 +29,20 @@ export class RolesService {
   }
 
   // Установить права роли (полная замена набора) — «галочки»
-  async setPermissions(roleId: string, permissionCodes: string[]) {
-    const role = await this.prisma.role.findUnique({ where: { id: roleId } });
+  async setPermissions(
+    roleId: string,
+    companyId: string,
+    permissionCodes: string[],
+  ) {
+    const role = await this.prisma.role.findFirst({
+      where: { id: roleId, companyId },
+    });
     if (!role) throw new NotFoundException('Роль не найдена');
+
+    // Системные роли меняются только через seed/миграцию, не через API
+    if (role.isSystem) {
+      throw new ForbiddenException('Системную роль нельзя изменять');
+    }
 
     // Находим id выбранных прав по их кодам
     const perms = await this.prisma.permission.findMany({

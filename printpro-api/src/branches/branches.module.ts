@@ -1,18 +1,22 @@
-import { Module } from '@nestjs/common';
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
   Body,
+  Controller,
+  Delete,
+  Get,
+  Module,
+  NotFoundException,
   Param,
+  Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { IsString, IsOptional, IsBoolean } from 'class-validator';
-import { PrismaService } from '../prisma/prisma.service';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RequirePermissions } from '../auth/permissions.decorator';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { PrismaService } from '../prisma/prisma.service';
 
 class CreateBranchDto {
   @IsString() companyId: string;
@@ -28,41 +32,60 @@ class UpdateBranchDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
+interface JwtUser {
+  sub: string;
+  companyId: string;
+}
+
 @Controller('branches')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 class BranchesController {
   constructor(private readonly prisma: PrismaService) {}
 
-  // По умолчанию — только активные (для выпадающих списков).
-  // ?all=1 — включая отключённые (для управления в настройках).
   @Get()
-  findAll(
-    @Query('companyId') companyId: string,
-    @Query('all') all?: string,
-  ) {
+  findAll(@CurrentUser() user: JwtUser, @Query('all') all?: string) {
     return this.prisma.branch.findMany({
-      where: { companyId, ...(all === '1' ? {} : { isActive: true }) },
+      where: {
+        companyId: user.companyId,
+        deletedAt: null,
+        ...(all === '1' ? {} : { isActive: true }),
+      },
       orderBy: { name: 'asc' },
     });
   }
 
   @Post()
-  create(@Body() dto: CreateBranchDto) {
-    return this.prisma.branch.create({ data: dto });
+  @RequirePermissions('settings.manage')
+  create(@Body() dto: CreateBranchDto, @CurrentUser() user: JwtUser) {
+    return this.prisma.branch.create({
+      data: { ...dto, companyId: user.companyId },
+    });
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateBranchDto) {
-    return this.prisma.branch.update({ where: { id }, data: dto });
+  @RequirePermissions('settings.manage')
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateBranchDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    const res = await this.prisma.branch.updateMany({
+      where: { id, companyId: user.companyId, deletedAt: null },
+      data: dto,
+    });
+    if (res.count === 0) throw new NotFoundException('Branch not found');
+    return this.prisma.branch.findUnique({ where: { id } });
   }
 
-  // Мягкое отключение филиала (данные заказов/склада сохраняются).
   @Delete(':id')
-  deactivate(@Param('id') id: string) {
-    return this.prisma.branch.update({
-      where: { id },
+  @RequirePermissions('settings.manage')
+  async deactivate(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    const res = await this.prisma.branch.updateMany({
+      where: { id, companyId: user.companyId, deletedAt: null },
       data: { isActive: false },
     });
+    if (res.count === 0) throw new NotFoundException('Branch not found');
+    return { ok: true };
   }
 }
 

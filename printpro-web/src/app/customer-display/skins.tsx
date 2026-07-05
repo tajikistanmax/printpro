@@ -35,9 +35,8 @@ function readyText(now: string): string {
 /* -------------------------------- иконки -------------------------------- */
 type IcoProps = { className?: string };
 const svg =
-  (node: ReactNode, fill = false): FC<IcoProps> =>
-  ({ className }) =>
-    (
+  (node: ReactNode, fill = false): FC<IcoProps> => {
+    const Icon: FC<IcoProps> = ({ className }) => (
       <svg
         viewBox="0 0 24 24"
         className={className ?? 'h-5 w-5'}
@@ -51,6 +50,9 @@ const svg =
         {node}
       </svg>
     );
+    Icon.displayName = 'CustomerDisplayIcon';
+    return Icon;
+  };
 
 const IcoShield = svg(<path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />);
 const IcoClock = svg(<><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></>);
@@ -169,7 +171,6 @@ const CartAside: FC<{ state: DisplayState; now: string }> = ({ state, now }) => 
   const lines = state.type === 'cart' ? state.lines : [];
   const discount = state.type === 'cart' ? state.discount : 0;
   const total = state.type === 'cart' ? state.total : 0;
-  const count = lines.reduce((s, l) => s + l.qty, 0);
   return (
     <aside className="flex h-full min-h-0 flex-col rounded-3xl bg-white p-6 shadow-sm">
       <div className="mb-4 flex shrink-0 items-center justify-between">

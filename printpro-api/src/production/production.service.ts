@@ -1,5 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { OrderStatus, ProductionStatus } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { OrderStatus, ProductionStatus, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateProductionJobDto,
@@ -10,12 +14,13 @@ import {
 export class ProductionService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Создать задание из заказа
   async create(dto: CreateProductionJobDto) {
     const order = await this.prisma.order.findFirst({
-      where: { id: dto.orderId, companyId: dto.companyId },
+      where: { id: dto.orderId, companyId: dto.companyId, deletedAt: null },
     });
-    if (!order) throw new NotFoundException('Заказ не найден');
+    if (!order) throw new NotFoundException('Order not found');
+    await this.ensureUser(dto.companyId, dto.assignedUserId);
+    await this.ensureEquipment(dto.companyId, dto.equipmentId);
 
     return this.prisma.productionJob.create({
       data: {
@@ -31,7 +36,6 @@ export class ProductionService {
     });
   }
 
-  // Список заданий (доска производства), фильтр по статусу
   findAll(companyId: string, status?: ProductionStatus) {
     return this.prisma.productionJob.findMany({
       where: { companyId, deletedAt: null, ...(status ? { status } : {}) },
@@ -40,9 +44,10 @@ export class ProductionService {
     });
   }
 
-  // Обновить назначение/принтер/приоритет/заметку
   async update(id: string, companyId: string, dto: UpdateProductionJobDto) {
     await this.ensure(id, companyId);
+    await this.ensureUser(companyId, dto.assignedUserId);
+    await this.ensureEquipment(companyId, dto.equipmentId);
     return this.prisma.productionJob.update({
       where: { id },
       data: {
@@ -56,12 +61,12 @@ export class ProductionService {
     });
   }
 
-  // Сменить статус + синхронизировать статус заказа
   async updateStatus(
     id: string,
     companyId: string,
     status: ProductionStatus,
     defectReason?: string,
+    userId?: string,
   ) {
     const job = await this.ensure(id, companyId);
 
@@ -72,14 +77,10 @@ export class ProductionService {
       defectReason?: string | null;
     } = { status };
 
-    // Первый переход из «ожидает» в работу — фиксируем старт
     if (status !== ProductionStatus.PENDING && !job.startedAt) {
       data.startedAt = new Date();
     }
-    // Готово — фиксируем завершение, иначе сбрасываем
     data.completedAt = status === ProductionStatus.COMPLETED ? new Date() : null;
-
-    // Брак/переделка — сохраняем причину; иначе очищаем
     data.defectReason =
       status === ProductionStatus.REWORK ? defectReason ?? null : null;
 
@@ -89,67 +90,81 @@ export class ProductionService {
       include: this.includes(),
     });
 
-    // При завершении — авто-списание материалов со склада (один раз)
     if (status === ProductionStatus.COMPLETED && !job.materialsWrittenOff) {
-      await this.writeOffMaterials(job.id, job.orderId);
+      await this.writeOffMaterials(job.id, job.orderId, userId);
     }
 
-    // Подтягиваем статус заказа за производством
     await this.syncOrderStatus(job.orderId);
-
     return updated;
   }
 
-  // Авто-списание материалов по спецификации услуг заказа
-  private async writeOffMaterials(jobId: string, orderId: string) {
+  private async writeOffMaterials(
+    jobId: string,
+    orderId: string,
+    userId?: string,
+  ) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: {
         items: { include: { service: { include: { materials: true } } } },
       },
     });
-    if (!order?.branchId) return; // некуда списывать без филиала
+    if (!order?.branchId) return;
 
-    // Сводим расход по товарам: Σ (норма × кол-во услуги)
     const need = new Map<string, number>();
-    for (const it of order.items) {
-      const mats = it.service?.materials ?? [];
-      for (const m of mats) {
-        const qty = Number(m.qtyPerUnit) * Number(it.quantity);
-        if (qty > 0) need.set(m.productId, (need.get(m.productId) ?? 0) + qty);
+    for (const item of order.items) {
+      for (const material of item.service?.materials ?? []) {
+        const qty = Number(material.qtyPerUnit) * Number(item.quantity);
+        if (qty > 0) {
+          need.set(
+            material.productId,
+            Number(((need.get(material.productId) ?? 0) + qty).toFixed(3)),
+          );
+        }
       }
     }
+    if (need.size === 0) return;
 
-    // Захват права на списание и само списание — в одной транзакции. Флаг
-    // переводим false→true атомарно (updateMany + проверка count): второй
-    // параллельный запрос получит count=0 и материалы не спишутся дважды.
-    // При сбое транзакция откатится вместе с флагом — списание можно повторить.
     await this.prisma.$transaction(async (tx) => {
       const claim = await tx.productionJob.updateMany({
-        where: { id: jobId, materialsWrittenOff: false },
+        where: { id: jobId, materialsWrittenOff: false, deletedAt: null },
         data: { materialsWrittenOff: true },
       });
-      if (claim.count === 0) return; // уже списано параллельно
+      if (claim.count === 0) return;
 
       for (const [productId, qty] of need) {
-        await tx.stock.upsert({
-          where: { productId_branchId: { productId, branchId: order.branchId! } },
-          create: {
+        const current = await tx.stock.findUnique({
+          where: {
+            productId_branchId: { productId, branchId: order.branchId! },
+          },
+          select: { quantity: true },
+        });
+        const beforeQty = Number(current?.quantity ?? 0);
+        const dec = await tx.stock.updateMany({
+          where: {
             productId,
             branchId: order.branchId!,
-            quantity: -qty, // допускаем минус: фиксируем фактический расход
+            product: { companyId: order.companyId, deletedAt: null },
+            quantity: { gte: qty },
           },
-          update: { quantity: { decrement: qty } },
+          data: { quantity: { decrement: qty } },
         });
+        if (dec.count === 0) {
+          throw new BadRequestException('Not enough material stock');
+        }
         await tx.stockMovement.create({
           data: {
             companyId: order.companyId,
             productId,
             branchId: order.branchId,
-            type: 'WRITE_OFF',
+            type: StockMovementType.WRITE_OFF,
             quantity: qty,
-            reason: `Производство по заказу №${order.orderNumber}`,
+            beforeQty,
+            afterQty: Number((beforeQty - qty).toFixed(3)),
+            reason: `Production for order ${order.orderNumber}`,
             orderId: order.id,
+            // исполнитель, завершивший задание (для восстановления себестоимости)
+            userId: userId ?? null,
           },
         });
       }
@@ -158,7 +173,6 @@ export class ProductionService {
 
   async remove(id: string, companyId: string) {
     await this.ensure(id, companyId);
-    // Мягкое удаление — чтобы синхронизировалось между узлами
     await this.prisma.productionJob.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -166,7 +180,6 @@ export class ProductionService {
     return { ok: true };
   }
 
-  // Фото готового результата
   async setResultPhoto(id: string, companyId: string, url: string) {
     await this.ensure(id, companyId);
     return this.prisma.productionJob.update({
@@ -176,7 +189,6 @@ export class ProductionService {
     });
   }
 
-  // ---------- helpers ----------
   private includes() {
     return {
       order: {
@@ -195,52 +207,68 @@ export class ProductionService {
 
   private async ensure(id: string, companyId: string) {
     const job = await this.prisma.productionJob.findFirst({
-      where: { id, companyId },
+      where: { id, companyId, deletedAt: null },
     });
-    if (!job) throw new NotFoundException('Задание не найдено');
+    if (!job) throw new NotFoundException('Production job not found');
     return job;
   }
 
-  // Если все задания заказа готовы — заказ READY; если есть в работе — IN_PROGRESS
+  private async ensureUser(companyId: string, userId?: string) {
+    if (!userId) return;
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('Assigned user not found');
+  }
+
+  private async ensureEquipment(companyId: string, equipmentId?: string) {
+    if (!equipmentId) return;
+    const equipment = await this.prisma.equipment.findFirst({
+      where: { id: equipmentId, companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!equipment) throw new NotFoundException('Equipment not found');
+  }
+
   private async syncOrderStatus(orderId: string) {
     const jobs = await this.prisma.productionJob.findMany({
-      where: { orderId },
+      where: { orderId, deletedAt: null },
       select: { status: true },
     });
     if (jobs.length === 0) return;
 
-    const active = jobs.filter((j) => j.status !== ProductionStatus.CANCELLED);
+    const active = jobs.filter((job) => job.status !== ProductionStatus.CANCELLED);
     if (active.length === 0) return;
 
     const allDone = active.every(
-      (j) => j.status === ProductionStatus.COMPLETED,
+      (job) => job.status === ProductionStatus.COMPLETED,
     );
     const anyWorking = active.some(
-      (j) =>
-        j.status !== ProductionStatus.PENDING &&
-        j.status !== ProductionStatus.COMPLETED,
+      (job) =>
+        job.status !== ProductionStatus.PENDING &&
+        job.status !== ProductionStatus.COMPLETED,
     );
 
     let next: OrderStatus | null = null;
     if (allDone) next = OrderStatus.READY;
     else if (anyWorking) next = OrderStatus.IN_PROGRESS;
 
-    if (next) {
-      const order = await this.prisma.order.findUnique({
-        where: { id: orderId },
-        select: { status: true },
-      });
-      if (order && order.status !== next) {
-        await this.prisma.$transaction([
-          this.prisma.order.update({
-            where: { id: orderId },
-            data: { status: next },
-          }),
-          this.prisma.orderStatusHistory.create({
-            data: { orderId, status: next, reason: 'авто (производство)' },
-          }),
-        ]);
-      }
+    if (!next) return;
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    });
+    if (order && order.status !== next) {
+      await this.prisma.$transaction([
+        this.prisma.order.update({
+          where: { id: orderId },
+          data: { status: next },
+        }),
+        this.prisma.orderStatusHistory.create({
+          data: { orderId, status: next, reason: 'auto production' },
+        }),
+      ]);
     }
   }
 }

@@ -6,6 +6,18 @@ function getToken(): string | null {
   return localStorage.getItem('pp_token');
 }
 
+function handleUnauthorized(status: number) {
+  if (status !== 401 || typeof window === 'undefined') return;
+  localStorage.removeItem('pp_token');
+  window.dispatchEvent(new Event('pp:unauthorized'));
+}
+
+function apiError(message: string, status: number) {
+  const error = new Error(message) as Error & { status: number };
+  error.status = status;
+  return error;
+}
+
 export async function apiFetch<T = any>(
   path: string,
   options: RequestInit = {},
@@ -20,6 +32,7 @@ export async function apiFetch<T = any>(
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
   if (!res.ok) {
+    handleUnauthorized(res.status);
     let message = `Ошибка ${res.status}`;
     try {
       const body = await res.json();
@@ -28,7 +41,7 @@ export async function apiFetch<T = any>(
     } catch {
       // тело не json — оставляем общее сообщение
     }
-    throw new Error(message);
+    throw apiError(message, res.status);
   }
 
   // ответ может быть пустым
@@ -59,6 +72,7 @@ export const api = {
       body: fd,
     });
     if (!res.ok) {
+      handleUnauthorized(res.status);
       let message = `Ошибка ${res.status}`;
       try {
         const body = await res.json();
@@ -67,7 +81,7 @@ export const api = {
       } catch {
         /* не json */
       }
-      throw new Error(message);
+      throw apiError(message, res.status);
     }
     const text = await res.text();
     return text ? JSON.parse(text) : (undefined as T);

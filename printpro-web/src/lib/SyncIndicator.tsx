@@ -32,9 +32,12 @@ export default function SyncIndicator() {
   }
 
   useEffect(() => {
-    check();
+    const first = setTimeout(check, 0);
     const t = setInterval(check, 30000);
-    return () => clearInterval(t);
+    return () => {
+      clearTimeout(first);
+      clearInterval(t);
+    };
   }, []);
 
   const cfg = {

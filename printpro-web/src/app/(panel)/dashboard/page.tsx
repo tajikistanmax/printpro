@@ -49,6 +49,7 @@ const ACTION_TONE: Record<string, string> = {
 export default function DashboardPage() {
   const { user, can } = useAuth();
   const cid = DEFAULT_COMPANY_ID;
+  const [nowTs] = useState(() => Date.now());
 
   const [orders, setOrders] = useState<any[]>([]);
   const [debts, setDebts] = useState<any[]>([]);
@@ -77,7 +78,7 @@ export default function DashboardPage() {
         .then(setYesterday).catch(() => {});
       api.get(`/reports/daily?companyId=${cid}&days=14`).then(setDaily).catch(() => {});
     }
-  }, [cid]);
+  }, [cid, can]);
 
   const maxDaily = Math.max(1, ...daily.map((d) => d.amount));
   const totalDebt = debts.reduce((s, d) => s + (d.debt ?? 0), 0);
@@ -90,7 +91,7 @@ export default function DashboardPage() {
 
   const soon = orders.filter((o) => {
     if (!o.deadline || o.status === 'DELIVERED' || o.status === 'CANCELLED') return false;
-    const d = new Date(o.deadline).getTime() - Date.now();
+    const d = new Date(o.deadline).getTime() - nowTs;
     return d < 2 * 24 * 3600 * 1000;
   });
 
@@ -98,7 +99,7 @@ export default function DashboardPage() {
   active.forEach((o) => { statusCounts[o.status] = (statusCounts[o.status] ?? 0) + 1; });
   const totalActive = active.length || 1;
 
-  const hour = new Date().getHours();
+  const hour = new Date(nowTs).getHours();
   const greeting = hour < 5 ? 'Доброй ночи' : hour < 12 ? 'Доброе утро' : hour < 18 ? 'Добрый день' : 'Добрый вечер';
   const firstName = user?.fullName?.split(' ')[0] ?? '';
 

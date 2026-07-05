@@ -7,56 +7,113 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { SyncService } from './sync.service';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { SyncService } from './sync.service';
 
-// Синхронизация между узлами защищена общим секретом SYNC_SECRET
-// (передаётся в заголовке x-sync-secret), а не входом пользователя.
 @Controller('sync')
 export class SyncController {
   constructor(private readonly sync: SyncService) {}
 
-  private check(secret?: string) {
+  private nodeSecrets() {
+    const raw = process.env.SYNC_NODE_SECRETS ?? '';
+    return new Map(
+      raw
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .map((part) => {
+          const idx = part.indexOf(':');
+          return idx > 0 ? [part.slice(0, idx), part.slice(idx + 1)] : null;
+        })
+        .filter((part): part is [string, string] => !!part?.[0] && !!part?.[1]),
+    );
+  }
+
+  private safeEqual(a: string, b: string) {
+    const ab = Buffer.from(a);
+    const bb = Buffer.from(b);
+    return ab.length === bb.length && timingSafeEqual(ab, bb);
+  }
+
+  private check(
+    secret?: string,
+    node?: string,
+    timestamp?: string,
+    signature?: string,
+  ) {
+    const nodeSecrets = this.nodeSecrets();
+    if (nodeSecrets.size > 0) {
+      const nodeSecret = node ? nodeSecrets.get(node) : undefined;
+      const ts = timestamp ? Number(timestamp) : NaN;
+      const ageMs = Math.abs(Date.now() - ts);
+      if (
+        !node ||
+        !nodeSecret ||
+        !signature ||
+        !Number.isFinite(ts) ||
+        ageMs > 300_000
+      ) {
+        throw new ForbiddenException('Invalid sync signature');
+      }
+      const expected = createHmac('sha256', nodeSecret)
+        .update(`${node}.${timestamp}`)
+        .digest('hex');
+      if (!this.safeEqual(signature, expected)) {
+        throw new ForbiddenException('Invalid sync signature');
+      }
+      return node;
+    }
+
     const expected = process.env.SYNC_SECRET;
     if (!expected || secret !== expected) {
-      throw new ForbiddenException('Неверный ключ синхронизации');
+      throw new ForbiddenException('Invalid sync secret');
     }
+    return 'legacy';
   }
 
   @Post('pull')
   pull(
     @Headers('x-sync-secret') secret: string,
+    @Headers('x-sync-node') node: string,
+    @Headers('x-sync-timestamp') timestamp: string,
+    @Headers('x-sync-signature') signature: string,
     @Body() body: { since?: string },
   ) {
-    this.check(secret);
-    return this.sync.pull(body?.since);
+    const peer = this.check(secret, node, timestamp, signature);
+    return this.sync.pull(body?.since, peer);
   }
 
   @Post('push')
   push(
     @Headers('x-sync-secret') secret: string,
+    @Headers('x-sync-node') node: string,
+    @Headers('x-sync-timestamp') timestamp: string,
+    @Headers('x-sync-signature') signature: string,
     @Body() body: { changes: Record<string, any[]>; peer?: string },
   ) {
-    this.check(secret);
-    return this.sync.push(body?.changes ?? {}, body?.peer);
+    const peer = this.check(secret, node, timestamp, signature);
+    return this.sync.push(body?.changes ?? {}, peer === 'legacy' ? body?.peer : peer);
   }
 
-  // Отметка синхронизатора (защищена секретом)
   @Post('heartbeat')
-  heartbeat(@Headers('x-sync-secret') secret: string) {
-    this.check(secret);
+  heartbeat(
+    @Headers('x-sync-secret') secret: string,
+    @Headers('x-sync-node') node: string,
+    @Headers('x-sync-timestamp') timestamp: string,
+    @Headers('x-sync-signature') signature: string,
+  ) {
+    this.check(secret, node, timestamp, signature);
     return this.sync.heartbeat();
   }
 
-  // Статус для панели — открытый (отдаёт только метку времени)
   @Get('status')
   status() {
     return this.sync.status();
   }
 
-  // Ручной запуск синхронизации из панели (вход + право настроек)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('settings.manage')
   @Post('run')

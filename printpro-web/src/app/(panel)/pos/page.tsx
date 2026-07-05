@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { DEFAULT_POS_LAYOUT } from '@/lib/pos-layouts';
@@ -27,6 +27,8 @@ function money(n: number) {
 // «В долг» — заказ остаётся неоплаченным (показывается, только если включено в настройках).
 const METHODS = [
   { k: 'CASH', l: 'Наличные' },
+  { k: 'CARD', l: 'Карта' },
+  { k: 'QR', l: 'QR' },
   { k: 'TRANSFER', l: 'Перевод' },
   { k: 'MIXED', l: 'Смешанная' },
   { k: 'DEBT', l: 'В долг' },
@@ -34,6 +36,8 @@ const METHODS = [
 // Реальные «деньги» для смешанной оплаты (без MIXED/DEBT):
 const SPLIT_METHODS = [
   { k: 'CASH', l: 'Наличные' },
+  { k: 'CARD', l: 'Карта' },
+  { k: 'QR', l: 'QR' },
   { k: 'TRANSFER', l: 'Перевод' },
 ];
 // Подписи всех способов оплаты (для чека) — включая карту/QR, которых нет в METHODS.
@@ -205,10 +209,10 @@ export default function PosPage() {
     setCatFilter('ALL');
   }
 
-  function addItem(item: any, type: 'SERVICE' | 'PRODUCT') {
+  const addItem = useCallback((item: any, type: 'SERVICE' | 'PRODUCT') => {
     const itemType = type;
     const id = item.id;
-    const unitPrice = priceOf(item, type);
+    const unitPrice = Number(type === 'SERVICE' ? item.basePrice : item.salePrice) || 0;
     const key = `${itemType}:${id}`;
     setCart((prev) => {
       const ex = prev.find((p) => p.key === key);
@@ -221,7 +225,7 @@ export default function PosPage() {
         { key, itemType, id, name: item.name, unitPrice, quantity: 1 },
       ];
     });
-  }
+  }, []);
 
   function setQty(key: string, q: number) {
     setCart((prev) =>
@@ -320,6 +324,7 @@ export default function PosPage() {
 
   // Сканер штрихкодов: «невидимый» захват. Кассир сканирует где угодно на кассе —
   // товар сам падает в корзину. Поиск по штрихкоду или SKU среди загруженных товаров.
+  useEffect(() => {
   scanRef.current = (raw: string) => {
     const code = raw.trim();
     if (!code) return;
@@ -343,11 +348,11 @@ export default function PosPage() {
       setScanMsg(`✗ Штрихкод ${code} не найден`);
     }
   };
+  }, [addItem, products]);
 
   // QR-код чека: ссылка на онлайн-просмотр заказа (/r/:id)
   useEffect(() => {
     if (!receipt?.id || typeof window === 'undefined') {
-      setQrUrl('');
       return;
     }
     const url = `${window.location.origin}/r/${receipt.id}`;
@@ -355,6 +360,7 @@ export default function PosPage() {
       .then(setQrUrl)
       .catch(() => setQrUrl(''));
   }, [receipt]);
+  const visibleQrUrl = receipt?.id ? qrUrl : '';
 
   // Автоскрытие подсказки скана
   useEffect(() => {
@@ -426,9 +432,11 @@ export default function PosPage() {
 
   // Авто-печать чека после продажи (если включено в настройках)
   useEffect(() => {
-    if (receipt && escposCfg.enabled && escposCfg.autoPrint && escposSupported()) {
+    if (!receipt || !escposCfg.enabled || !escposCfg.autoPrint || !escposSupported()) return;
+    const id = window.setTimeout(() => {
       void printThermal();
-    }
+    }, 0);
+    return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipt]);
 
@@ -568,12 +576,13 @@ export default function PosPage() {
   }
 
   // ---- Отложенные чеки ----
-  function loadHeld() {
+  const loadHeld = useCallback(() => {
     api.get(`/orders/held?companyId=${cid}`).then(setHeld).catch(() => {});
-  }
+  }, [cid]);
+
   useEffect(() => {
     loadHeld();
-  }, [cid]);
+  }, [loadHeld]);
 
   async function hold() {
     if (cart.length === 0) return;
@@ -853,10 +862,10 @@ export default function PosPage() {
                   <span>{receipt._method}</span>
                 </div>
               </div>
-              {qrUrl && (
+              {visibleQrUrl && (
                 <div className="mt-3 flex flex-col items-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={qrUrl} alt="QR чека" className="h-24 w-24" />
+                  <img src={visibleQrUrl} alt="QR чека" className="h-24 w-24" />
                   <div className="text-[10px] text-slate-400">Чек онлайн — наведите камеру</div>
                 </div>
               )}

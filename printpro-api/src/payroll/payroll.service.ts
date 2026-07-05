@@ -265,16 +265,19 @@ export class PayrollService {
   }
 
   // Открытая смена кассира — для привязки движений кассы к Z-отчёту.
+  // Наличная выплата без открытой смены выпала бы из Z-отчёта и завысила
+  // остаток кассы, поэтому требуем открытую смену (P1-7).
   private async openShiftId(
     tx: any,
     companyId: string,
     userId?: string,
-  ): Promise<string | undefined> {
-    if (!userId) return undefined;
+  ): Promise<string> {
+    if (!userId) throw new BadRequestException('Open cash shift not found');
     const shift = await tx.cashShift.findFirst({
-      where: { companyId, userId, closedAt: null },
+      where: { companyId, userId, closedAt: null, deletedAt: null },
     });
-    return shift?.id;
+    if (!shift) throw new BadRequestException('Open cash shift not found');
+    return shift.id;
   }
 
   private async ensurePeriod(id: string, companyId: string) {

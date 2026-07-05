@@ -17,6 +17,14 @@ import { ClientsService } from '../clients/clients.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { LAYOUT_UPLOAD_OPTIONS } from '../uploads/image-upload.options';
 
+// Единый вид телефона: убираем пробелы, скобки, дефисы (сохраняя «+»), чтобы
+// «+992 93-555-55-55» и «+992935555555» совпадали. Клиенты хранятся уже в
+// нормализованном виде (ClientsService.findOrCreate), поэтому публичный поиск и
+// сверка телефона тоже должны нормализовать вход, иначе кабинет «не найдёт» заказы.
+function normalizePhone(phone: string): string {
+  return (phone ?? '').replace(/[\s()\-]/g, '');
+}
+
 class PublicFileDto {
   @IsString() url: string;
   @IsOptional() @IsString() name?: string;
@@ -196,8 +204,9 @@ export class PublicController {
     @Query('phone') phone: string,
   ) {
     if (!companyId || !phone) return { client: null, orders: [] };
+    const normPhone = normalizePhone(phone);
     const client = await this.prisma.client.findFirst({
-      where: { companyId, phone, deletedAt: null },
+      where: { companyId, phone: normPhone, deletedAt: null },
       select: { id: true, fullName: true, phone: true },
     });
     if (!client) return { client: null, orders: [] };
@@ -232,7 +241,7 @@ export class PublicController {
     if (
       !src ||
       src.companyId !== body.companyId ||
-      src.client?.phone !== body.phone
+      src.client?.phone !== normalizePhone(body.phone)
     ) {
       return { ok: false, message: 'Заказ не найден' };
     }

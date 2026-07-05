@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  DiscountType,
   ItemType,
   OrderStatus,
   OrderType,
@@ -13,7 +14,6 @@ import {
   StockMovementType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { ClientsService } from '../clients/clients.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { docNumber } from '../common/doc-number';
 import { nextSeq } from '../common/next-number';
@@ -26,6 +26,10 @@ import {
 } from './dto/order-actions.dto';
 import { PromocodesService } from '../promocodes/promocodes.service';
 import { EmailService } from '../email/email.service';
+
+function normalizeClientPhone(phone: string): string {
+  return (phone ?? '').replace(/[\s()-]/g, '');
+}
 
 // Фильтры для списка заказов и сводки (страница «Заказы»).
 export interface OrderFilters {
@@ -43,7 +47,6 @@ export interface OrderFilters {
 export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly clients: ClientsService,
     private readonly telegram: TelegramService,
     private readonly promocodes: PromocodesService,
     private readonly email: EmailService,
@@ -51,14 +54,24 @@ export class OrdersService {
 
   // ---------- Создание заказа ----------
   async create(dto: CreateOrderDto) {
+    return this.prisma.$transaction((tx) => this.createOrderTx(tx, dto));
+  }
+
+  private async createOrderTx(
+    tx: Prisma.TransactionClient,
+    dto: CreateOrderDto,
+  ) {
     // 1. Клиент: по id или по телефону (найдём/создадим)
     let clientId = dto.clientId;
     if (!clientId && dto.clientPhone) {
-      const client = await this.clients.findOrCreate(
-        dto.companyId,
-        dto.clientPhone,
-        dto.clientName,
-      );
+      const phone = normalizeClientPhone(dto.clientPhone);
+      const client =
+        (await tx.client.findFirst({
+          where: { companyId: dto.companyId, phone, deletedAt: null },
+        })) ??
+        (await tx.client.create({
+          data: { companyId: dto.companyId, phone, fullName: dto.clientName },
+        }));
       clientId = client.id;
     }
 
@@ -69,8 +82,12 @@ export class OrdersService {
     const serviceCosts = serviceIds.length
       ? new Map(
           (
-            await this.prisma.service.findMany({
-              where: { id: { in: serviceIds } },
+            await tx.service.findMany({
+              where: {
+                id: { in: serviceIds },
+                companyId: dto.companyId,
+                deletedAt: null,
+              },
               select: { id: true, costPrice: true },
             })
           ).map((s) => [s.id, Number(s.costPrice)]),
@@ -84,8 +101,12 @@ export class OrdersService {
     const productCosts = productIds.length
       ? new Map(
           (
-            await this.prisma.product.findMany({
-              where: { id: { in: productIds } },
+            await tx.product.findMany({
+              where: {
+                id: { in: productIds },
+                companyId: dto.companyId,
+                deletedAt: null,
+              },
               select: { id: true, purchasePrice: true },
             })
           ).map((p) => [p.id, Number(p.purchasePrice)]),
@@ -97,9 +118,9 @@ export class OrdersService {
       const unitCost =
         it.unitCost ??
         (it.serviceId
-          ? serviceCosts.get(it.serviceId) ?? 0
+          ? (serviceCosts.get(it.serviceId) ?? 0)
           : it.productId
-            ? productCosts.get(it.productId) ?? 0
+            ? (productCosts.get(it.productId) ?? 0)
             : 0);
       return {
         ...it,
@@ -113,135 +134,124 @@ export class OrdersService {
     );
 
     // 3. Всё в одной транзакции (либо всё, либо ничего)
-    return this.prisma.$transaction(async (tx) => {
-      // 2.5. Кредитный лимит клиента (п. 8.4 ТЗ): если долг + новый заказ
-      // превышают лимит — блок. Проверяем ВНУТРИ транзакции (не до неё), чтобы
-      // два параллельных заказа не проскочили лимит по отдельности.
-      if (clientId) {
-        const client = await tx.client.findUnique({
-          where: { id: clientId },
-          select: { creditLimit: true },
+    // 2.5. Кредитный лимит клиента (п. 8.4 ТЗ): если долг + новый заказ
+    // превышают лимит — блок. Проверяем ВНУТРИ транзакции (не до неё), чтобы
+    // два параллельных заказа не проскочили лимит по отдельности.
+    if (clientId) {
+      const client = await tx.client.findUnique({
+        where: { id: clientId },
+        select: { creditLimit: true },
+      });
+      const limit = Number(client?.creditLimit ?? 0);
+      if (limit > 0) {
+        const agg = await tx.order.aggregate({
+          where: { clientId, status: { not: OrderStatus.CANCELLED } },
+          _sum: { balanceDue: true },
         });
-        const limit = Number(client?.creditLimit ?? 0);
-        if (limit > 0) {
-          const agg = await tx.order.aggregate({
-            where: { clientId, status: { not: OrderStatus.CANCELLED } },
-            _sum: { balanceDue: true },
-          });
-          const currentDebt = Number(agg._sum.balanceDue ?? 0);
-          if (currentDebt + total > limit) {
-            throw new BadRequestException(
-              `Превышен кредитный лимит клиента (${limit} c.). Текущий долг ${currentDebt} c. + заказ ${total} c.`,
-            );
-          }
+        const currentDebt = Number(agg._sum.balanceDue ?? 0);
+        if (currentDebt + total > limit) {
+          throw new BadRequestException(
+            `Превышен кредитный лимит клиента (${limit} c.). Текущий долг ${currentDebt} c. + заказ ${total} c.`,
+          );
         }
       }
+    }
 
-      // Необязательные настройки заказов: префикс номера и срок по умолчанию.
-      const orderSettings = await tx.setting.findMany({
-        where: {
-          companyId: dto.companyId,
-          key: { in: ['orderPrefix', 'orderDefaultLeadDays'] },
+    // Необязательные настройки заказов: префикс номера и срок по умолчанию.
+    const orderSettings = await tx.setting.findMany({
+      where: {
+        companyId: dto.companyId,
+        key: { in: ['orderPrefix', 'orderDefaultLeadDays'] },
+      },
+    });
+    const settingMap: Record<string, string> = {};
+    for (const r of orderSettings) settingMap[r.key] = r.value ?? '';
+    const prefix =
+      (settingMap.orderPrefix || '')
+        .replace(/[^A-Za-z0-9]/g, '')
+        .toUpperCase() || 'ORD';
+    const leadDays = Number(settingMap.orderDefaultLeadDays || 0);
+
+    // Номер заказа: <ПРЕФИКС>-<УЗЕЛ>-ГОД-NNNNNN.
+    // Префикс узла (NODE_ID) гарантирует уникальность между точками сети.
+    const node = (process.env.NODE_ID ?? 'C').toUpperCase();
+    const year = new Date().getFullYear();
+    const seq = String(await nextSeq(tx, dto.companyId, 'ORDER')).padStart(
+      6,
+      '0',
+    );
+    const orderNumber = `${prefix}-${node}-${year}-${seq}`;
+
+    // Создаём заказ с позициями
+    const order = await tx.order.create({
+      data: {
+        companyId: dto.companyId,
+        branchId: dto.branchId,
+        orderNumber,
+        clientId,
+        orderType: dto.orderType,
+        assignedUserId: dto.assignedUserId,
+        createdById: dto.createdById,
+        designerId: dto.designerId,
+        operatorId: dto.operatorId,
+        format: dto.format,
+        colorMode: dto.colorMode,
+        urgency: dto.urgency,
+        deadline: dto.deadline
+          ? new Date(dto.deadline)
+          : leadDays > 0
+            ? new Date(Date.now() + leadDays * 86400000)
+            : undefined,
+        debtDueDate: dto.debtDueDate ? new Date(dto.debtDueDate) : undefined,
+        note: dto.note,
+        idempotencyKey: dto.idempotencyKey,
+        total,
+        paid: 0,
+        balanceDue: total,
+        paymentStatus: PaymentStatus.UNPAID,
+        items: {
+          create: items.map((it) => ({
+            itemType: it.itemType,
+            serviceId: it.serviceId,
+            productId: it.productId,
+            description: it.description,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            unitCost: it.unitCost,
+            options: it.options ?? undefined,
+            lineTotal: it.lineTotal,
+            lineCost: it.lineCost,
+          })),
         },
-      });
-      const settingMap: Record<string, string> = {};
-      for (const r of orderSettings) settingMap[r.key] = r.value ?? '';
-      const prefix =
-        (settingMap.orderPrefix || '')
-          .replace(/[^A-Za-z0-9]/g, '')
-          .toUpperCase() || 'ORD';
-      const leadDays = Number(settingMap.orderDefaultLeadDays || 0);
+        statusHistory: {
+          create: { status: OrderStatus.ACCEPTED, userId: dto.createdById },
+        },
+        repairDetail: dto.repairDetail
+          ? { create: dto.repairDetail }
+          : undefined,
+        recoveryDetail: dto.recoveryDetail
+          ? { create: dto.recoveryDetail }
+          : undefined,
+      },
+    });
 
-      // Номер заказа: <ПРЕФИКС>-<УЗЕЛ>-ГОД-NNNNNN.
-      // Префикс узла (NODE_ID) гарантирует уникальность между точками сети.
-      const node = (process.env.NODE_ID ?? 'C').toUpperCase();
-      const year = new Date().getFullYear();
-      const seq = String(await nextSeq(tx, dto.companyId, 'ORDER')).padStart(6, '0');
-      const orderNumber = `${prefix}-${node}-${year}-${seq}`;
-
-      // Создаём заказ с позициями
-      const order = await tx.order.create({
-        data: {
-          companyId: dto.companyId,
-          branchId: dto.branchId,
-          orderNumber,
-          clientId,
-          orderType: dto.orderType,
-          assignedUserId: dto.assignedUserId,
-          createdById: dto.createdById,
-          designerId: dto.designerId,
-          operatorId: dto.operatorId,
-          format: dto.format,
-          colorMode: dto.colorMode,
-          urgency: dto.urgency,
-          deadline: dto.deadline
-            ? new Date(dto.deadline)
-            : leadDays > 0
-              ? new Date(Date.now() + leadDays * 86400000)
-              : undefined,
-          debtDueDate: dto.debtDueDate ? new Date(dto.debtDueDate) : undefined,
-          note: dto.note,
-          idempotencyKey: dto.idempotencyKey,
-          total,
-          paid: 0,
-          balanceDue: total,
-          paymentStatus: PaymentStatus.UNPAID,
-          items: {
-            create: items.map((it) => ({
-              itemType: it.itemType,
-              serviceId: it.serviceId,
+    // 4. Списываем товары со склада (если просили и есть филиал)
+    if (dto.decrementStock && dto.branchId) {
+      for (const it of items) {
+        if (it.itemType === ItemType.PRODUCT && it.productId) {
+          // Условное списание: уменьшаем остаток только если его хватает.
+          // Атомарно (одним UPDATE ... WHERE quantity >= n), поэтому два
+          // одновременных кассира не уведут остаток в минус.
+          const dec = await tx.stock.updateMany({
+            where: {
               productId: it.productId,
-              description: it.description,
-              quantity: it.quantity,
-              unitPrice: it.unitPrice,
-              unitCost: it.unitCost,
-              options: it.options ?? undefined,
-              lineTotal: it.lineTotal,
-              lineCost: it.lineCost,
-            })),
-          },
-          statusHistory: {
-            create: { status: OrderStatus.ACCEPTED, userId: dto.createdById },
-          },
-          repairDetail: dto.repairDetail
-            ? { create: dto.repairDetail }
-            : undefined,
-          recoveryDetail: dto.recoveryDetail
-            ? { create: dto.recoveryDetail }
-            : undefined,
-        },
-      });
-
-      // 4. Списываем товары со склада (если просили и есть филиал)
-      if (dto.decrementStock && dto.branchId) {
-        for (const it of items) {
-          if (it.itemType === ItemType.PRODUCT && it.productId) {
-            // Условное списание: уменьшаем остаток только если его хватает.
-            // Атомарно (одним UPDATE ... WHERE quantity >= n), поэтому два
-            // одновременных кассира не уведут остаток в минус.
-            const dec = await tx.stock.updateMany({
-              where: {
-                productId: it.productId,
-                branchId: dto.branchId,
-                quantity: { gte: it.quantity },
-              },
-              data: { quantity: { decrement: it.quantity } },
-            });
-            if (dec.count === 0) {
-              const cur = await tx.stock.findUnique({
-                where: {
-                  productId_branchId: {
-                    productId: it.productId,
-                    branchId: dto.branchId,
-                  },
-                },
-              });
-              const available = cur ? Number(cur.quantity) : 0;
-              throw new BadRequestException(
-                `Недостаточно товара на складе (нужно ${it.quantity}, есть ${available})`,
-              );
-            }
-            const after = await tx.stock.findUnique({
+              branchId: dto.branchId,
+              quantity: { gte: it.quantity },
+            },
+            data: { quantity: { decrement: it.quantity } },
+          });
+          if (dec.count === 0) {
+            const cur = await tx.stock.findUnique({
               where: {
                 productId_branchId: {
                   productId: it.productId,
@@ -249,27 +259,38 @@ export class OrdersService {
                 },
               },
             });
-            const afterQty = after ? Number(after.quantity) : 0;
-            await tx.stockMovement.create({
-              data: {
-                companyId: dto.companyId,
+            const available = cur ? Number(cur.quantity) : 0;
+            throw new BadRequestException(
+              `Недостаточно товара на складе (нужно ${it.quantity}, есть ${available})`,
+            );
+          }
+          const after = await tx.stock.findUnique({
+            where: {
+              productId_branchId: {
                 productId: it.productId,
                 branchId: dto.branchId,
-                type: StockMovementType.OUT,
-                quantity: it.quantity,
-                beforeQty: Number((afterQty + it.quantity).toFixed(3)),
-                afterQty,
-                reason: `Продажа по заказу №${orderNumber}`,
-                orderId: order.id,
               },
-            });
-          }
+            },
+          });
+          const afterQty = after ? Number(after.quantity) : 0;
+          await tx.stockMovement.create({
+            data: {
+              companyId: dto.companyId,
+              productId: it.productId,
+              branchId: dto.branchId,
+              type: StockMovementType.OUT,
+              quantity: it.quantity,
+              beforeQty: Number((afterQty + it.quantity).toFixed(3)),
+              afterQty,
+              reason: `Продажа по заказу №${orderNumber}`,
+              orderId: order.id,
+            },
+          });
         }
       }
+    }
 
-
-      return this.loadFull(tx, order.id);
-    });
+    return this.loadFull(tx, order.id);
   }
 
   // ---------- Добавить оплату (касса) ----------
@@ -289,342 +310,366 @@ export class OrdersService {
         'Способ «В долг» нельзя провести как оплату — заказ остаётся долгом',
       );
     }
-    return this.prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({ where: { id: orderId } });
-      if (!order) throw new NotFoundException('Заказ не найден');
-      if (companyId && order.companyId !== companyId) {
-        throw new NotFoundException('Заказ не найден');
-      }
+    return this.prisma.$transaction((tx) =>
+      this.addPaymentTx(tx, orderId, dto, userId, companyId),
+    );
+  }
 
-      // Защита от переплаты: нельзя внести больше, чем осталось к оплате.
-      // Долговая оплата (method DEBT) здесь не проводится — это отдельный сценарий POS.
-      const balanceBefore = Number(
-        (Number(order.total) - Number(order.paid)).toFixed(2),
+  private async addPaymentTx(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    dto: AddPaymentDto,
+    userId?: string,
+    companyId?: string,
+  ) {
+    const order = await tx.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Заказ не найден');
+    if (companyId && order.companyId !== companyId) {
+      throw new NotFoundException('Заказ не найден');
+    }
+
+    // Защита от переплаты: нельзя внести больше, чем осталось к оплате.
+    // Долговая оплата (method DEBT) здесь не проводится — это отдельный сценарий POS.
+    const balanceBefore = Number(
+      (Number(order.total) - Number(order.paid)).toFixed(2),
+    );
+    if (balanceBefore <= 0) {
+      throw new BadRequestException('Заказ уже полностью оплачен');
+    }
+    if (dto.amount > balanceBefore + 0.01) {
+      throw new BadRequestException(
+        `Сумма оплаты (${dto.amount} c.) превышает остаток к оплате (${balanceBefore} c.)`,
       );
-      if (balanceBefore <= 0) {
-        throw new BadRequestException('Заказ уже полностью оплачен');
-      }
-      if (dto.amount > balanceBefore + 0.01) {
-        throw new BadRequestException(
-          `Сумма оплаты (${dto.amount} c.) превышает остаток к оплате (${balanceBefore} c.)`,
-        );
-      }
+    }
 
-      const cashierId = userId ?? dto.userId;
+    const cashierId = userId ?? dto.userId;
 
-      // Привязка к открытой смене: явный shiftId или текущая смена кассира
-      let shiftId = dto.shiftId;
-      if (!shiftId && cashierId) {
-        const openShift = await tx.cashShift.findFirst({
-          where: { companyId: order.companyId, userId: cashierId, closedAt: null },
-        });
-        shiftId = openShift?.id;
-      }
-
-      const newPaid = Number((Number(order.paid) + dto.amount).toFixed(2));
-      const balanceDue = Number((Number(order.total) - newPaid).toFixed(2));
-
-      // Статус оплаты
-      let paymentStatus: PaymentStatus;
-      if (balanceDue <= 0) paymentStatus = PaymentStatus.PAID;
-      else if (newPaid > 0) paymentStatus = PaymentStatus.PARTIAL;
-      else paymentStatus = PaymentStatus.UNPAID;
-
-      // Оптимистичная блокировка: обновляем заказ только если `paid` не изменился
-      // с момента чтения. Иначе два параллельных запроса (двойной клик) прочитали бы
-      // один и тот же остаток и создали переплату. Здесь второй запрос получит count=0.
-      const upd = await tx.order.updateMany({
-        where: { id: orderId, paid: order.paid },
-        data: {
-          paid: newPaid,
-          balanceDue: balanceDue < 0 ? 0 : balanceDue,
-          paymentStatus,
-        },
-      });
-      if (upd.count === 0) {
-        throw new BadRequestException(
-          'Оплата не проведена: заказ изменился (возможно, оплачен параллельно). Обновите и повторите.',
-        );
-      }
-
-      // Платёж создаём только после успешного обновления — иначе остался бы «висящий» платёж.
-      await tx.payment.create({
-        data: {
+    // Привязка к открытой смене: явный shiftId или текущая смена кассира
+    let shiftId = dto.shiftId;
+    if (!shiftId && cashierId) {
+      const openShift = await tx.cashShift.findFirst({
+        where: {
           companyId: order.companyId,
-          orderId,
-          amount: dto.amount,
-          method: dto.method,
           userId: cashierId,
-          shiftId,
+          closedAt: null,
+          deletedAt: null,
         },
       });
+      shiftId = openShift?.id;
+    }
+    if (shiftId) {
+      const shift = await tx.cashShift.findFirst({
+        where: {
+          id: shiftId,
+          companyId: order.companyId,
+          closedAt: null,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!shift) throw new BadRequestException('Open cash shift not found');
+    } else {
+      throw new BadRequestException('Open a cash shift before payment');
+    }
 
-      // Бонусы клиенту: 1% от внесённой суммы (п. 8.6), кроме оплаты «в долг»
-      if (order.clientId && dto.method !== PaymentMethod.DEBT) {
-        const bonus = Number((dto.amount * 0.01).toFixed(2));
-        if (bonus > 0) {
-          await tx.client.update({
-            where: { id: order.clientId },
-            data: { bonusPoints: { increment: bonus } },
-          });
-        }
-      }
+    const newPaid = Number((Number(order.paid) + dto.amount).toFixed(2));
+    const balanceDue = Number((Number(order.total) - newPaid).toFixed(2));
 
-      return this.loadFull(tx, orderId);
+    // Статус оплаты
+    let paymentStatus: PaymentStatus;
+    if (balanceDue <= 0) paymentStatus = PaymentStatus.PAID;
+    else if (newPaid > 0) paymentStatus = PaymentStatus.PARTIAL;
+    else paymentStatus = PaymentStatus.UNPAID;
+
+    // Оптимистичная блокировка: обновляем заказ только если `paid` не изменился
+    // с момента чтения. Иначе два параллельных запроса (двойной клик) прочитали бы
+    // один и тот же остаток и создали переплату. Здесь второй запрос получит count=0.
+    const upd = await tx.order.updateMany({
+      where: { id: orderId, paid: order.paid },
+      data: {
+        paid: newPaid,
+        balanceDue: balanceDue < 0 ? 0 : balanceDue,
+        paymentStatus,
+      },
     });
+    if (upd.count === 0) {
+      throw new BadRequestException(
+        'Оплата не проведена: заказ изменился (возможно, оплачен параллельно). Обновите и повторите.',
+      );
+    }
+
+    // Платёж создаём только после успешного обновления — иначе остался бы «висящий» платёж.
+    await tx.payment.create({
+      data: {
+        companyId: order.companyId,
+        orderId,
+        amount: dto.amount,
+        method: dto.method,
+        userId: cashierId,
+        shiftId,
+      },
+    });
+
+    // Бонусы клиенту: 1% от внесённой суммы (п. 8.6), кроме оплаты «в долг»
+    if (order.clientId && dto.method !== PaymentMethod.DEBT) {
+      const bonus = Number((dto.amount * 0.01).toFixed(2));
+      if (bonus > 0) {
+        await tx.client.update({
+          where: { id: order.clientId },
+          data: { bonusPoints: { increment: bonus } },
+        });
+      }
+    }
+
+    return this.loadFull(tx, orderId);
   }
 
   // ---------- Быстрая продажа (POS) ----------
   // Создаёт заказ-продажу, сразу оплачивает и помечает выданным.
+  private calcPromoDiscount(
+    discountType: DiscountType,
+    value: number,
+    subtotal: number,
+  ) {
+    if (discountType === DiscountType.PERCENT) {
+      const percent = Math.min(value, 100);
+      return Math.min(
+        Number(((subtotal * percent) / 100).toFixed(2)),
+        subtotal,
+      );
+    }
+    return Math.min(value, subtotal);
+  }
+
+  private async consumePromoTx(
+    tx: Prisma.TransactionClient,
+    companyId: string,
+    code: string,
+    subtotal: number,
+  ) {
+    const normalizedCode = code.trim().toUpperCase();
+    const promo = await tx.promoCode.findFirst({
+      where: { companyId, code: normalizedCode, deletedAt: null },
+    });
+    if (!promo || !promo.isActive) {
+      throw new BadRequestException('Promocode not found');
+    }
+    if (promo.validUntil && promo.validUntil.getTime() < Date.now()) {
+      throw new BadRequestException('Promocode expired');
+    }
+    if (promo.maxUses != null && promo.usedCount >= promo.maxUses) {
+      throw new BadRequestException('Promocode usage limit reached');
+    }
+
+    const { count } = await tx.promoCode.updateMany({
+      where: {
+        id: promo.id,
+        companyId,
+        deletedAt: null,
+        isActive: true,
+        usedCount: promo.usedCount,
+      },
+      data: { usedCount: { increment: 1 } },
+    });
+    if (count === 0) {
+      throw new BadRequestException('Promocode unavailable');
+    }
+
+    return this.calcPromoDiscount(
+      promo.discountType,
+      Number(promo.value),
+      subtotal,
+    );
+  }
+
   async quickSale(dto: QuickSaleDto, userId?: string) {
-    // Продажа товара без склада не спишет остаток — не допускаем «фантомную» продажу.
     const hasProducts = (dto.items ?? []).some(
       (i) => i.itemType === ItemType.PRODUCT || !!i.productId,
     );
     if (hasProducts && !dto.branchId) {
-      throw new BadRequestException(
-        'Для продажи товара укажите склад (филиал) — иначе остаток не спишется',
-      );
+      throw new BadRequestException('Select a branch before selling products');
     }
 
-    // Продажа «в долг» без клиента = непогашаемый долг «без клиента». Требуем клиента.
     const isDebtSale =
       dto.method === PaymentMethod.DEBT &&
       (!dto.payments || dto.payments.length === 0);
     if (isDebtSale && !dto.clientPhone?.trim()) {
-      throw new BadRequestException('Для продажи «в долг» укажите клиента');
+      throw new BadRequestException('Client is required for debt sale');
     }
 
-    // «В долг» нельзя смешивать с обычной оплатой: DEBT-часть не является деньгами,
-    // и её проведение как платежа закрыло бы заказ без реальной оплаты.
     if (dto.payments?.some((p) => p.method === PaymentMethod.DEBT)) {
       throw new BadRequestException(
-        'Способ «В долг» нельзя использовать в смешанной оплате',
+        'Debt cannot be used as part of mixed payment',
       );
     }
 
-    // Идемпотентность: повтор той же продажи (двойной клик / обрыв сети) не создаёт дубль.
-    // Отменённый заказ (откат неудавшейся продажи) НЕ считаем результатом — иначе
-    // повтор вернул бы отменённый чек как «успешный». При откате ключ и так очищается,
-    // это дополнительная защита на случай гонки.
-    if (dto.idempotencyKey) {
-      const existing = await this.prisma.order.findUnique({
-        where: { idempotencyKey: dto.idempotencyKey },
-      });
-      if (existing && existing.status !== OrderStatus.CANCELLED) {
-        return this.findOne(existing.id);
-      }
-    }
-
-    let order: Awaited<ReturnType<typeof this.create>>;
     try {
-      order = await this.create({
-        companyId: dto.companyId,
-        branchId: dto.branchId,
-        orderType: OrderType.SALE,
-        clientPhone: dto.clientPhone,
-        clientName: dto.clientName,
-        createdById: userId,
-        decrementStock: true,
-        idempotencyKey: dto.idempotencyKey,
-        note: dto.note,
-        debtDueDate: dto.debtDueDate,
-        items: dto.items,
-      });
-    } catch (e: any) {
-      // Гонка: параллельный запрос с тем же ключом уже создал заказ
-      if (e?.code === 'P2002' && dto.idempotencyKey) {
-        const ex = await this.prisma.order.findUnique({
-          where: { idempotencyKey: dto.idempotencyKey },
+      return await this.prisma.$transaction(async (tx) => {
+        if (dto.idempotencyKey) {
+          const existing = await tx.order.findUnique({
+            where: { idempotencyKey: dto.idempotencyKey },
+          });
+          if (existing && existing.status !== OrderStatus.CANCELLED) {
+            return this.loadFull(tx, existing.id);
+          }
+        }
+
+        const order = await this.createOrderTx(tx, {
+          companyId: dto.companyId,
+          branchId: dto.branchId,
+          orderType: OrderType.SALE,
+          clientPhone: dto.clientPhone,
+          clientName: dto.clientName,
+          createdById: userId,
+          decrementStock: true,
+          idempotencyKey: dto.idempotencyKey,
+          note: dto.note,
+          debtDueDate: dto.debtDueDate,
+          items: dto.items,
         });
-        if (ex && ex.status !== OrderStatus.CANCELLED) return this.findOne(ex.id);
-      }
-      throw e;
-    }
+        if (!order) throw new BadRequestException('Order was not created');
 
-    // Всё после создания заказа оборачиваем в откат: при любой ошибке
-    // (неверная скидка/промокод, недоплата, сбой) возвращаем товар на склад,
-    // отменяем заказ И компенсируем побочные эффекты (бонусы, промокод),
-    // чтобы клиент не потерял списанные баллы, а промокод — использование.
-    // bonusUsed/promoConsumed объявлены вне try — нужны в блоке отката.
-    let bonusUsed = 0;
-    let promoConsumed = false;
-    try {
-      // Скидка (абсолютная) — уменьшаем итог. Зажимаем сверху стоимостью
-      // товаров: ручная скидка не может превышать сумму заказа (защита от
-      // абсурдных/отрицательных значений с фронта). Полноценный лимит по %
-      // и права на скидку — отдельная настройка компании.
-      let total = Number(order.total);
-      const rawDiscount = dto.discount && dto.discount > 0 ? dto.discount : 0;
-      let discount = Math.min(rawDiscount, total);
-
-      // Промокод (п. 8.7) — добавляем к скидке
-      if (dto.promoCode) {
-        const promoDisc = await this.promocodes.consume(
-          dto.companyId,
-          dto.promoCode,
+        let total = Number(order.total);
+        let discount = Math.min(
+          dto.discount && dto.discount > 0 ? dto.discount : 0,
           total,
         );
-        promoConsumed = true;
-        discount += promoDisc;
-      }
 
-      // Списание бонусов (п. 8.6) — не более 30% от суммы и не больше остатка
-      if (dto.useBonus && dto.useBonus > 0 && order.clientId) {
-        const client = await this.prisma.client.findUnique({
-          where: { id: order.clientId },
-          select: { bonusPoints: true },
-        });
-        const maxByPercent = Number((total * 0.3).toFixed(2));
-        bonusUsed = Math.min(
-          dto.useBonus,
-          Number(client?.bonusPoints ?? 0),
-          maxByPercent,
-        );
-        bonusUsed = Number(bonusUsed.toFixed(2));
-        if (bonusUsed > 0) {
-          // Атомарное списание: проходит только если баллов реально хватает.
-          // Защищает от гонки — два одновременных чека не уведут баланс в минус.
-          const dec = await this.prisma.client.updateMany({
-            where: { id: order.clientId, bonusPoints: { gte: bonusUsed } },
-            data: { bonusPoints: { decrement: bonusUsed } },
-          });
-          if (dec.count === 0) {
-            throw new BadRequestException(
-              'Недостаточно бонусов у клиента (возможно, списаны параллельно)',
-            );
-          }
-          discount += bonusUsed;
-        }
-      }
-
-      if (discount > 0) {
-        total = Math.max(0, Number((total - discount).toFixed(2)));
-        await this.prisma.order.update({
-          where: { id: order.id },
-          data: { total, balanceDue: total },
-        });
-      }
-
-      // Смешанная оплата: части должны в сумме давать итог, иначе чек
-      // окажется недоплаченным (и всё равно был бы помечен выданным).
-      if (dto.payments && dto.payments.length > 0) {
-        const paySum = Number(
-          dto.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0).toFixed(2),
-        );
-        if (Math.abs(paySum - total) > 0.01) {
-          throw new BadRequestException(
-            `Сумма частей оплаты (${paySum} c.) должна равняться итогу (${total} c.)`,
+        if (dto.promoCode) {
+          discount += await this.consumePromoTx(
+            tx,
+            dto.companyId,
+            dto.promoCode,
+            total,
           );
         }
-      }
 
-      // «В долг»: оплату НЕ проводим — заказ остаётся неоплаченным (balanceDue = итог),
-      // это и есть задолженность клиента (видно в списке заказов и долгах).
-      const isDebt =
-        dto.method === PaymentMethod.DEBT &&
-        (!dto.payments || dto.payments.length === 0);
+        if (dto.useBonus && dto.useBonus > 0 && order.clientId) {
+          const client = await tx.client.findFirst({
+            where: {
+              id: order.clientId,
+              companyId: dto.companyId,
+              deletedAt: null,
+            },
+            select: { bonusPoints: true },
+          });
+          const maxByPercent = Number((total * 0.3).toFixed(2));
+          const bonusUsed = Number(
+            Math.min(
+              dto.useBonus,
+              Number(client?.bonusPoints ?? 0),
+              maxByPercent,
+            ).toFixed(2),
+          );
+          if (bonusUsed > 0) {
+            const dec = await tx.client.updateMany({
+              where: {
+                id: order.clientId,
+                companyId: dto.companyId,
+                deletedAt: null,
+                bonusPoints: { gte: bonusUsed },
+              },
+              data: { bonusPoints: { decrement: bonusUsed } },
+            });
+            if (dec.count === 0) {
+              throw new BadRequestException('Not enough client bonus points');
+            }
+            discount += bonusUsed;
+          }
+        }
 
-      // Оплата: смешанная (несколько способов) или одним способом
-      if (total > 0 && !isDebt) {
-        const parts =
-          dto.payments && dto.payments.length > 0
-            ? dto.payments
-            : [{ method: dto.method ?? PaymentMethod.CASH, amount: total }];
-        for (const part of parts) {
-          if (part.amount > 0) {
-            await this.addPayment(
-              order.id,
-              { amount: part.amount, method: part.method },
-              userId,
+        if (discount > 0) {
+          total = Math.max(
+            0,
+            Number((total - Math.min(discount, total)).toFixed(2)),
+          );
+          await tx.order.update({
+            where: { id: order.id },
+            data: { total, balanceDue: total },
+          });
+        }
+
+        if (dto.payments && dto.payments.length > 0) {
+          const paySum = Number(
+            dto.payments
+              .reduce((s, p) => s + (Number(p.amount) || 0), 0)
+              .toFixed(2),
+          );
+          if (Math.abs(paySum - total) > 0.01) {
+            throw new BadRequestException(
+              'Payment parts must match sale total',
             );
           }
         }
-      } else if (isDebt && total > 0) {
-        // Продажа «в долг»: деньги не внесены, весь итог — задолженность клиента.
-        // Помечаем статусом DEBT, чтобы отличать от забытой неоплаты (UNPAID).
-        await this.prisma.order.update({
+
+        if (total > 0 && !isDebtSale) {
+          const parts =
+            dto.payments && dto.payments.length > 0
+              ? dto.payments
+              : [{ method: dto.method ?? PaymentMethod.CASH, amount: total }];
+          for (const part of parts) {
+            if (part.amount > 0) {
+              await this.addPaymentTx(
+                tx,
+                order.id,
+                { amount: part.amount, method: part.method },
+                userId,
+                dto.companyId,
+              );
+            }
+          }
+        } else if (isDebtSale && total > 0) {
+          const debtShiftId = await this.openShiftId(tx, dto.companyId, userId);
+          await tx.order.update({
+            where: { id: order.id },
+            data: { paymentStatus: PaymentStatus.DEBT },
+          });
+          await tx.payment.create({
+            data: {
+              companyId: dto.companyId,
+              orderId: order.id,
+              amount: total,
+              method: PaymentMethod.DEBT,
+              userId,
+              shiftId: debtShiftId,
+            },
+          });
+        } else {
+          await tx.order.update({
+            where: { id: order.id },
+            data: { paid: 0, balanceDue: 0, paymentStatus: PaymentStatus.PAID },
+          });
+        }
+
+        const posSeq = await nextSeq(tx, dto.companyId, 'POS');
+        await tx.order.update({
           where: { id: order.id },
-          data: { paymentStatus: PaymentStatus.DEBT },
-        });
-        // Запись оплаты со способом DEBT (сумма = итог), привязанная к смене кассира.
-        // Она НЕ меняет paid/balanceDue (долг остаётся), но отражает продажу «в долг»
-        // в строке «в долг» Z-отчёта и отчёта выручки (реальные деньги её исключают).
-        const debtShiftId = userId
-          ? (
-              await this.prisma.cashShift.findFirst({
-                where: { companyId: dto.companyId, userId, closedAt: null },
-              })
-            )?.id
-          : undefined;
-        await this.prisma.payment.create({
           data: {
-            companyId: dto.companyId,
-            orderId: order.id,
-            amount: total,
-            method: PaymentMethod.DEBT,
-            userId,
-            shiftId: debtShiftId,
+            status: OrderStatus.DELIVERED,
+            receiptNumber: docNumber('POS', posSeq, 5),
           },
         });
-      } else if (total <= 0) {
-        await this.prisma.order.update({
-          where: { id: order.id },
-          data: { paid: 0, balanceDue: 0, paymentStatus: PaymentStatus.PAID },
-        });
-      }
+        await this.recordStatusChange(
+          tx,
+          order.id,
+          OrderStatus.DELIVERED,
+          userId,
+          'quick sale delivered',
+        );
 
-      // Продажа = сразу выдана + номер чека POS-...
-      const posSeq = await nextSeq(this.prisma, dto.companyId, 'POS');
-      await this.prisma.order.update({
-        where: { id: order.id },
-        data: {
-          status: OrderStatus.DELIVERED,
-          receiptNumber: docNumber('POS', posSeq, 5),
-        },
+        return this.loadFull(tx, order.id);
       });
-    } catch (e) {
-      // Откат частичной продажи: вернуть товар на склад, отменить заказ и
-      // компенсировать побочные эффекты, чтобы ничего не «сгорело» безвозвратно.
-      // 1) Вернуть списанные бонусы клиенту.
-      if (bonusUsed > 0 && order.clientId) {
-        await this.prisma.client
-          .update({
-            where: { id: order.clientId },
-            data: { bonusPoints: { increment: bonusUsed } },
-          })
-          .catch((err) =>
-            console.error('quickSale rollback: не удалось вернуть бонусы', err),
-          );
-      }
-      // 2) Откатить использование промокода.
-      if (promoConsumed && dto.promoCode) {
-        await this.promocodes
-          .release(dto.companyId, dto.promoCode)
-          .catch((err) =>
-            console.error('quickSale rollback: не удалось откатить промокод', err),
-          );
-      }
-      // 3) Вернуть товар на склад и отменить заказ.
-      await this.refund(order.id, userId).catch((err) =>
-        console.error('quickSale rollback: не удалось отменить заказ', err),
-      );
-      // 4) Освободить ключ идемпотентности: иначе повтор оплаты вернул бы
-      // ОТМЕНЁННЫЙ заказ как «успешный чек» (деньги не проведены, товар не списан).
-      if (dto.idempotencyKey) {
-        await this.prisma.order
-          .update({
-            where: { id: order.id },
-            data: { idempotencyKey: null },
-          })
-          .catch((err) =>
-            console.error('quickSale rollback: не удалось очистить ключ', err),
-          );
+    } catch (e: any) {
+      if (e?.code === 'P2002' && dto.idempotencyKey) {
+        const existing = await this.prisma.order.findUnique({
+          where: { idempotencyKey: dto.idempotencyKey },
+        });
+        if (existing && existing.status !== OrderStatus.CANCELLED) {
+          return this.findOne(existing.id);
+        }
       }
       throw e;
     }
-
-    return this.findOne(order.id);
   }
 
   // ---------- Отложенные чеки (POS) ----------
@@ -652,7 +697,9 @@ export class OrdersService {
   // companyId (из токена) — удаляем только свой отложенный чек.
   async deleteHeld(id: string, companyId?: string) {
     if (companyId) {
-      const res = await this.prisma.heldSale.deleteMany({ where: { id, companyId } });
+      const res = await this.prisma.heldSale.deleteMany({
+        where: { id, companyId },
+      });
       if (res.count === 0) throw new NotFoundException('Чек не найден');
       return { ok: true };
     }
@@ -703,7 +750,7 @@ export class OrdersService {
       // возвратами, иначе товар оприходуется дважды (продано 5, вернули 2, отмена → +3, не +5).
       if (order.branchId) {
         const priorReturns = await tx.return.findMany({
-          where: { orderId },
+          where: { orderId, deletedAt: null },
           select: { items: true },
         });
         const returnedByItem = new Map<string, number>();
@@ -712,7 +759,8 @@ export class OrdersService {
             if (li?.orderItemId) {
               returnedByItem.set(
                 li.orderItemId,
-                (returnedByItem.get(li.orderItemId) ?? 0) + Number(li.quantity || 0),
+                (returnedByItem.get(li.orderItemId) ?? 0) +
+                  Number(li.quantity || 0),
               );
             }
           }
@@ -720,11 +768,16 @@ export class OrdersService {
         for (const it of order.items) {
           if (it.itemType === ItemType.PRODUCT && it.productId) {
             const alreadyReturned = returnedByItem.get(it.id) ?? 0;
-            const restock = Number((Number(it.quantity) - alreadyReturned).toFixed(3));
+            const restock = Number(
+              (Number(it.quantity) - alreadyReturned).toFixed(3),
+            );
             if (restock <= 0) continue; // всё уже возвращено ранее
             const cur = await tx.stock.findUnique({
               where: {
-                productId_branchId: { productId: it.productId, branchId: order.branchId },
+                productId_branchId: {
+                  productId: it.productId,
+                  branchId: order.branchId,
+                },
               },
             });
             const before = cur ? Number(cur.quantity) : 0;
@@ -761,10 +814,76 @@ export class OrdersService {
 
       // 3. Сторнируем начисленные бонусы (1% с каждой реальной оплаты, см. addPayment).
       //    Иначе клиент циклом «купил-вернул» бесплатно копил бы баллы.
+      const priorReturnDocs = await tx.return.findMany({
+        where: { orderId, deletedAt: null },
+        select: { items: true },
+      });
+      const alreadyReturnedByItem = new Map<string, number>();
+      for (const r of priorReturnDocs) {
+        for (const li of (r.items as any[]) ?? []) {
+          if (li?.orderItemId) {
+            alreadyReturnedByItem.set(
+              li.orderItemId,
+              (alreadyReturnedByItem.get(li.orderItemId) ?? 0) +
+                Number(li.quantity || 0),
+            );
+          }
+        }
+      }
+      const fullReturnItems: any[] = [];
+      let fullReturnAmount = 0;
+      let fullReturnCost = 0;
+      for (const it of order.items) {
+        const alreadyReturned = alreadyReturnedByItem.get(it.id) ?? 0;
+        const quantity = Number(
+          (Number(it.quantity) - alreadyReturned).toFixed(3),
+        );
+        if (quantity <= 0) continue;
+        const lineAmount = Number((quantity * Number(it.unitPrice)).toFixed(2));
+        fullReturnAmount += lineAmount;
+        fullReturnCost += Number((quantity * Number(it.unitCost)).toFixed(2));
+        fullReturnItems.push({
+          orderItemId: it.id,
+          description: it.description,
+          productId: it.productId,
+          serviceId: it.serviceId,
+          quantity,
+          unitPrice: Number(it.unitPrice),
+          lineAmount,
+        });
+      }
+      fullReturnAmount = Number(fullReturnAmount.toFixed(2));
+      fullReturnCost = Number(fullReturnCost.toFixed(2));
+      if (fullReturnAmount > 0) {
+        const vozSeq = await nextSeq(tx, order.companyId, 'VOZ');
+        const method =
+          cashRefund > 0
+            ? PaymentMethod.CASH
+            : order.payments.find((p) => p.method !== PaymentMethod.DEBT)
+                ?.method;
+        await tx.return.create({
+          data: {
+            companyId: order.companyId,
+            orderId,
+            branchId: order.branchId,
+            clientId: order.clientId,
+            number: docNumber('VOZ', vozSeq),
+            reason: 'full refund',
+            amount: fullReturnAmount,
+            method,
+            items: fullReturnItems,
+            userId,
+          },
+        });
+      }
+
       if (order.clientId) {
         const earned = order.payments
           .filter((p) => p.method !== PaymentMethod.DEBT)
-          .reduce((s, p) => s + Number((Number(p.amount) * 0.01).toFixed(2)), 0);
+          .reduce(
+            (s, p) => s + Number((Number(p.amount) * 0.01).toFixed(2)),
+            0,
+          );
         if (earned > 0) {
           const client = await tx.client.findUnique({
             where: { id: order.clientId },
@@ -783,10 +902,37 @@ export class OrdersService {
 
       // 4. Помечаем заказ отменённым и обнуляем долг (деньги возвращены,
       //    отменённый заказ не должен висеть в долгах клиента).
-      await tx.order.update({
-        where: { id: orderId },
-        data: { status: OrderStatus.CANCELLED, paid: 0, balanceDue: 0 },
+      const cancelled = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          status: order.status,
+          paid: order.paid,
+          returnedTotal: order.returnedTotal,
+          returnedCost: order.returnedCost,
+        },
+        data: {
+          status: OrderStatus.CANCELLED,
+          paid: 0,
+          balanceDue: 0,
+          returnedTotal: Number(
+            (Number(order.returnedTotal) + fullReturnAmount).toFixed(2),
+          ),
+          returnedCost: Number(
+            (Number(order.returnedCost) + fullReturnCost).toFixed(2),
+          ),
+          paymentStatus: PaymentStatus.UNPAID,
+        },
       });
+      if (cancelled.count === 0) {
+        throw new BadRequestException('Order changed during refund');
+      }
+      await this.recordStatusChange(
+        tx,
+        orderId,
+        OrderStatus.CANCELLED,
+        userId,
+        'refund',
+      );
 
       return this.loadFull(tx, orderId);
     });
@@ -820,7 +966,7 @@ export class OrdersService {
       // Сколько уже возвращено по каждой позиции (из прошлых документов возврата),
       // чтобы нельзя было вернуть больше, чем реально продано (двойной возврат).
       const priorReturns = await tx.return.findMany({
-        where: { orderId },
+        where: { orderId, deletedAt: null },
         select: { items: true },
       });
       const returnedByItem = new Map<string, number>();
@@ -829,7 +975,8 @@ export class OrdersService {
           if (li?.orderItemId) {
             returnedByItem.set(
               li.orderItemId,
-              (returnedByItem.get(li.orderItemId) ?? 0) + Number(li.quantity || 0),
+              (returnedByItem.get(li.orderItemId) ?? 0) +
+                Number(li.quantity || 0),
             );
           }
         }
@@ -861,18 +1008,32 @@ export class OrdersService {
         });
 
         // Товар — возвращаем на склад (приход RETURN с аудитом до/после)
-        if (oi.itemType === ItemType.PRODUCT && oi.productId && order.branchId) {
+        if (
+          oi.itemType === ItemType.PRODUCT &&
+          oi.productId &&
+          order.branchId
+        ) {
           const cur = await tx.stock.findUnique({
             where: {
-              productId_branchId: { productId: oi.productId, branchId: order.branchId },
+              productId_branchId: {
+                productId: oi.productId,
+                branchId: order.branchId,
+              },
             },
           });
           const before = cur ? Number(cur.quantity) : 0;
           await tx.stock.upsert({
             where: {
-              productId_branchId: { productId: oi.productId, branchId: order.branchId },
+              productId_branchId: {
+                productId: oi.productId,
+                branchId: order.branchId,
+              },
             },
-            create: { productId: oi.productId, branchId: order.branchId, quantity: qty },
+            create: {
+              productId: oi.productId,
+              branchId: order.branchId,
+              quantity: qty,
+            },
             update: { quantity: { increment: qty } },
           });
           await tx.stockMovement.create({
@@ -945,21 +1106,48 @@ export class OrdersService {
       // «валовым», а возвращённое копится в returnedTotal/returnedCost
       // (контр-выручка). Оплата уменьшается на реально возвращённые деньги.
       // Долг = итог − возвраты − оплата (не меньше нуля) — корректно и для «в долг».
-      const newReturnedTotal = Number((Number(order.returnedTotal) + amount).toFixed(2));
-      const newReturnedCost = Number((Number(order.returnedCost) + returnedCost).toFixed(2));
+      const newReturnedTotal = Number(
+        (Number(order.returnedTotal) + amount).toFixed(2),
+      );
+      const newReturnedCost = Number(
+        (Number(order.returnedCost) + returnedCost).toFixed(2),
+      );
       // Оплата уменьшается на все реально возвращённые деньги (наличные + безнал).
-      const newPaid = Number(Math.max(0, Number(order.paid) - moneyBack).toFixed(2));
-      await tx.order.update({
-        where: { id: orderId },
+      const newPaid = Number(
+        Math.max(0, Number(order.paid) - moneyBack).toFixed(2),
+      );
+      const newBalanceDue = Number(
+        Math.max(0, Number(order.total) - newReturnedTotal - newPaid).toFixed(
+          2,
+        ),
+      );
+      const newPaymentStatus =
+        newBalanceDue <= 0
+          ? PaymentStatus.PAID
+          : order.paymentStatus === PaymentStatus.DEBT
+            ? PaymentStatus.DEBT
+            : newPaid > 0
+              ? PaymentStatus.PARTIAL
+              : PaymentStatus.UNPAID;
+      const updated = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          status: order.status,
+          paid: order.paid,
+          returnedTotal: order.returnedTotal,
+          returnedCost: order.returnedCost,
+        },
         data: {
           returnedTotal: newReturnedTotal,
           returnedCost: newReturnedCost,
           paid: newPaid,
-          balanceDue: Number(
-            Math.max(0, Number(order.total) - newReturnedTotal - newPaid).toFixed(2),
-          ),
+          balanceDue: newBalanceDue,
+          paymentStatus: newPaymentStatus,
         },
       });
+      if (updated.count === 0) {
+        throw new BadRequestException('Order changed during return');
+      }
 
       // Сторнируем начисленные бонусы пропорционально реально возвращённым деньгам
       // (1% — как при начислении в addPayment), чтобы возврат не оставлял «лишних» баллов.
@@ -1038,7 +1226,9 @@ export class OrdersService {
     reason?: string,
     companyId?: string,
   ) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
     if (!order) throw new NotFoundException('Заказ не найден');
     if (companyId && order.companyId !== companyId) {
       throw new NotFoundException('Заказ не найден');
@@ -1053,12 +1243,9 @@ export class OrdersService {
     }
     if (order.status === status) return this.findOne(orderId);
 
-    await this.prisma.$transaction([
-      this.prisma.order.update({ where: { id: orderId }, data: { status } }),
-      this.prisma.orderStatusHistory.create({
-        data: { orderId, status, userId, reason },
-      }),
-    ]);
+    await this.prisma.$transaction((tx) =>
+      this.transitionOrderStatus(tx, orderId, status, userId, reason),
+    );
 
     // Уведомление о готовности заказа: Telegram + email клиенту
     if (status === OrderStatus.READY) {
@@ -1190,10 +1377,13 @@ export class OrdersService {
       const nameById = new Map(users.map((u) => [u.id, u.fullName]));
       order.statusHistory = hist.map((h: any) => ({
         ...h,
-        userName: h.userId ? nameById.get(h.userId) ?? '—' : 'система',
+        userName: h.userId ? (nameById.get(h.userId) ?? '—') : 'система',
       }));
     } else {
-      order.statusHistory = hist.map((h: any) => ({ ...h, userName: 'система' }));
+      order.statusHistory = hist.map((h: any) => ({
+        ...h,
+        userName: 'система',
+      }));
     }
     return order;
   }
@@ -1225,8 +1415,14 @@ export class OrdersService {
   }
 
   // Установить/изменить срок погашения долга по заказу
-  async setDebtDue(orderId: string, dueDate: string | null, companyId?: string) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+  async setDebtDue(
+    orderId: string,
+    dueDate: string | null,
+    companyId?: string,
+  ) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
     if (!order) throw new NotFoundException('Заказ не найден');
     if (companyId && order.companyId !== companyId) {
       throw new NotFoundException('Заказ не найден');
@@ -1243,12 +1439,44 @@ export class OrdersService {
     tx: Prisma.TransactionClient,
     companyId: string,
     userId?: string,
-  ): Promise<string | undefined> {
-    if (!userId) return undefined;
+  ): Promise<string> {
+    if (!userId) throw new BadRequestException('Open cash shift not found');
     const shift = await tx.cashShift.findFirst({
-      where: { companyId, userId, closedAt: null },
+      where: { companyId, userId, closedAt: null, deletedAt: null },
     });
-    return shift?.id;
+    if (!shift) throw new BadRequestException('Open cash shift not found');
+    return shift.id;
+  }
+
+  // Запись перехода статуса заказа в историю (OrderStatusHistory).
+  // Через неё проходит КАЖДАЯ смена Order.status — иначе этап пропадёт из карточки
+  // заказа (напр. быстрая продажа → DELIVERED, возврат → CANCELLED, п. P1-10 аудита).
+  private recordStatusChange(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    status: OrderStatus,
+    userId?: string,
+    reason?: string,
+  ) {
+    return tx.orderStatusHistory.create({
+      data: { orderId, status, userId, reason },
+    });
+  }
+
+  // Простой переход статуса заказа: меняет Order.status и пишет историю в одной
+  // транзакции. Переходы, совмещённые с денежными полями и optimistic-guard
+  // (быстрая продажа, возврат), меняют статус вместе с ними, но историю пишут
+  // через тот же recordStatusChange() — так инвариант «смена статуса → история»
+  // соблюдается централизованно.
+  private async transitionOrderStatus(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    status: OrderStatus,
+    userId?: string,
+    reason?: string,
+  ) {
+    await tx.order.update({ where: { id: orderId }, data: { status } });
+    await this.recordStatusChange(tx, orderId, status, userId, reason);
   }
 
   // Загрузка заказа со всеми связями
@@ -1260,7 +1488,11 @@ export class OrdersService {
         items: {
           include: {
             service: {
-              include: { materials: { include: { product: { include: { unit: true } } } } },
+              include: {
+                materials: {
+                  include: { product: { include: { unit: true } } },
+                },
+              },
             },
             product: { include: { unit: true } },
           },

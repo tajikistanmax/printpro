@@ -350,12 +350,11 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [clientQuery, setClientQuery] = useState('');
   const [clientResults, setClientResults] = useState<any[]>([]);
-  const [pickedClient, setPickedClient] = useState<any | null>(null);
+  const [, setPickedClient] = useState<any | null>(null);
   const [newClientPhone, setNewClientPhone] = useState('');
   const [newClientName, setNewClientName] = useState('');
   useEffect(() => {
     if (clientQuery.trim().length < 2) {
-      setClientResults([]);
       return;
     }
     const t = setTimeout(() => {
@@ -366,6 +365,8 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
     }, 250);
     return () => clearTimeout(t);
   }, [clientQuery]);
+  const visibleClientResults =
+    clientQuery.trim().length >= 2 ? clientResults : [];
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm xl:sticky xl:top-4 xl:self-start dark:border-slate-700/60">
       <div className="mb-4 flex items-center justify-between">
@@ -668,12 +669,12 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
               className="mb-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             />
             <div className="mb-4 max-h-56 flex-1 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
-              {clientResults.length === 0 ? (
+              {visibleClientResults.length === 0 ? (
                 <div className="py-8 text-center text-sm text-slate-400">
                   {clientQuery.trim().length < 2 ? 'Введите имя или телефон' : 'Ничего не найдено'}
                 </div>
               ) : (
-                clientResults.map((cl) => (
+                visibleClientResults.map((cl) => (
                   <button
                     key={cl.id}
                     onClick={() => {

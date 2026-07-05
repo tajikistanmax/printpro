@@ -10,15 +10,21 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ProofStatus } from '@prisma/client';
-import { DesignService } from './design.service';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RequirePermissions } from '../auth/permissions.decorator';
+import { PermissionsGuard } from '../auth/permissions.guard';
 import {
   CreateProofDto,
   UpdateProofDto,
   UpdateProofStatusDto,
 } from './dto/design.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { PermissionsGuard } from '../auth/permissions.guard';
-import { RequirePermissions } from '../auth/permissions.decorator';
+import { DesignService } from './design.service';
+
+interface JwtUser {
+  sub: string;
+  companyId: string;
+}
 
 @Controller('design')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -28,35 +34,42 @@ export class DesignController {
   @Get()
   @RequirePermissions('design.view')
   findAll(
-    @Query('companyId') companyId: string,
+    @CurrentUser() user: JwtUser,
     @Query('status') status?: ProofStatus,
     @Query('orderId') orderId?: string,
   ) {
-    return this.design.findAll(companyId, status, orderId);
+    return this.design.findAll(user.companyId, status, orderId);
   }
 
   @Post()
   @RequirePermissions('design.manage')
-  create(@Body() dto: CreateProofDto) {
-    return this.design.create(dto);
+  create(@Body() dto: CreateProofDto, @CurrentUser() user: JwtUser) {
+    return this.design.create({ ...dto, companyId: user.companyId });
   }
 
   @Patch(':id')
   @RequirePermissions('design.manage')
-  update(@Param('id') id: string, @Body() dto: UpdateProofDto) {
-    return this.design.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateProofDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.design.update(id, user.companyId, dto);
   }
 
-  // Смена статуса доступна и просмотрщику (клиентский менеджер согласует)
   @Patch(':id/status')
   @RequirePermissions('design.view')
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateProofStatusDto) {
-    return this.design.updateStatus(id, dto);
+  updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateProofStatusDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.design.updateStatus(id, user.companyId, dto);
   }
 
   @Delete(':id')
   @RequirePermissions('design.manage')
-  remove(@Param('id') id: string) {
-    return this.design.remove(id);
+  remove(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.design.remove(id, user.companyId);
   }
 }

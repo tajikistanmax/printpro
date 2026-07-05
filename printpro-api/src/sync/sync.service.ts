@@ -4,6 +4,7 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { createHmac } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 // Реестр синхронизируемых таблиц. Порядок важен: родители раньше детей
@@ -57,6 +58,24 @@ const SYNC_TABLES: { model: string; table: string }[] = [
   { model: 'salaryRecord', table: 'SalaryRecord' },
 ];
 
+const SENSITIVE_SYNC_MODELS = new Set([
+  'company',
+  'permission',
+  'role',
+  'rolePermission',
+  'user',
+  'cashShift',
+  'payment',
+  'cashMovement',
+  'clientDebt',
+  'workTimeRecord',
+  'payrollPeriod',
+  'salaryAdvance',
+  'salaryRecord',
+]);
+
+const includeSensitiveSync = () => process.env.SYNC_INCLUDE_SENSITIVE === '1';
+
 @Injectable()
 export class SyncService {
   private readonly logger = new Logger('Sync');
@@ -64,17 +83,26 @@ export class SyncService {
   constructor(private readonly prisma: PrismaService) {}
 
   // Отдать все изменения после метки времени `since`
-  async pull(since?: string) {
+  async pull(since?: string, peer?: string) {
     const from = since ? new Date(since) : new Date(0);
     const until = new Date().toISOString();
     const changes: Record<string, unknown[]> = {};
 
     for (const t of SYNC_TABLES) {
+      if (SENSITIVE_SYNC_MODELS.has(t.model) && !includeSensitiveSync()) {
+        changes[t.model] = [];
+        continue;
+      }
       changes[t.model] = await (this.prisma as any)[t.model].findMany({
         where: { updatedAt: { gt: from } },
         orderBy: { updatedAt: 'asc' },
       });
     }
+    // Аудит: кто выгрузил данные и в каком объёме (peer identity)
+    const exported = Object.values(changes).reduce((s, a) => s + a.length, 0);
+    this.logger.log(
+      `sync pull: peer=${peer ?? 'local'} since=${from.toISOString()} rows=${exported} sensitive=${includeSensitiveSync() ? 'on' : 'off'}`,
+    );
     return { until, changes };
   }
 
@@ -83,12 +111,26 @@ export class SyncService {
     let applied = 0;
     let skipped = 0;
     let failed = 0;
+    // Аудит: сколько записей по каждой модели изменил этот peer
+    const mutatedByModel: Record<string, number> = {};
 
     for (const t of SYNC_TABLES) {
       const rows = changes?.[t.model] ?? [];
+      if (SENSITIVE_SYNC_MODELS.has(t.model) && !includeSensitiveSync()) {
+        skipped += rows.length;
+        continue;
+      }
       for (const row of rows) {
         try {
+          if (!row?.id || !row?.updatedAt) {
+            skipped++;
+            continue;
+          }
           const incomingTs = new Date(row.updatedAt).getTime();
+          if (!Number.isFinite(incomingTs)) {
+            skipped++;
+            continue;
+          }
           const existing = await (this.prisma as any)[t.model].findUnique({
             where: { id: row.id },
           });
@@ -116,12 +158,23 @@ export class SyncService {
             row.id,
           );
           applied++;
+          mutatedByModel[t.model] = (mutatedByModel[t.model] ?? 0) + 1;
         } catch (e) {
           failed++;
-          this.logger.warn(`Не применилась запись ${t.model}/${row?.id}: ${e}`);
+          this.logger.warn(
+            `Не применилась запись ${t.model}/${row?.id} (peer=${peer}): ${e}`,
+          );
         }
       }
     }
+
+    // Аудит sync-мутаций с идентификацией peer'а
+    const mutatedSummary = Object.entries(mutatedByModel)
+      .map(([m, n]) => `${m}:${n}`)
+      .join(',');
+    this.logger.log(
+      `sync push: peer=${peer} applied=${applied} skipped=${skipped} failed=${failed}${mutatedSummary ? ` [${mutatedSummary}]` : ''}`,
+    );
 
     return { applied, skipped, failed };
   }
@@ -157,6 +210,7 @@ export class SyncService {
     const CLOUD = process.env.CLOUD_API;
     const SECRET = process.env.SYNC_SECRET;
     const NODE_ID = (process.env.NODE_ID ?? 'K1').toUpperCase();
+    const NODE_SECRET = process.env.SYNC_NODE_SECRET;
     if (!CLOUD || !SECRET) {
       throw new BadRequestException(
         'Синхронизация не настроена: задайте CLOUD_API и SYNC_SECRET в .env локального сервера',
@@ -175,9 +229,21 @@ export class SyncService {
       });
     };
     const callCloud = async (path: string, body: unknown) => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-sync-secret': SECRET,
+      };
+      if (NODE_SECRET) {
+        const ts = String(Date.now());
+        headers['x-sync-node'] = NODE_ID;
+        headers['x-sync-timestamp'] = ts;
+        headers['x-sync-signature'] = createHmac('sha256', NODE_SECRET)
+          .update(`${NODE_ID}.${ts}`)
+          .digest('hex');
+      }
       const res = await fetch(`${CLOUD}${path}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-sync-secret': SECRET },
+        headers,
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`облако ${path} → ${res.status}`);

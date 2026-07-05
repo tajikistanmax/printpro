@@ -9,7 +9,7 @@ import ThemeToggle from '@/lib/ThemeToggle';
 import SyncIndicator from '@/lib/SyncIndicator';
 import GlobalSearch from '@/lib/GlobalSearch';
 import NavIcon from '@/lib/NavIcons';
-import { useFeatureFlags, NAV_FLAG_BY_HREF } from '@/lib/feature-flags';
+import { useFeatureFlags, NAV_FLAG_BY_HREF, isFlagEnabled } from '@/lib/feature-flags';
 
 type NavItem = { href: string; label: string; icon: string; perm: string | null };
 type NavGroup = { label: string | null; items: NavItem[] };
@@ -72,22 +72,23 @@ const NAV_GROUPS: NavGroup[] = [
 
 export default function PanelLayout({ children }: { children: ReactNode }) {
   const { user, loading, logout, can } = useAuth();
-  const { isEnabled } = useFeatureFlags();
+  const { flags, loaded: flagsLoaded, isEnabled } = useFeatureFlags();
   const router = useRouter();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      localStorage.getItem('pp_nav_collapsed') === '1',
+  );
 
   // Закрывать меню при переходе на другую страницу (мобильный)
   useEffect(() => {
-    setMobileOpen(false);
+    const id = setTimeout(() => setMobileOpen(false), 0);
+    return () => clearTimeout(id);
   }, [pathname]);
 
   // Состояние «узкой рейки» запоминаем между визитами (только десктоп)
-  useEffect(() => {
-    setRailCollapsed(localStorage.getItem('pp_nav_collapsed') === '1');
-  }, []);
-
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
   }, [loading, user, router]);
@@ -99,7 +100,8 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
     const m: Record<string, string | null> = {};
     for (const g of NAV_GROUPS) for (const it of g.items) m[it.href] = it.perm;
     // страницы вне бокового меню
-    m['/orders/new'] = 'orders.view';
+    // Создание заказа: backend POST /orders требует orders.manage — держим то же право на клиенте.
+    m['/orders/new'] = 'orders.manage';
     m['/order-card'] = 'orders.view';
     m['/price-labels'] = 'stock.view';
     m['/audit'] = 'settings.manage';
@@ -111,9 +113,20 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
     const match = Object.keys(routePerm)
       .filter((p) => pathname === p || pathname.startsWith(p + '/'))
       .sort((a, b) => b.length - a.length)[0];
-    const perm = match ? routePerm[match] : null;
-    if (perm && !can(perm)) router.replace('/dashboard');
-  }, [pathname, loading, user, can, router, routePerm]);
+    if (!match) return;
+    // Нет права на раздел → уводим на «Главную»
+    const perm = routePerm[match];
+    if (perm && !can(perm)) {
+      router.replace('/dashboard');
+      return;
+    }
+    // Модуль выключен тумблером (feature flag) — закрыт и по прямой ссылке,
+    // не только скрыт в меню. Ждём загрузки флагов, чтобы не увести с включённого.
+    const flag = NAV_FLAG_BY_HREF[match];
+    if (flagsLoaded && flag && !isFlagEnabled(flags, flag)) {
+      router.replace('/dashboard');
+    }
+  }, [pathname, loading, user, can, router, routePerm, flags, flagsLoaded]);
 
   if (loading || !user) {
     return (

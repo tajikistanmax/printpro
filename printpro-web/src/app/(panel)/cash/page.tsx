@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import {
@@ -48,17 +48,18 @@ export default function CashPage() {
   const [counted, setCounted] = useState('');
   const [showX, setShowX] = useState(false);
 
-  function load() {
+  const load = useCallback(() => {
     setLoading(true);
     api
       .get('/cash/current')
       .then((s) => setShift(s))
       .catch(() => setShift(null))
       .finally(() => setLoading(false));
-  }
-  useEffect(() => {
-    load();
   }, []);
+  useEffect(() => {
+    const id = setTimeout(load, 0);
+    return () => clearTimeout(id);
+  }, [load]);
 
   async function openShift(e: React.FormEvent) {
     e.preventDefault();

@@ -11,6 +11,7 @@ async function bootstrap() {
   mkdirSync(join(process.cwd(), 'uploads'), { recursive: true });
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const isProduction = process.env.NODE_ENV === 'production';
 
   // Увеличиваем лимит тела запроса — пачки синхронизации бывают большими
   app.useBodyParser('json', { limit: '50mb' });
@@ -24,26 +25,50 @@ async function bootstrap() {
   );
 
   // Разрешаем запросы с фронтенда (веб/мобилка/сайт)
-  app.enableCors();
+  const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  app.enableCors({
+    credentials: true,
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      if (!origin) return callback(null, true);
+      if (!isProduction && allowedOrigins.length === 0) {
+        return callback(null, true);
+      }
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error('Origin is not allowed by CORS'), false);
+    },
+  });
 
   // Раздача загруженных файлов: /uploads/...
-  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/uploads',
+    setHeaders: (res) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    },
+  });
 
   // Общий префикс для API: /api/...
   app.setGlobalPrefix('api');
 
   // OpenAPI/Swagger — документация и песочница API: /api/docs
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('PrintPro API')
-    .setDescription('REST API платформы PrintPro')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  if (!isProduction || process.env.SWAGGER_ENABLED === '1') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('PrintPro API')
+      .setDescription('REST API платформы PrintPro')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
   console.log(`PrintPro API запущен: http://localhost:${port}/api`);
 }
-bootstrap();
+void bootstrap();

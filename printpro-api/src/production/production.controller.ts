@@ -12,9 +12,6 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import { randomUUID } from 'crypto';
 import { ProductionStatus } from '@prisma/client';
 import { ProductionService } from './production.service';
 import {
@@ -26,6 +23,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { IMAGE_UPLOAD_OPTIONS } from '../uploads/image-upload.options';
 
 @Controller('production')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -76,26 +74,18 @@ export class ProductionController {
       user.companyId,
       dto.status,
       dto.defectReason,
+      user.sub,
     );
   }
 
   // Загрузить фото готового результата
   @Post(':id/photo')
   @RequirePermissions('production.view')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: './uploads',
-        filename: (_req, file, cb) =>
-          cb(null, randomUUID() + extname(file.originalname)),
-      }),
-      limits: { fileSize: 50 * 1024 * 1024 },
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file', IMAGE_UPLOAD_OPTIONS))
   uploadPhoto(
     @CurrentUser() user: { sub: string; companyId: string },
     @Param('id') id: string,
-    @UploadedFile() file: any,
+    @UploadedFile() file: Express.Multer.File,
   ) {
     return this.production.setResultPhoto(
       id,

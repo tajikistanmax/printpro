@@ -5,45 +5,50 @@ import {
   Param,
   Post,
   Put,
-  Query,
   UseGuards,
 } from '@nestjs/common';
-import { RolesService } from './roles.service';
-import { CreateRoleDto, SetPermissionsDto } from './dto/role.dto';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { CreateRoleDto, SetPermissionsDto } from './dto/role.dto';
+import { RolesService } from './roles.service';
+
+interface JwtUser {
+  sub: string;
+  companyId: string;
+}
 
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class RolesController {
   constructor(private readonly roles: RolesService) {}
 
-  // Справочник всех прав (для галочек)
   @Get('permissions')
   @RequirePermissions('roles.manage')
   allPermissions() {
     return this.roles.allPermissions();
   }
 
-  // Роли компании
   @Get('roles')
   @RequirePermissions('roles.manage')
-  findRoles(@Query('companyId') companyId: string) {
-    return this.roles.findRoles(companyId);
+  findRoles(@CurrentUser() user: JwtUser) {
+    return this.roles.findRoles(user.companyId);
   }
 
-  // Создать роль
   @Post('roles')
   @RequirePermissions('roles.manage')
-  createRole(@Body() dto: CreateRoleDto) {
-    return this.roles.createRole(dto);
+  createRole(@Body() dto: CreateRoleDto, @CurrentUser() user: JwtUser) {
+    return this.roles.createRole({ ...dto, companyId: user.companyId });
   }
 
-  // Установить права роли (галочки)
   @Put('roles/:id/permissions')
   @RequirePermissions('roles.manage')
-  setPermissions(@Param('id') id: string, @Body() dto: SetPermissionsDto) {
-    return this.roles.setPermissions(id, dto.permissionCodes);
+  setPermissions(
+    @Param('id') id: string,
+    @Body() dto: SetPermissionsDto,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.roles.setPermissions(id, user.companyId, dto.permissionCodes);
   }
 }

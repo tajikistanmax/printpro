@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { DEFAULT_COMPANY_ID } from '@/lib/config';
@@ -90,7 +90,10 @@ export default function WarehousePage() {
   // Пагинация списка остатков
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  useEffect(() => { setPage(1); }, [q, filterCat, fBranch, fStatus]);
+  useEffect(() => {
+    const id = setTimeout(() => setPage(1), 0);
+    return () => clearTimeout(id);
+  }, [q, filterCat, fBranch, fStatus]);
 
   const [products, setProducts] = useState<any[]>([]);
   const [units, setUnits] = useState<any[]>([]);
@@ -133,7 +136,7 @@ export default function WarehousePage() {
   const [editAdvOpen, setEditAdvOpen] = useState(false);
 
   // Филиал по умолчанию (для перемещения/инвентаризации/списания)
-  const [branchId, setBranchId] = useState('');
+  const [, setBranchId] = useState('');
 
   // Перемещение
   const [tProduct, setTProduct] = useState('');
@@ -149,7 +152,7 @@ export default function WarehousePage() {
   const [woReason, setWoReason] = useState('');
   const [woMsg, setWoMsg] = useState('');
 
-  function load() {
+  const load = useCallback(() => {
     setLoading(true);
     Promise.all([
       api.get(`/products?companyId=${cid}`),
@@ -169,13 +172,20 @@ export default function WarehousePage() {
       .catch(() => {})
       .finally(() => setLoading(false));
     api.get(`/stock/stats?companyId=${cid}`).then(setStats).catch(() => {});
-  }
-  function loadMovements() {
+  }, [cid]);
+  const loadMovements = useCallback(() => {
     api.get(`/stock/movements?companyId=${cid}`).then(setMovements).catch(() => {});
-  }
+  }, [cid]);
 
-  useEffect(() => { load(); }, [cid]);
-  useEffect(() => { if (tab === 'moves') loadMovements(); }, [tab, cid]);
+  useEffect(() => {
+    const id = setTimeout(load, 0);
+    return () => clearTimeout(id);
+  }, [load]);
+  useEffect(() => {
+    if (tab !== 'moves') return;
+    const id = setTimeout(loadMovements, 0);
+    return () => clearTimeout(id);
+  }, [tab, loadMovements]);
 
   // ---- данные по товару ----
   const stockOf = (p: any) => (p.stock ?? []).reduce((s: number, r: any) => s + Number(r.quantity), 0);

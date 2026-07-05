@@ -14,10 +14,20 @@ export class CashService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ---------- Открыть смену ----------
+  private async assertBranch(companyId: string, branchId?: string | null) {
+    if (!branchId) return;
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: branchId, companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!branch) throw new NotFoundException('Branch not found');
+  }
+
   async openShift(companyId: string, userId: string, dto: OpenShiftDto) {
+    await this.assertBranch(companyId, dto.branchId);
     // У одного кассира не может быть двух открытых смен
     const open = await this.prisma.cashShift.findFirst({
-      where: { companyId, userId, closedAt: null },
+      where: { companyId, userId, closedAt: null, deletedAt: null },
     });
     if (open) {
       throw new BadRequestException('У вас уже есть открытая смена');
@@ -49,11 +59,11 @@ export class CashService {
   // ---------- Текущая открытая смена пользователя ----------
   async currentShift(companyId: string, userId: string) {
     const shift = await this.prisma.cashShift.findFirst({
-      where: { companyId, userId, closedAt: null },
+      where: { companyId, userId, closedAt: null, deletedAt: null },
       orderBy: { openedAt: 'desc' },
     });
     if (!shift) return null;
-    return this.report(shift.id);
+    return this.report(shift.id, companyId);
   }
 
   // ---------- Закрыть смену ----------
@@ -63,13 +73,16 @@ export class CashService {
     shiftId: string,
     dto: CloseShiftDto,
   ) {
+    // Политика владения: закрыть смену может только тот кассир, которому она
+    // принадлежит (кроме companyId проверяем userId). Менеджерское закрытие
+    // чужой смены потребует отдельного права cash.manage (см. schemaChanges).
     const shift = await this.prisma.cashShift.findFirst({
-      where: { id: shiftId, companyId },
+      where: { id: shiftId, companyId, userId, deletedAt: null },
     });
     if (!shift) throw new NotFoundException('Смена не найдена');
     if (shift.closedAt) throw new BadRequestException('Смена уже закрыта');
 
-    const report = await this.report(shiftId);
+    const report = await this.report(shiftId, companyId);
     const expected = report.summary.expectedCash;
 
     await this.prisma.cashShift.update({
@@ -80,7 +93,7 @@ export class CashService {
           dto.countedBalance !== undefined ? dto.countedBalance : expected,
       },
     });
-    return this.report(shiftId);
+    return this.report(shiftId, companyId);
   }
 
   // ---------- Внести / изъять деньги ----------
@@ -88,7 +101,7 @@ export class CashService {
     let shiftId = dto.shiftId;
     if (!shiftId) {
       const open = await this.prisma.cashShift.findFirst({
-        where: { companyId, userId, closedAt: null },
+        where: { companyId, userId, closedAt: null, deletedAt: null },
       });
       if (!open) {
         throw new BadRequestException(
@@ -96,6 +109,15 @@ export class CashService {
         );
       }
       shiftId = open.id;
+    } else {
+      // Явно переданный shiftId должен указывать на СВОЮ открытую смену того же
+      // кассира (companyId + userId + closedAt: null) — иначе движение можно было
+      // бы привязать к чужой или закрытой смене.
+      const shift = await this.prisma.cashShift.findFirst({
+        where: { id: shiftId, companyId, userId, closedAt: null, deletedAt: null },
+        select: { id: true },
+      });
+      if (!shift) throw new NotFoundException('Open shift not found');
     }
     await this.prisma.cashMovement.create({
       data: {
@@ -107,13 +129,13 @@ export class CashService {
         reason: dto.reason,
       },
     });
-    return this.report(shiftId);
+    return this.report(shiftId, companyId);
   }
 
   // ---------- История смен ----------
   async listShifts(companyId: string) {
     const shifts = await this.prisma.cashShift.findMany({
-      where: { companyId },
+      where: { companyId, deletedAt: null },
       include: {
         user: { select: { id: true, fullName: true } },
         branch: { select: { id: true, name: true } },
@@ -134,9 +156,13 @@ export class CashService {
   }
 
   // ---------- Отчёт по смене (X/Z-отчёт) ----------
-  async report(shiftId: string) {
-    const shift = await this.prisma.cashShift.findUnique({
-      where: { id: shiftId },
+  // companyId обязателен: отчёт всегда ограничен своей компанией (tenant-изоляция).
+  // Чтение отчёта доступно любому с правом cash.view в рамках компании —
+  // это нужно надзорным ролям (Бухгалтер/Директор) для просмотра Z-отчёта
+  // по любой смене; ограничение по конкретному кассиру потребует cash.manage.
+  async report(shiftId: string, companyId: string) {
+    const shift = await this.prisma.cashShift.findFirst({
+      where: { id: shiftId, companyId, deletedAt: null },
       include: {
         user: { select: { id: true, fullName: true } },
         branch: { select: { id: true, name: true } },

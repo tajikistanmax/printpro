@@ -100,7 +100,8 @@ export class AuthService {
         branch: true,
       },
     });
-    if (!user) throw new UnauthorizedException();
+    // Пользователь должен быть активен и не удалён (иначе токен считается отозванным)
+    if (!user || !user.isActive || user.deletedAt) throw new UnauthorizedException();
 
     return {
       id: user.id,
