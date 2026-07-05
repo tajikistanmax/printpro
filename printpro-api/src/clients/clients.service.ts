@@ -31,10 +31,14 @@ export class ClientsService {
     note?: string,
   ) {
     const norm = normalizePhone(phone);
-    const existing = await this.prisma.client.findFirst({
-      where: { companyId, phone: norm, deletedAt: null },
-    });
-    if (existing) return existing;
+    // Ищем существующего ТОЛЬКО при непустом телефоне: иначе findFirst по phone=''
+    // привязал бы walk-in к произвольному клиенту без телефона (medium).
+    if (norm) {
+      const existing = await this.prisma.client.findFirst({
+        where: { companyId, phone: norm, deletedAt: null },
+      });
+      if (existing) return existing;
+    }
     return this.prisma.client.create({
       data: { companyId, phone: norm, fullName, note },
     });
@@ -60,7 +64,12 @@ export class ClientsService {
 
   async update(id: string, dto: UpdateClientDto, companyId: string) {
     await this.ensure(id, companyId);
-    return this.prisma.client.update({ where: { id }, data: dto });
+    // Нормализуем телефон при обновлении — иначе он сохранится «как есть», и
+    // последующий findOrCreate (который нормализует) не найдёт клиента и создаст
+    // дубль (medium: update хранил телефон без нормализации).
+    const data: Prisma.ClientUpdateInput = { ...dto };
+    if (dto.phone !== undefined) data.phone = normalizePhone(dto.phone);
+    return this.prisma.client.update({ where: { id }, data });
   }
 
   async findAll(companyId: string, f: ClientFilters = {}) {

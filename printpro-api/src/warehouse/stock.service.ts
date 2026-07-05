@@ -394,6 +394,7 @@ export class StockService {
     if (!branchId) throw new BadRequestException('Не указан филиал');
     let applied = 0;
     let unchanged = 0;
+    let skipped = 0; // неизвестные/чужие товары — пропущены, не роняем партию
     // Инвентаризация — атомарно (всё или ничего), но на 300+ позиций дефолтный
     // 5-сек таймаут транзакции Prisma мал: поднимаем окно до 2 минут.
     await this.prisma.$transaction(
@@ -402,7 +403,17 @@ export class StockService {
       for (const it of items) {
         const counted = Number(it.countedQuantity);
         if (!Number.isFinite(counted) || counted < 0) continue;
-        await this.ensureProduct(tx, companyId, it.productId);
+        // Неизвестный/чужой товар пропускаем (skip), а не бросаем исключение —
+        // иначе одна плохая строка откатывала бы всю инвентаризацию, теряя все
+        // валидные подсчёты (medium).
+        const prod = await tx.product.findFirst({
+          where: { id: it.productId, companyId, deletedAt: null },
+          select: { id: true },
+        });
+        if (!prod) {
+          skipped++;
+          continue;
+        }
         const current = await tx.stock.findUnique({
           where: { productId_branchId: { productId: it.productId, branchId } },
         });
@@ -445,12 +456,13 @@ export class StockService {
           itemsCount: items.length,
           applied,
           unchanged,
+          skipped,
         },
       });
       },
       { timeout: 120000, maxWait: 10000 },
     );
-    return { applied, unchanged };
+    return { applied, unchanged, skipped };
   }
 
   // История движений склада (последние 200)
