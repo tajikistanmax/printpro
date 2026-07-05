@@ -79,7 +79,9 @@ export class QuotesService {
 
   async findOne(id: string, companyId: string) {
     const q = await this.prisma.quote.findFirst({
-      where: { id, companyId },
+      // deletedAt: null — мягко удалённое КП не должно читаться, менять статус
+      // или конвертироваться в заказ (medium).
+      where: { id, companyId, deletedAt: null },
       include: this.includes(),
     });
     if (!q) throw new NotFoundException('КП не найдено');

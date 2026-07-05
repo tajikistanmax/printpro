@@ -60,6 +60,9 @@ export class PublicController {
   async passwordResetRequest(
     @Body() body: { companyId: string; login: string },
   ) {
+    // Без companyId/login не ищем: иначе login=undefined выкинулся бы из where и
+    // findFirst вернул бы ПРОИЗВОЛЬНОГО сотрудника компании (medium).
+    if (!body.companyId || !body.login) return { ok: true };
     const user = await this.prisma.user.findFirst({
       where: { companyId: body.companyId, login: body.login },
       select: { fullName: true, login: true },

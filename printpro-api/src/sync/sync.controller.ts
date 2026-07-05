@@ -173,6 +173,9 @@ export class SyncController {
     return this.sync.heartbeat();
   }
 
+  // Требуем вход: статус раскрывает cloud URL и флаги конфигурации sync —
+  // не отдаём анонимно (medium).
+  @UseGuards(JwtAuthGuard)
   @Get('status')
   status() {
     return this.sync.status();
