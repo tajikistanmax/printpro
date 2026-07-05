@@ -76,6 +76,9 @@ export class PublicController {
   // Список активных услуг (для выбора на сайте)
   @Get('services')
   services(@Query('companyId') companyId: string) {
+    // Без companyId Prisma выкинула бы ключ и вернула услуги ВСЕХ компаний —
+    // межтенантная утечка каталога/цен. Требуем companyId (P0-12).
+    if (!companyId) return [];
     return this.prisma.service.findMany({
       where: { companyId, isActive: true },
       select: { id: true, name: true, pricingType: true, basePrice: true },
