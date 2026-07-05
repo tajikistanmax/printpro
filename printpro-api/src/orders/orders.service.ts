@@ -1004,7 +1004,16 @@ export class OrdersService {
     if (!dto.items?.length) {
       throw new BadRequestException('Выберите позиции для возврата');
     }
-    return this.prisma.$transaction(async (tx) => {
+    // Идемпотентность (P0-7): повтор с тем же ключом (двойной клик/ретрай POS)
+    // возвращает уже созданный документ возврата, а не проводит второй возврат.
+    if (dto.idempotencyKey) {
+      const existing = await this.prisma.return.findUnique({
+        where: { idempotencyKey: dto.idempotencyKey },
+      });
+      if (existing) return existing;
+    }
+    try {
+      return await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
         include: { items: true, payments: true },
@@ -1153,6 +1162,7 @@ export class OrdersService {
           method: dto.method,
           items: returned,
           userId,
+          idempotencyKey: dto.idempotencyKey, // P0-7
         },
       });
 
@@ -1247,6 +1257,17 @@ export class OrdersService {
 
       return ret;
     });
+    } catch (e: any) {
+      // Гонка: параллельный запрос с тем же ключом успел создать возврат первым —
+      // отдаём уже созданный документ вместо ошибки уникальности (P0-7).
+      if (e?.code === 'P2002' && dto.idempotencyKey) {
+        const existing = await this.prisma.return.findUnique({
+          where: { idempotencyKey: dto.idempotencyKey },
+        });
+        if (existing) return existing;
+      }
+      throw e;
+    }
   }
 
   listReturns(companyId: string) {

@@ -740,6 +740,9 @@ model Return {
   method    PaymentMethod? // как вернули деньги
   items     Json // что вернули
   userId    String?
+  // Идемпотентность возврата: повторный запрос с тем же ключом (двойной клик,
+  // сетевой ретрай POS) вернёт тот же документ, а не создаст второй возврат. (P0-7)
+  idempotencyKey String?   @unique
   createdAt DateTime       @default(now())
 
   @@index([companyId])

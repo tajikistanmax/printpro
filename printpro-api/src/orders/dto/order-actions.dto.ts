@@ -30,6 +30,8 @@ export class CreateReturnDto {
   @IsOptional() @IsEnum(PaymentMethod) method?: PaymentMethod;
   @IsArray() @ValidateNested({ each: true }) @Type(() => ReturnItemDto)
   items: ReturnItemDto[];
+  // Идемпотентность возврата (двойной клик/ретрай) — P0-7
+  @IsOptional() @IsString() idempotencyKey?: string;
 }
 
 // Сменить статус заказа
