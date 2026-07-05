@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsNumber,
   IsOptional,
@@ -48,6 +49,9 @@ export class CreateReceiptDto {
   @IsOptional() @IsString() note?: string;
   // Сколько сразу оплатили поставщику. Если не указано — считаем оплаченным полностью.
   @IsOptional() @IsNumber() @Min(0) paidAmount?: number;
+  // Оплата взята из кассы (расход по смене) или из другого источника
+  // (перевод/карта/личные — касса не уменьшается). По умолчанию — из кассы.
+  @IsOptional() @IsBoolean() paidFromCash?: boolean;
   // Срок оплаты долга поставщику (если приняли частично/в долг)
   @IsOptional() @IsDateString() dueDate?: string;
 

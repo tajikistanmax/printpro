@@ -664,6 +664,10 @@ model StockReceipt {
   total         Decimal              @default(0) @db.Decimal(12, 2) // сумма приёмки
   paidAmount    Decimal              @default(0) @db.Decimal(12, 2) // сколько оплачено поставщику
   paymentStatus ReceiptPaymentStatus @default(PAID)
+  // Оплата взята из кассового ящика (расход по смене, в Z-отчёте) или из другого
+  // источника (перевод/карта/личные) — тогда касса не уменьшается. По умолчанию —
+  // из кассы (историческое поведение). Влияет только на создание CashMovement.
+  paidFromCash  Boolean              @default(true)
   dueDate       DateTime? // срок оплаты долга поставщику (если приняли частично/в долг)
 
   items StockReceiptItem[]

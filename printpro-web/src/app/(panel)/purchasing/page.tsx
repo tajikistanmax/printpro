@@ -104,6 +104,7 @@ export default function PurchasingPage() {
   const [prodQuery, setProdQuery] = useState(''); // поиск товара для добавления
   const [payMode, setPayMode] = useState<'full' | 'partial' | 'debt'>('full');
   const [paidAmount, setPaidAmount] = useState('');
+  const [paidFromCash, setPaidFromCash] = useState(true); // оплата из кассового ящика?
   const [dueDate, setDueDate] = useState('');
   const [rMsg, setRMsg] = useState('');
 
@@ -200,6 +201,7 @@ export default function PurchasingPage() {
     setProdQuery('');
     setPayMode('full');
     setPaidAmount('');
+    setPaidFromCash(true);
     setDueDate('');
     setRMsg('');
     setReceiptModalOpen(true);
@@ -294,6 +296,9 @@ export default function PurchasingPage() {
         branchId,
         supplierId: supplierId || undefined,
         paidAmount: paid,
+        // «Оплата из кассы» актуальна только когда платим сейчас (full/partial).
+        // В режиме «в долг» деньги не двигаются — флаг не важен.
+        paidFromCash: payMode === 'debt' ? true : paidFromCash,
         dueDate: payMode !== 'full' && dueDate ? new Date(dueDate).toISOString() : undefined,
         items,
       });
@@ -1129,6 +1134,25 @@ export default function PurchasingPage() {
                   <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">
                     Вся сумма <b>{money(receiptTotal)}</b> запишется в долг поставщику.
                   </p>
+                )}
+
+                {payMode !== 'debt' && (
+                  <label className="mt-3 flex cursor-pointer select-none items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={paidFromCash}
+                      onChange={(e) => setPaidFromCash(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800"
+                    />
+                    <span className="text-sm text-slate-700 dark:text-slate-200">
+                      Оплата из кассы
+                      <span className="mt-0.5 block text-xs text-slate-400">
+                        {paidFromCash
+                          ? 'Спишется из кассового ящика (расход по смене, войдёт в Z-отчёт).'
+                          : 'Из другого источника (перевод/карта/личные) — кассу не уменьшает.'}
+                      </span>
+                    </span>
+                  </label>
                 )}
 
                 {payMode !== 'full' && (

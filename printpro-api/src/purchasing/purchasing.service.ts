@@ -180,6 +180,9 @@ export class PurchasingService {
         : paidAmount > 0
           ? ReceiptPaymentStatus.PARTIAL
           : ReceiptPaymentStatus.DEBT;
+    // Оплата из кассового ящика (по умолчанию) или из другого источника.
+    // Если НЕ из кассы — расход по смене не создаём (касса не уменьшается).
+    const paidFromCash = dto.paidFromCash ?? true;
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Документ приёмки (с номером приходной накладной)
@@ -194,6 +197,7 @@ export class PurchasingService {
           total,
           paidAmount,
           paymentStatus,
+          paidFromCash,
           // Срок оплаты фиксируем только когда остался долг
           dueDate: debt > 0 && dto.dueDate ? new Date(dto.dueDate) : null,
           items: {
@@ -270,8 +274,10 @@ export class PurchasingService {
       }
 
       // 4. Оплата поставщику при приёмке — расход из кассы, привязанный к смене.
-      // Без этого деньги, отданные поставщику, не отражаются в учёте кассы.
-      if (paidAmount > 0) {
+      // Только если оплата взята ИЗ КАССЫ (галочка). Если из другого источника
+      // (перевод/карта/личные) — кассовый ящик и Z-отчёт не трогаем, открытая
+      // смена не требуется; при этом paidAmount на приёмке уже уменьшил долг.
+      if (paidAmount > 0 && paidFromCash) {
         const shiftId = await this.openShiftId(tx, dto.companyId, userId);
         await tx.cashMovement.create({
           data: {
@@ -318,6 +324,7 @@ export class PurchasingService {
           paidAmount,
           debt,
           paymentStatus,
+          paidFromCash,
         },
       });
 
