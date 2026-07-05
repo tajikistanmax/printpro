@@ -332,8 +332,13 @@ export class OrdersService {
 
     // Защита от переплаты: нельзя внести больше, чем осталось к оплате.
     // Долговая оплата (method DEBT) здесь не проводится — это отдельный сценарий POS.
+    // Эффективный итог = total − возвращённое: после частичного возврата к оплате
+    // остаётся меньше, иначе разрешалась бы переплата и заказ не стал бы PAID (P0-3).
+    const effectiveTotal = Number(
+      (Number(order.total) - Number(order.returnedTotal)).toFixed(2),
+    );
     const balanceBefore = Number(
-      (Number(order.total) - Number(order.paid)).toFixed(2),
+      (effectiveTotal - Number(order.paid)).toFixed(2),
     );
     if (balanceBefore <= 0) {
       throw new BadRequestException('Заказ уже полностью оплачен');
@@ -375,7 +380,7 @@ export class OrdersService {
     }
 
     const newPaid = Number((Number(order.paid) + dto.amount).toFixed(2));
-    const balanceDue = Number((Number(order.total) - newPaid).toFixed(2));
+    const balanceDue = Number((effectiveTotal - newPaid).toFixed(2));
 
     // Статус оплаты
     let paymentStatus: PaymentStatus;
@@ -764,13 +769,32 @@ export class OrdersService {
 
       const paid = Number(order.paid);
 
-      // 1. Возврат денег. Из НАЛИЧНОЙ кассы выдаём только ту часть, что была
-      // получена наличными — безналичные (карта/перевод/QR) возвращаются на карту
-      // и кассовый ящик не трогают, иначе Z-отчёт покажет ложную недостачу.
+      // Доля фактически уплаченного к валовой стоимости строк: скидка/промо/бонус
+      // уменьшили order.total, но unitPrice строк остались валовыми. Возврат
+      // считаем от НЕТТО-цен, иначе вернём больше, чем клиент заплатил (P0-1).
+      const grossSubtotal = order.items.reduce(
+        (s, it) => s + Number(it.quantity) * Number(it.unitPrice),
+        0,
+      );
+      const netRatio =
+        grossSubtotal > 0 ? Math.min(1, Number(order.total) / grossSubtotal) : 1;
+
+      // Уже выданные по этому заказу наличные возвраты — чтобы серия
+      // «частичный + отмена» не выдала кэшем больше, чем получено (P0-2).
+      const priorCash = await tx.return.aggregate({
+        where: { orderId, deletedAt: null },
+        _sum: { cashRefunded: true },
+      });
+      const alreadyCashRefunded = Number(priorCash._sum.cashRefunded ?? 0);
+
+      // 1. Возврат денег. Из НАЛИЧНОЙ кассы выдаём только наличную часть — и не
+      // больше остатка полученной наличности (за вычетом уже возвращённой);
+      // безналичное (карта/перевод/QR) возвращается на карту, ящик не трогает.
       const cashPaid = order.payments
         .filter((p) => p.method === PaymentMethod.CASH)
         .reduce((s, p) => s + Number(p.amount), 0);
-      const cashRefund = Number(Math.min(paid, cashPaid).toFixed(2));
+      const remainingCash = Math.max(0, cashPaid - alreadyCashRefunded);
+      const cashRefund = Number(Math.min(paid, remainingCash).toFixed(2));
       if (cashRefund > 0) {
         const shiftId = await this.openShiftId(tx, order.companyId, userId);
         await tx.cashMovement.create({
@@ -878,7 +902,11 @@ export class OrdersService {
           (Number(it.quantity) - alreadyReturned).toFixed(3),
         );
         if (quantity <= 0) continue;
-        const lineAmount = Number((quantity * Number(it.unitPrice)).toFixed(2));
+        // Нетто-сумма строки (с учётом скидки заказа) — P0-1. Себестоимость
+        // не пропорционируем: возвращается реальная стоимость товара.
+        const lineAmount = Number(
+          (quantity * Number(it.unitPrice) * netRatio).toFixed(2),
+        );
         fullReturnAmount += lineAmount;
         fullReturnCost += Number((quantity * Number(it.unitCost)).toFixed(2));
         fullReturnItems.push({
@@ -909,6 +937,7 @@ export class OrdersService {
             number: docNumber('VOZ', vozSeq),
             reason: 'full refund',
             amount: fullReturnAmount,
+            cashRefunded: cashRefund, // сколько выдано наличными (P0-2)
             method,
             items: fullReturnItems,
             userId,
@@ -1045,6 +1074,15 @@ export class OrdersService {
         }
       }
 
+      // Доля фактически уплаченного к валовой стоимости строк (скидка/промо/бонус
+      // уменьшили order.total) — возврат считаем от НЕТТО-цен (P0-1).
+      const grossSubtotal = order.items.reduce(
+        (s, it) => s + Number(it.quantity) * Number(it.unitPrice),
+        0,
+      );
+      const netRatio =
+        grossSubtotal > 0 ? Math.min(1, Number(order.total) / grossSubtotal) : 1;
+
       let amount = 0;
       let returnedCost = 0;
       const returned: any[] = [];
@@ -1057,7 +1095,9 @@ export class OrdersService {
         const remaining = Number(oi.quantity) - alreadyReturned;
         const qty = Math.min(Number(ri.quantity), remaining);
         if (qty <= 0) continue;
-        const lineAmount = Number((qty * Number(oi.unitPrice)).toFixed(2));
+        const lineAmount = Number(
+          (qty * Number(oi.unitPrice) * netRatio).toFixed(2),
+        );
         amount += lineAmount;
         returnedCost += Number((qty * Number(oi.unitCost)).toFixed(2));
         returned.push({
@@ -1125,13 +1165,21 @@ export class OrdersService {
       // «в долг» деньги не вносились — уменьшаем только долг на стоимость товара.
       const moneyBack = Number(Math.min(amount, Number(order.paid)).toFixed(2));
 
-      // Из НАЛИЧНОЙ кассы выдаём только наличную часть оплаты; безналичное
-      // (карта/перевод/QR) возвращается на карту и ящик не трогает — иначе Z-отчёт
-      // покажет ложную недостачу.
+      // Из НАЛИЧНОЙ кассы выдаём только наличную часть оплаты и не больше остатка
+      // полученной наличности за вычетом уже возвращённой кэшем (P0-2); безналичное
+      // (карта/перевод/QR) возвращается на карту и ящик не трогает.
       const cashPaid = order.payments
         .filter((p) => p.method === PaymentMethod.CASH)
         .reduce((s, p) => s + Number(p.amount), 0);
-      const cashBack = Number(Math.min(moneyBack, cashPaid).toFixed(2));
+      const priorCash = await tx.return.aggregate({
+        where: { orderId, deletedAt: null },
+        _sum: { cashRefunded: true },
+      });
+      const remainingCash = Math.max(
+        0,
+        cashPaid - Number(priorCash._sum.cashRefunded ?? 0),
+      );
+      const cashBack = Number(Math.min(moneyBack, remainingCash).toFixed(2));
 
       // Наличный расход — привязан к открытой смене кассира (иначе не попадёт в Z-отчёт).
       if (cashBack > 0) {
@@ -1159,6 +1207,7 @@ export class OrdersService {
           number: docNumber('VOZ', vozSeq),
           reason: dto.reason,
           amount,
+          cashRefunded: cashBack, // сколько выдано наличными (P0-2)
           method: dto.method,
           items: returned,
           userId,

@@ -741,6 +741,9 @@ model Return {
   number    String? // VOZ-<узел>-год-NNNN
   reason    String?
   amount    Decimal        @default(0) @db.Decimal(12, 2)
+  // Сколько из этого возврата выдано НАЛИЧНЫМИ. Нужно, чтобы серия частичных
+  // возвратов + отмена не выдала наличными больше, чем реально получено кэшем. (P0-2)
+  cashRefunded Decimal     @default(0) @db.Decimal(12, 2)
   method    PaymentMethod? // как вернули деньги
   items     Json // что вернули
   userId    String?
