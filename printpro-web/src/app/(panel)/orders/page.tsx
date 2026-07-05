@@ -278,8 +278,23 @@ export default function OrdersPage() {
     loadStats();
   }
 
-  function exportCSV() {
-    const rows = orders.filter((o) => selectedIds.size === 0 || selectedIds.has(o.id));
+  async function exportCSV() {
+    // С выделением — экспортируем выбранные. Без выделения — тянем ВЕСЬ
+    // отфильтрованный набор (все страницы), а не текущую страницу, иначе
+    // «Экспорт» отдаёт неполные данные (риск для бухгалтерии/налогов). (P0-19)
+    let rows = orders;
+    if (selectedIds.size > 0) {
+      rows = orders.filter((o) => selectedIds.has(o.id));
+    } else if (total > orders.length) {
+      try {
+        const r = await api.get(
+          `/orders?${filterQuery()}&page=1&pageSize=${total}`,
+        );
+        rows = r.items ?? orders;
+      } catch {
+        rows = orders;
+      }
+    }
     downloadCSV(
       'orders.csv',
       ['№', 'Дата', 'Клиент', 'Тип', 'Статус', 'Сумма', 'Менеджер', 'Срок'],

@@ -100,37 +100,58 @@ export default function ProductionPage() {
   }
 
   async function setStatus(id: string, status: string) {
-    await api.patch(`/production/${id}/status`, { status });
-    load();
+    // Сервер может отклонить переход бизнес-правилом — показываем ошибку и не
+    // делаем load() при провале, иначе доска молча не двигается (P0-22).
+    try {
+      await api.patch(`/production/${id}/status`, { status });
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
   }
 
   async function sendRework(id: string) {
     const reason = prompt('Причина брака / переделки:');
     if (reason === null) return;
-    await api.patch(`/production/${id}/status`, {
-      status: 'REWORK',
-      defectReason: reason || undefined,
-    });
-    load();
+    try {
+      await api.patch(`/production/${id}/status`, {
+        status: 'REWORK',
+        defectReason: reason || undefined,
+      });
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
   }
 
   async function uploadPhoto(id: string, file: File) {
-    const fd = new FormData();
-    fd.append('file', file);
-    const token =
-      typeof window !== 'undefined' ? localStorage.getItem('pp_token') : null;
-    await fetch(`${API_BASE}/production/${id}/photo`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      body: fd,
-    });
-    load();
+    // Проверяем res.ok — raw fetch не бросает на 401/413/500, и без этого сбой
+    // загрузки проглатывался: фото молча не появлялось (P0-21).
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const token =
+        typeof window !== 'undefined' ? localStorage.getItem('pp_token') : null;
+      const res = await fetch(`${API_BASE}/production/${id}/photo`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: fd,
+      });
+      if (!res.ok) throw new Error(`загрузка не удалась (${res.status})`);
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка загрузки фото: ' + err.message);
+    }
   }
 
   async function remove(id: string) {
     if (!confirm('Удалить задание?')) return;
-    await api.del(`/production/${id}`);
-    load();
+    try {
+      await api.del(`/production/${id}`);
+      load();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
   }
 
   const byStage = (key: string) => jobs.filter((j) => j.status === key);

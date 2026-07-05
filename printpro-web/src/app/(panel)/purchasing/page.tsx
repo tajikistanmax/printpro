@@ -107,6 +107,7 @@ export default function PurchasingPage() {
   const [paidFromCash, setPaidFromCash] = useState(true); // оплата из кассового ящика?
   const [dueDate, setDueDate] = useState('');
   const [rMsg, setRMsg] = useState('');
+  const [submitting, setSubmitting] = useState(false); // in-flight guard от двойного клика (P0-20)
 
   // Оплата долга поставщику (модальное окно)
   const [payTarget, setPayTarget] = useState<any | null>(null);
@@ -184,12 +185,16 @@ export default function PurchasingPage() {
       setPayMsg(`Сумма больше долга (${money(debt)})`);
       return;
     }
+    if (submitting) return; // двойной клик → двойное списание кассы (P0-20)
+    setSubmitting(true);
     try {
       await api.post(`/purchasing/suppliers/${payTarget.id}/pay-debt`, { amount });
       setPayTarget(null);
       load();
     } catch (err: any) {
       setPayMsg('Ошибка: ' + err.message);
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -251,6 +256,7 @@ export default function PurchasingPage() {
 
   async function submitReceipt(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return; // двойной клик → двойная приёмка/списание кассы (P0-20)
     setRMsg('');
     const items = rows
       .filter((r) => r.productId && Number(r.quantity) > 0)
@@ -290,6 +296,7 @@ export default function PurchasingPage() {
         return;
       }
     }
+    setSubmitting(true);
     try {
       await api.post('/purchasing/receipts', {
         companyId: cid,
@@ -307,6 +314,8 @@ export default function PurchasingPage() {
       load();
     } catch (err: any) {
       setRMsg('Ошибка: ' + err.message);
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -1174,7 +1183,7 @@ export default function PurchasingPage() {
 
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="ghost" onClick={() => setReceiptModalOpen(false)} className="flex-1">Отмена</Button>
-                <Button type="submit" variant="emerald" className="flex-1">Принять на склад</Button>
+                <Button type="submit" variant="emerald" className="flex-1" disabled={submitting}>{submitting ? 'Приём…' : 'Принять на склад'}</Button>
               </div>
             </form>
           </div>
@@ -1227,7 +1236,7 @@ export default function PurchasingPage() {
 
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="ghost" onClick={() => setPayTarget(null)} className="flex-1">Отмена</Button>
-                <Button type="submit" variant="emerald" className="flex-1">Оплатить</Button>
+                <Button type="submit" variant="emerald" className="flex-1" disabled={submitting}>{submitting ? 'Оплата…' : 'Оплатить'}</Button>
               </div>
             </form>
           </div>

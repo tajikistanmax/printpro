@@ -70,11 +70,15 @@ export default function PayrollPage() {
   }, [loadRecords]);
 
   async function saveSalary(u: any, salaryType: string, rate: string) {
-    await api.patch(`/payroll/staff/${u.id}`, {
-      salaryType,
-      rate: Number(rate) || 0,
-    });
-    loadBase();
+    try {
+      await api.patch(`/payroll/staff/${u.id}`, {
+        salaryType,
+        rate: Number(rate) || 0,
+      });
+      loadBase();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
   }
 
   async function createPeriod(e: React.FormEvent) {
@@ -109,14 +113,24 @@ export default function PayrollPage() {
   }
 
   async function setBonus(id: string, field: 'bonus' | 'deduction', value: string) {
-    await api.patch(`/payroll/records/${id}`, { [field]: Number(value) || 0 });
-    loadRecords();
+    try {
+      await api.patch(`/payroll/records/${id}`, { [field]: Number(value) || 0 });
+      loadRecords();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
   }
 
   async function pay(id: string) {
     if (!confirm('Выплатить зарплату? Сумма спишется из кассы.')) return;
-    await api.post(`/payroll/records/${id}/pay`);
-    loadRecords();
+    // Провал выплаты (403/409/сеть) больше не проглатывается — показываем ошибку,
+    // не оставляя ощущение «ничего не произошло» и риск повтора (P0-23).
+    try {
+      await api.post(`/payroll/records/${id}/pay`);
+      loadRecords();
+    } catch (err: any) {
+      setMsg('Ошибка: ' + err.message);
+    }
   }
 
   async function addAdvance(e: React.FormEvent) {
