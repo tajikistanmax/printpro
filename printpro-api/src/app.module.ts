@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -37,6 +38,10 @@ import { UploadsModule } from './uploads/uploads.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }), // загрузка .env
+    // Базовый rate-limit (по умолчанию 60 запросов/мин на IP). Публичные
+    // эндпоинты навешивают более строгие лимиты через @Throttle (P2-5).
+    // Хранилище — in-memory (на процесс); для multi-instance нужен shared store (Redis).
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     PrismaModule, // подключение к базе
     AuthModule, // вход и права
     UsersModule, // сотрудники

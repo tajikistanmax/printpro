@@ -265,6 +265,10 @@ model User {
   salaryType   SalaryType @default(MONTHLY)
   rate         Decimal    @default(0) @db.Decimal(12, 2) // оклад или ставка/час
   isActive     Boolean    @default(true)
+  // Версия токена: инкремент отзывает все ранее выданные JWT (смена пароля,
+  // «выйти на всех устройствах»). Guard/me() сверяют версию из токена с этим
+  // полем; старые токены без версии считаются 0 (обратная совместимость). (P1-8)
+  tokenVersion Int        @default(0)
   createdAt    DateTime   @default(now())
 
   ordersCreated  Order[]          @relation("OrderCreatedBy")

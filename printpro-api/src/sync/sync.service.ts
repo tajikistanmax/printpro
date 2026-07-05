@@ -4,7 +4,7 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { createHmac } from 'crypto';
+import { createHash, createHmac, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 // Реестр синхронизируемых таблиц. Порядок важен: родители раньше детей
@@ -235,10 +235,18 @@ export class SyncService {
       };
       if (NODE_SECRET) {
         const ts = String(Date.now());
+        const nonce = randomUUID();
+        // Подпись привязана к телу и одноразовому nonce (P0-5). Сервер хэширует
+        // JSON.stringify(body) распарсенного тела — для наших payload (ключи —
+        // имена таблиц/строки) порядок сохраняется при round-trip.
+        const bodyHash = createHash('sha256')
+          .update(JSON.stringify(body ?? {}))
+          .digest('hex');
         headers['x-sync-node'] = NODE_ID;
         headers['x-sync-timestamp'] = ts;
+        headers['x-sync-nonce'] = nonce;
         headers['x-sync-signature'] = createHmac('sha256', NODE_SECRET)
-          .update(`${NODE_ID}.${ts}`)
+          .update(`${NODE_ID}.${ts}.${nonce}.${bodyHash}`)
           .digest('hex');
       }
       const res = await fetch(`${CLOUD}${path}`, {

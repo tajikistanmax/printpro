@@ -33,14 +33,21 @@ export class JwtAuthGuard implements CanActivate {
           login: true,
           isActive: true,
           deletedAt: true,
+          tokenVersion: true,
         },
       });
+
+      // Версия токена в payload должна совпадать с текущей в БД. Токены,
+      // выпущенные до введения версии, не содержат поля → считаем их 0
+      // (обратная совместимость: не разлогинивает всех при деплое). (P1-8)
+      const payloadTokenVersion = Number(payload.tokenVersion ?? 0);
 
       if (
         !user ||
         !user.isActive ||
         user.deletedAt ||
-        user.companyId !== payload.companyId
+        user.companyId !== payload.companyId ||
+        user.tokenVersion !== payloadTokenVersion
       ) {
         throw new UnauthorizedException('Session is no longer valid');
       }

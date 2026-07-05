@@ -6,8 +6,10 @@ import {
   Post,
   Query,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IsArray, IsOptional, IsString } from 'class-validator';
 import { OrderStatus, OrderType, PaymentStatus } from '@prisma/client';
@@ -40,6 +42,9 @@ class PublicOrderDto {
 }
 
 // Публичные маршруты для сайта клиентов — БЕЗ входа.
+// Rate-limit на весь контроллер (P2-5): базовый лимит из ThrottlerModule
+// (60/мин на IP); чувствительные POST-эндпоинты ниже ужесточены через @Throttle.
+@UseGuards(ThrottlerGuard)
 @Controller('public')
 export class PublicController {
   constructor(
@@ -50,6 +55,7 @@ export class PublicController {
 
   // Запрос на сброс пароля — уведомляет администратора (Telegram).
   // Не раскрываем, существует ли логин.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } }) // не более 5/мин на IP
   @Post('password-reset-request')
   async passwordResetRequest(
     @Body() body: { companyId: string; login: string },
@@ -78,6 +84,7 @@ export class PublicController {
   }
 
   // Загрузка файла (макета) клиентом. Только изображения/PDF (без SVG/HTML/JS).
+  @Throttle({ default: { limit: 20, ttl: 60_000 } }) // защита от заливки спама
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', LAYOUT_UPLOAD_OPTIONS))
   upload(@UploadedFile() file: any) {
@@ -141,6 +148,7 @@ export class PublicController {
     return { orderNumber: order.orderNumber, id: order.id };
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } }) // защита от спам-заказов
   @Post('orders')
   createOrder(@Body() dto: PublicOrderDto) {
     return this.createOrderHandler(dto);
@@ -198,6 +206,7 @@ export class PublicController {
   // ---------- Личный кабинет клиента (по телефону, без пароля) ----------
 
   // Заказы клиента по номеру телефона
+  @Throttle({ default: { limit: 20, ttl: 60_000 } }) // против перебора телефонов
   @Get('my-orders')
   async myOrders(
     @Query('companyId') companyId: string,
@@ -230,6 +239,7 @@ export class PublicController {
   }
 
   // Повторить заказ из кабинета (создаёт копию по позициям; проверяем телефон)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } }) // против спама/перебора
   @Post('reorder')
   async publicReorder(
     @Body() body: { companyId: string; phone: string; orderId: string },

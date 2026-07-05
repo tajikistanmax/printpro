@@ -78,7 +78,12 @@ export class UsersService {
       throw new NotFoundException('Пароль слишком короткий (мин. 4 символа)');
     }
     const passwordHash = await AuthService.hashPassword(newPassword);
-    await this.prisma.user.update({ where: { id }, data: { passwordHash } });
+    // Инкремент tokenVersion отзывает все ранее выданные токены сотрудника
+    // (старые сессии перестают проходить guard). (P1-8)
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
+    });
     return { ok: true };
   }
 

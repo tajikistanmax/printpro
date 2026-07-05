@@ -32,6 +32,7 @@ export class AuthService {
       companyId: user.companyId,
       roleId: user.roleId,
       login: user.login,
+      tokenVersion: user.tokenVersion, // для отзыва токена (P1-8)
     };
     const token = await this.jwt.signAsync(payload);
 
@@ -74,6 +75,7 @@ export class AuthService {
       companyId: matched.companyId,
       roleId: matched.roleId,
       login: matched.login,
+      tokenVersion: matched.tokenVersion, // для отзыва токена (P1-8)
       src: 'pos',
     };
     const token = await this.jwt.signAsync(payload, { expiresIn: '12h' });
