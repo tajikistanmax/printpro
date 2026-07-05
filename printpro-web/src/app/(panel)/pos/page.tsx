@@ -82,6 +82,7 @@ export default function PosPage() {
   const [useBonus, setUseBonus] = useState('');
   const [phone, setPhone] = useState('');
   const [clientName, setClientName] = useState('');
+  const [clientBonus, setClientBonus] = useState(0); // реальный баланс бонусов клиента (P0-17)
   const [method, setMethod] = useState('CASH');
   const [split, setSplit] = useState(false);
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
@@ -214,6 +215,11 @@ export default function PosPage() {
     const id = item.id;
     const unitPrice = Number(type === 'SERVICE' ? item.basePrice : item.salePrice) || 0;
     const key = `${itemType}:${id}`;
+    // Промокод даёт абсолютную скидку от прежней корзины — при изменении состава
+    // сбрасываем его, чтобы устаревшее значение не занижало итог/сдачу (бэкенд
+    // пере-применит % к новому subtotal). Кассир применяет промокод заново. (P0-18)
+    setPromoDiscount(0);
+    setPromoMsg('');
     setCart((prev) => {
       const ex = prev.find((p) => p.key === key);
       if (ex)
@@ -228,6 +234,9 @@ export default function PosPage() {
   }, []);
 
   function setQty(key: string, q: number) {
+    // Сброс устаревшего промокода при изменении количества (см. addItem, P0-18).
+    setPromoDiscount(0);
+    setPromoMsg('');
     setCart((prev) =>
       prev
         .map((p) => (p.key === key ? { ...p, quantity: Math.max(0, q) } : p))
@@ -235,16 +244,51 @@ export default function PosPage() {
     );
   }
 
+  // Реальный баланс бонусов клиента по телефону — чтобы не списать бонусов больше,
+  // чем у клиента есть (иначе экран занизит итог и завысит сдачу). (P0-17)
+  useEffect(() => {
+    const raw = phone.trim();
+    if (!raw) {
+      setClientBonus(0);
+      return;
+    }
+    const norm = raw.replace(/[\s()\-]/g, '');
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const r = await api.get(
+          `/clients?search=${encodeURIComponent(norm)}&pageSize=5`,
+        );
+        const match = (r.items ?? []).find(
+          (c: any) => (c.phone ?? '').replace(/[\s()\-]/g, '') === norm,
+        );
+        if (!cancelled) {
+          setClientBonus(match ? Number(match.bonusPoints) || 0 : 0);
+        }
+      } catch {
+        if (!cancelled) setClientBonus(0);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [phone]);
+
   const subtotal = cart.reduce((s, c) => s + c.unitPrice * c.quantity, 0);
   const disc = Math.min(Number(discount) || 0, subtotal);
   const afterDisc = Math.max(0, subtotal - disc);
   const promo = Math.min(promoDiscount, afterDisc);
   const afterPromo = Math.max(0, afterDisc - promo);
-  // Бонусы списываются только у клиента (бэкенд применяет их лишь при clientId).
-  // Без выбранного клиента бонус не уменьшает итог — иначе экран покажет заниженную
-  // сумму и неправильную сдачу.
+  // Бонусы списываются только у клиента (бэкенд применяет их лишь при clientId) и
+  // не больше РЕАЛЬНОГО баланса бонусов клиента (clientBonus) — иначе экран покажет
+  // заниженную сумму и завышенную сдачу, а бэкенд применит меньше (P0-17).
   const bonusApplied = phone.trim()
-    ? Math.min(Number(useBonus) || 0, Number((afterPromo * 0.3).toFixed(2)))
+    ? Math.min(
+        Number(useBonus) || 0,
+        Number((afterPromo * 0.3).toFixed(2)),
+        clientBonus,
+      )
     : 0;
   const total = Math.max(0, Number((afterPromo - bonusApplied).toFixed(2)));
   const cartCount = cart.reduce((s, c) => s + c.quantity, 0);
