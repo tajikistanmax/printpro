@@ -262,27 +262,46 @@ export class SyncService {
 
     let up = 0;
     let down = 0;
+    // Курсор двигаем с overlap-окном (−5 мин): строки долгих/конкурентных
+    // транзакций получают updatedAt в момент statement'а, ДО коммита, и wall-clock
+    // `until` мог исключить их навсегда (`gt: until`). Перекрытие + идемпотентный
+    // upsert в push ловят такие строки на следующем цикле (P0-14). Окно должно
+    // покрывать самую долгую транзакцию (инвентаризация — до 2 мин).
+    const OVERLAP_MS = 5 * 60 * 1000;
+    const cursorFrom = (until: string) =>
+      new Date(new Date(until).getTime() - OVERLAP_MS).toISOString();
     try {
       // 1) Облако → Локал
       const cloudSince = await getCursor('cloudPull');
       const fromCloud = await callCloud('/sync/pull', { since: cloudSince });
+      let cloudFailed = 0;
       if (count(fromCloud.changes) > 0) {
         const r = await this.push(fromCloud.changes, 'CLOUD');
         down = r.applied;
+        cloudFailed = r.failed;
       }
-      await setCursor('cloudPull', fromCloud.until);
+      // Курсор двигаем ТОЛЬКО если всё применилось: упавшие строки (FK-каскад,
+      // дедлок, таймаут, конфликт) иначе были бы навсегда исключены `gt` — тихая
+      // потеря данных. При failed>0 окно перечитается на следующем цикле (P0-13).
+      if (cloudFailed === 0) {
+        await setCursor('cloudPull', cursorFrom(fromCloud.until));
+      }
 
       // 2) Локал → Облако
       const localSince = await getCursor('localPull');
       const fromLocal = await this.pull(localSince);
+      let localFailed = 0;
       if (count(fromLocal.changes) > 0) {
         const r = await callCloud('/sync/push', {
           changes: fromLocal.changes,
           peer: NODE_ID,
         });
         up = r.applied;
+        localFailed = Number(r.failed ?? 0);
       }
-      await setCursor('localPull', fromLocal.until);
+      if (localFailed === 0) {
+        await setCursor('localPull', cursorFrom(fromLocal.until));
+      }
 
       await this.heartbeat();
       return { ok: true, up, down, at: new Date().toISOString() };
