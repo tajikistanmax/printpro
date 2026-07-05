@@ -27,6 +27,7 @@ import {
 import { PromocodesService } from '../promocodes/promocodes.service';
 import { EmailService } from '../email/email.service';
 import { AuditService } from '../audit/audit.service';
+import * as OrderMath from './order-math';
 
 function normalizeClientPhone(phone: string): string {
   return (phone ?? '').replace(/[\s()-]/g, '');
@@ -334,12 +335,11 @@ export class OrdersService {
     // Долговая оплата (method DEBT) здесь не проводится — это отдельный сценарий POS.
     // Эффективный итог = total − возвращённое: после частичного возврата к оплате
     // остаётся меньше, иначе разрешалась бы переплата и заказ не стал бы PAID (P0-3).
-    const effectiveTotal = Number(
-      (Number(order.total) - Number(order.returnedTotal)).toFixed(2),
+    const effTotal = OrderMath.effectiveTotal(
+      Number(order.total),
+      Number(order.returnedTotal),
     );
-    const balanceBefore = Number(
-      (effectiveTotal - Number(order.paid)).toFixed(2),
-    );
+    const balanceBefore = Number((effTotal - Number(order.paid)).toFixed(2));
     if (balanceBefore <= 0) {
       throw new BadRequestException('Заказ уже полностью оплачен');
     }
@@ -380,13 +380,10 @@ export class OrdersService {
     }
 
     const newPaid = Number((Number(order.paid) + dto.amount).toFixed(2));
-    const balanceDue = Number((effectiveTotal - newPaid).toFixed(2));
+    const balanceDue = Number((effTotal - newPaid).toFixed(2));
 
     // Статус оплаты
-    let paymentStatus: PaymentStatus;
-    if (balanceDue <= 0) paymentStatus = PaymentStatus.PAID;
-    else if (newPaid > 0) paymentStatus = PaymentStatus.PARTIAL;
-    else paymentStatus = PaymentStatus.UNPAID;
+    const paymentStatus = OrderMath.paymentStatusFor(newPaid, balanceDue);
 
     // Оптимистичная блокировка: обновляем заказ только если `paid` не изменился
     // с момента чтения. Иначе два параллельных запроса (двойной клик) прочитали бы
@@ -776,8 +773,7 @@ export class OrdersService {
         (s, it) => s + Number(it.quantity) * Number(it.unitPrice),
         0,
       );
-      const netRatio =
-        grossSubtotal > 0 ? Math.min(1, Number(order.total) / grossSubtotal) : 1;
+      const ratio = OrderMath.netRatio(Number(order.total), grossSubtotal);
 
       // Уже выданные по этому заказу наличные возвраты — чтобы серия
       // «частичный + отмена» не выдала кэшем больше, чем получено (P0-2).
@@ -793,8 +789,11 @@ export class OrdersService {
       const cashPaid = order.payments
         .filter((p) => p.method === PaymentMethod.CASH)
         .reduce((s, p) => s + Number(p.amount), 0);
-      const remainingCash = Math.max(0, cashPaid - alreadyCashRefunded);
-      const cashRefund = Number(Math.min(paid, remainingCash).toFixed(2));
+      const cashRefund = OrderMath.cashRefundCap(
+        paid,
+        cashPaid,
+        alreadyCashRefunded,
+      );
       if (cashRefund > 0) {
         const shiftId = await this.openShiftId(tx, order.companyId, userId);
         await tx.cashMovement.create({
@@ -904,8 +903,10 @@ export class OrdersService {
         if (quantity <= 0) continue;
         // Нетто-сумма строки (с учётом скидки заказа) — P0-1. Себестоимость
         // не пропорционируем: возвращается реальная стоимость товара.
-        const lineAmount = Number(
-          (quantity * Number(it.unitPrice) * netRatio).toFixed(2),
+        const lineAmount = OrderMath.lineReturnAmount(
+          quantity,
+          Number(it.unitPrice),
+          ratio,
         );
         fullReturnAmount += lineAmount;
         fullReturnCost += Number((quantity * Number(it.unitCost)).toFixed(2));
@@ -1080,8 +1081,7 @@ export class OrdersService {
         (s, it) => s + Number(it.quantity) * Number(it.unitPrice),
         0,
       );
-      const netRatio =
-        grossSubtotal > 0 ? Math.min(1, Number(order.total) / grossSubtotal) : 1;
+      const ratio = OrderMath.netRatio(Number(order.total), grossSubtotal);
 
       let amount = 0;
       let returnedCost = 0;
@@ -1095,8 +1095,10 @@ export class OrdersService {
         const remaining = Number(oi.quantity) - alreadyReturned;
         const qty = Math.min(Number(ri.quantity), remaining);
         if (qty <= 0) continue;
-        const lineAmount = Number(
-          (qty * Number(oi.unitPrice) * netRatio).toFixed(2),
+        const lineAmount = OrderMath.lineReturnAmount(
+          qty,
+          Number(oi.unitPrice),
+          ratio,
         );
         amount += lineAmount;
         returnedCost += Number((qty * Number(oi.unitCost)).toFixed(2));
@@ -1175,11 +1177,11 @@ export class OrdersService {
         where: { orderId, deletedAt: null },
         _sum: { cashRefunded: true },
       });
-      const remainingCash = Math.max(
-        0,
-        cashPaid - Number(priorCash._sum.cashRefunded ?? 0),
+      const cashBack = OrderMath.cashRefundCap(
+        moneyBack,
+        cashPaid,
+        Number(priorCash._sum.cashRefunded ?? 0),
       );
-      const cashBack = Number(Math.min(moneyBack, remainingCash).toFixed(2));
 
       // Наличный расход — привязан к открытой смене кассира (иначе не попадёт в Z-отчёт).
       if (cashBack > 0) {
