@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -34,14 +35,17 @@ import { ComplaintsModule } from './complaints/complaints.module';
 import { EmailModule } from './email/email.module';
 import { SystemModule } from './system/system.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }), // загрузка .env
-    // Базовый rate-limit (по умолчанию 60 запросов/мин на IP). Публичные
-    // эндпоинты навешивают более строгие лимиты через @Throttle (P2-5).
+    // Базовый rate-limit (backstop против абуза, 600 запросов/мин на IP —
+    // с запасом под занятый офис за одним NAT-IP; строгие лимиты на публичных
+    // эндпоинтах навешиваются через @Throttle, P2-5). Применяется глобально
+    // через APP_GUARD (см. providers). Health-эндпоинты помечены @SkipThrottle.
     // Хранилище — in-memory (на процесс); для multi-instance нужен shared store (Redis).
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 600 }]),
     PrismaModule, // подключение к базе
     AuthModule, // вход и права
     UsersModule, // сотрудники
@@ -73,8 +77,13 @@ import { UploadsModule } from './uploads/uploads.module';
     EmailModule, // email-уведомления (SMTP)
     SystemModule, // информация о системе (версия, СУБД, аптайм)
     UploadsModule, // загрузка изображений (фото товаров/услуг, QR оплаты)
+    HealthModule, // health-check для облака (Render) и коробки (Electron)
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Глобальный rate-limit на все эндпоинты (был написан, но не подключён).
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

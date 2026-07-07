@@ -1,7 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { extname, join } from 'path';
 import { randomUUID } from 'crypto';
+
+// Единый каталог загрузок — согласован с main.ts (UPLOADS_DIR или ./uploads).
+// Коробка передаёт UPLOADS_DIR=userData/uploads; облако — постоянный диск/S3-mount.
+const UPLOADS_DEST = process.env.UPLOADS_DIR || join(process.cwd(), 'uploads');
 
 // Разрешаем только растровые изображения. SVG НЕ допускаем намеренно — он может
 // содержать <script> и раздаётся статикой с того же origin (риск stored-XSS).
@@ -16,7 +20,7 @@ const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 // Общие настройки загрузки изображений (используются в /uploads и /public/upload).
 export const IMAGE_UPLOAD_OPTIONS = {
   storage: diskStorage({
-    destination: './uploads',
+    destination: UPLOADS_DEST,
     filename: (
       _req: unknown,
       file: { originalname: string },
@@ -58,7 +62,7 @@ const LAYOUT_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf']);
 
 export const LAYOUT_UPLOAD_OPTIONS = {
   storage: diskStorage({
-    destination: './uploads',
+    destination: UPLOADS_DEST,
     filename: (
       _req: unknown,
       file: { originalname: string },

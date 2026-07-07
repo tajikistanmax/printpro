@@ -6,10 +6,9 @@ import {
   Post,
   Query,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   IsArray,
@@ -56,9 +55,9 @@ class PublicOrderDto {
 }
 
 // Публичные маршруты для сайта клиентов — БЕЗ входа.
-// Rate-limit на весь контроллер (P2-5): базовый лимит из ThrottlerModule
-// (60/мин на IP); чувствительные POST-эндпоинты ниже ужесточены через @Throttle.
-@UseGuards(ThrottlerGuard)
+// Rate-limit применяется глобально (ThrottlerGuard как APP_GUARD в AppModule),
+// поэтому здесь отдельный @UseGuards не нужен (иначе счётчик списывался бы дважды);
+// чувствительные POST-эндпоинты ниже ужесточены через @Throttle.
 @Controller('public')
 export class PublicController {
   constructor(
