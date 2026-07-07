@@ -1,11 +1,20 @@
 # PrintPro — описание развёртывания для Render.com
 # Render прочитает этот файл и сам создаст базу и два сервиса.
+#
+# ⚠️  ПЕРЕД БОЕВЫМ ЗАПУСКОМ (реальные клиенты) обязательно:
+#   1) databases.printpro-db: plan free → starter (free-БД автоудаляется ~через 30 дней
+#      и не имеет бэкапов/PITR — риск полной потери данных). Синхронизируйте план с дашбордом.
+#   2) uploads (макеты/фото клиентов) сейчас пишутся на ЭФЕМЕРНУЮ ФС инстанса и теряются
+#      при каждом рестарте/деплое/засыпании free-плана. Нужно объектное хранилище
+#      (Cloudflare R2 / Backblaze B2 / S3) ИЛИ платный план сервиса + disk-том
+#      (mountPath совпадает с UPLOADS_DIR). См. docs/02-deploy-render.md.
 
 databases:
   - name: printpro-db
-    plan: free
+    plan: free # ⚠️ см. пункт 1 выше — для боевого запуска повысить до starter+
     databaseName: printpro
     user: printpro
+    region: frankfurt # ближе к аудитории (СНГ/Таджикистан), чем дефолтный Oregon
 
 services:
   # ----- Бэкенд (NestJS API) -----
@@ -13,11 +22,16 @@ services:
     name: printpro-api
     runtime: node
     plan: free
+    region: frankfurt
     rootDir: printpro-api
-    buildCommand: npm install && npx prisma generate && npm run build && npx prisma migrate deploy && npx ts-node prisma/seed.ts
+    # migrate deploy — только аддитивные миграции; seed идемпотентный (не затирает
+    # кастомные права ролей) и компилируемый (без ts-node в рантайме).
+    buildCommand: npm install && npx prisma generate && npm run build && npx prisma migrate deploy && npm run seed
     startCommand: node dist/main.js
-    healthCheckPath: /api
+    healthCheckPath: /api/health # реальный health c проверкой БД (было /api — статичный)
     envVars:
+      - key: NODE_ENV
+        value: production # явно: от него зависят Swagger-off и строгий CORS
       - key: DATABASE_URL
         fromDatabase:
           name: printpro-db
@@ -26,6 +40,10 @@ services:
         generateValue: true # Render сам сгенерирует надёжный ключ
       - key: JWT_EXPIRES_IN
         value: 7d
+      # CORS: origin(ы) фронтенда через запятую. БЕЗ этого прод-панель получает 500
+      # на все браузерные запросы к API. Добавьте сюда кастомный домен, когда появится.
+      - key: CORS_ORIGINS
+        value: https://printpro-web.onrender.com
       # Синхронизация: общий секрет (скопируйте его в локальные узлы)
       - key: SYNC_SECRET
         generateValue: true
@@ -40,9 +58,11 @@ services:
     name: printpro-web
     runtime: node
     plan: free
+    region: frankfurt
     rootDir: printpro-web
     buildCommand: npm install && npm run build
     startCommand: npm run start
+    healthCheckPath: /login # публичная страница входа — стабильный health для веба
     envVars:
       # ВАЖНО: после деплоя бэкенда вставьте сюда его адрес.
       # Например: https://printpro-api.onrender.com/api
