@@ -124,6 +124,15 @@ function dueLabel(deadline?: string): { text: string; danger: boolean } {
   return { text: `через ${days} дн.`, danger: false };
 }
 
+function localDateBoundaryToIso(value: string, endOfDay = false): string {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return '';
+  const local = endOfDay
+    ? new Date(year, month - 1, day, 23, 59, 59, 999)
+    : new Date(year, month - 1, day, 0, 0, 0, 0);
+  return local.toISOString();
+}
+
 function pageList(cur: number, totalPages: number): (number | '…')[] {
   if (totalPages <= 7)
     return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -172,8 +181,8 @@ export default function OrdersPage() {
     (fStatus ? `&status=${fStatus}` : '') +
     (fType ? `&orderType=${fType}` : '') +
     (fManager ? `&managerId=${fManager}` : '') +
-    (fFrom ? `&dateFrom=${new Date(fFrom).toISOString()}` : '') +
-    (fTo ? `&dateTo=${new Date(fTo + 'T23:59:59').toISOString()}` : '');
+    (fFrom ? `&dateFrom=${localDateBoundaryToIso(fFrom)}` : '') +
+    (fTo ? `&dateTo=${localDateBoundaryToIso(fTo, true)}` : '');
 
   function load() {
     api

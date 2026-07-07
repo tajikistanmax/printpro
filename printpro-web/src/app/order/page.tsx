@@ -23,7 +23,10 @@ export default function PublicOrderPage() {
 
   useEffect(() => {
     fetch(`${API_BASE}/public/services?companyId=${cid}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`Ошибка ${r.status}`);
+        return r.json();
+      })
       .then(setServices)
       .catch(() => {});
   }, [cid]);

@@ -24,7 +24,10 @@ export default function PublicReceiptPage() {
   useEffect(() => {
     if (!id) return;
     fetch(`${API_BASE}/public/receipt/${id}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error('Чек не найден');
+        return r.json();
+      })
       .then(setData)
       .catch(() => setData({ found: false }))
       .finally(() => setLoading(false));
@@ -75,7 +78,10 @@ export default function PublicReceiptPage() {
 
               <div className="my-4 space-y-2 border-y border-dashed border-slate-200 py-4">
                 {data.items.map((it: any, i: number) => (
-                  <div key={i} className="flex justify-between text-sm">
+                  <div
+                    key={it.id ?? `${it.name ?? 'item'}-${it.quantity ?? 0}-${i}`}
+                    className="flex justify-between text-sm"
+                  >
                     <span className="min-w-0 truncate pr-2 text-slate-700">
                       {it.name} <span className="text-slate-400">×{it.quantity}</span>
                     </span>

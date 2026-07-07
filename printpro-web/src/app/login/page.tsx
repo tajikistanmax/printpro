@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { API_BASE, DEFAULT_COMPANY_ID } from '@/lib/config';
@@ -18,10 +18,23 @@ export default function LoginPage() {
 
   // PIN-вход кассира
   const [pin, setPin] = useState('');
-  function pushPin(d: string) {
+  const pushPin = useCallback((d: string) => {
     setError('');
     setPin((p) => (p.length >= 6 ? p : p + d));
-  }
+  }, []);
+  const submitPin = useCallback(async (value: string) => {
+    setError('');
+    setBusy(true);
+    try {
+      await loginPin(value);
+      router.replace('/pos');
+    } catch (err: any) {
+      setError(err.message ?? 'Неверный PIN');
+      setPin('');
+    } finally {
+      setBusy(false);
+    }
+  }, [loginPin, router]);
   // Ввод PIN с физической клавиатуры (цифры, Backspace, Enter, Esc)
   useEffect(() => {
     if (mode !== 'pin') return;
@@ -44,22 +57,7 @@ export default function LoginPage() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, busy, pin]);
-
-  async function submitPin(value: string) {
-    setError('');
-    setBusy(true);
-    try {
-      await loginPin(value);
-      router.replace('/pos');
-    } catch (err: any) {
-      setError(err.message ?? 'Неверный PIN');
-      setPin('');
-    } finally {
-      setBusy(false);
-    }
-  }
+  }, [mode, busy, pin, pushPin, submitPin]);
 
   // «Забыли пароль?»
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -87,7 +85,7 @@ export default function LoginPage() {
     setForgotBusy(true);
     setForgotMsg('');
     try {
-      await fetch(`${API_BASE}/public/password-reset-request`, {
+      const res = await fetch(`${API_BASE}/public/password-reset-request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -95,11 +93,23 @@ export default function LoginPage() {
           login: forgotLogin.trim(),
         }),
       });
+      if (!res.ok) {
+        let message = 'Не удалось отправить запрос. Обратитесь к администратору напрямую.';
+        try {
+          const body = await res.json();
+          message = body?.message ?? message;
+        } catch {
+          // Оставляем дефолтное сообщение.
+        }
+        throw new Error(Array.isArray(message) ? message.join(', ') : message);
+      }
       setForgotMsg(
         'Запрос отправлен администратору. Он сбросит ваш пароль в разделе «Сотрудники» и сообщит вам новый.',
       );
-    } catch {
-      setForgotMsg('Не удалось отправить запрос. Обратитесь к администратору напрямую.');
+    } catch (err: any) {
+      setForgotMsg(
+        err?.message ?? 'Не удалось отправить запрос. Обратитесь к администратору напрямую.',
+      );
     } finally {
       setForgotBusy(false);
     }
@@ -149,7 +159,7 @@ export default function LoginPage() {
               <div className="flex justify-center gap-3 py-2">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <span
-                    key={i}
+                    key={`pin-dot-${i}`}
                     className={`h-3.5 w-3.5 rounded-full transition ${i < pin.length ? 'bg-indigo-500' : 'bg-slate-200'}`}
                   />
                 ))}

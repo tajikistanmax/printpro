@@ -176,6 +176,7 @@ export default function DesignPage() {
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch(`${API_BASE}/public/upload`, { method: 'POST', body: fd });
+      if (!res.ok) throw new Error(`Ошибка загрузки ${res.status}`);
       const data = await res.json();
       await api.patch(`/design/${proofId}`, { fileUrl: data.url, fileName: data.name });
       setMsg('✓ Файл загружен (новая версия)');

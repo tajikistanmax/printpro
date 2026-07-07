@@ -18,6 +18,39 @@ function apiError(message: string, status: number) {
   return error;
 }
 
+function mergeHeaders(headers?: HeadersInit): Record<string, string> {
+  const merged: Record<string, string> = {};
+  if (!headers) return merged;
+  if (headers instanceof Headers) {
+    headers.forEach((value, key) => {
+      merged[key] = value;
+    });
+    return merged;
+  }
+  if (Array.isArray(headers)) {
+    for (const [key, value] of headers) merged[key] = value;
+    return merged;
+  }
+  for (const [key, value] of Object.entries(headers)) {
+    if (value !== undefined) merged[key] = String(value);
+  }
+  return merged;
+}
+
+async function readResponseBody<T>(res: Response): Promise<T> {
+  const text = (await res.text()).trim();
+  if (!text) return undefined as T;
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw apiError('Сервер вернул некорректный JSON', res.status);
+    }
+  }
+  return text as T;
+}
+
 export async function apiFetch<T = any>(
   path: string,
   options: RequestInit = {},
@@ -25,7 +58,7 @@ export async function apiFetch<T = any>(
   const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string>),
+    ...mergeHeaders(options.headers),
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -35,18 +68,17 @@ export async function apiFetch<T = any>(
     handleUnauthorized(res.status);
     let message = `Ошибка ${res.status}`;
     try {
-      const body = await res.json();
-      message = body.message ?? message;
-      if (Array.isArray(message)) message = message.join(', ');
+      const body = await readResponseBody<{ message?: string | string[] }>(res);
+      const bodyMessage = body?.message;
+      if (Array.isArray(bodyMessage)) message = bodyMessage.join(', ');
+      else if (typeof bodyMessage === 'string') message = bodyMessage;
     } catch {
       // тело не json — оставляем общее сообщение
     }
     throw apiError(message, res.status);
   }
 
-  // ответ может быть пустым
-  const text = await res.text();
-  return text ? JSON.parse(text) : (undefined as T);
+  return readResponseBody<T>(res);
 }
 
 // Удобные сокращения
@@ -75,16 +107,16 @@ export const api = {
       handleUnauthorized(res.status);
       let message = `Ошибка ${res.status}`;
       try {
-        const body = await res.json();
-        message = body.message ?? message;
-        if (Array.isArray(message)) message = message.join(', ');
+        const body = await readResponseBody<{ message?: string | string[] }>(res);
+        const bodyMessage = body?.message;
+        if (Array.isArray(bodyMessage)) message = bodyMessage.join(', ');
+        else if (typeof bodyMessage === 'string') message = bodyMessage;
       } catch {
         /* не json */
       }
       throw apiError(message, res.status);
     }
-    const text = await res.text();
-    return text ? JSON.parse(text) : (undefined as T);
+    return readResponseBody<T>(res);
   },
 };
 

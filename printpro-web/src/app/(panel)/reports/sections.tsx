@@ -207,7 +207,7 @@ function BarChart({
     <div className="flex h-44 items-end gap-1 overflow-x-auto">
       {data.map((d, i) => (
         <div
-          key={i}
+          key={`${d.label}-${d.title}-${i}`}
           className="group flex h-full min-w-[10px] flex-1 flex-col items-center justify-end"
         >
           <div className="flex w-full flex-1 items-end">

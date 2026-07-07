@@ -23,6 +23,12 @@ const PAY: Record<string, string> = {
   DEBT: 'В долг',
 };
 
+async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const res = await fetch(input, init);
+  if (!res.ok) throw new Error(`Ошибка ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 export default function CabinetPage() {
   const cid = DEFAULT_COMPANY_ID;
   const [phone, setPhone] = useState('');
@@ -38,9 +44,9 @@ export default function CabinetPage() {
     setBusy(true);
     setMsg('');
     try {
-      const r = await fetch(
+      const r = await fetchJson<{ client: any; orders?: any[] }>(
         `${API_BASE}/public/my-orders?companyId=${cid}&phone=${encodeURIComponent(phone.trim())}`,
-      ).then((x) => x.json());
+      );
       setClient(r.client);
       setOrders(r.orders ?? []);
       setSearched(true);
@@ -54,17 +60,20 @@ export default function CabinetPage() {
   async function reorder(orderId: string) {
     setMsg('');
     try {
-      const r = await fetch(`${API_BASE}/public/reorder`, {
+      const r = await fetchJson<{ ok?: boolean; message?: string; orderNumber?: string }>(
+        `${API_BASE}/public/reorder`,
+        {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companyId: cid, phone: phone.trim(), orderId }),
-      }).then((x) => x.json());
+        },
+      );
       if (r.ok) {
         setMsg(`✓ Повторный заказ оформлен: №${r.orderNumber}`);
         // обновим список
-        const u = await fetch(
+        const u = await fetchJson<{ orders?: any[] }>(
           `${API_BASE}/public/my-orders?companyId=${cid}&phone=${encodeURIComponent(phone.trim())}`,
-        ).then((x) => x.json());
+        );
         setOrders(u.orders ?? []);
       } else {
         setMsg(r.message ?? 'Не получилось повторить заказ');
