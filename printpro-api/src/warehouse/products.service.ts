@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomInt } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -12,6 +13,12 @@ import { CreateUnitDto } from './dto/create-unit.dto';
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private buildCandidateBarcode(): string {
+    let base = '2';
+    for (let i = 0; i < 11; i++) base += String(randomInt(10));
+    return base;
+  }
 
   // Гонка на уникальном штрихкоде (частичный индекс
   // Product_companyId_barcode_active_key) → понятная ошибка вместо 500.
@@ -339,8 +346,7 @@ export class ProductsService {
     };
 
     for (let attempt = 0; attempt < 30; attempt++) {
-      let base = '2';
-      for (let i = 0; i < 11; i++) base += Math.floor(Math.random() * 10);
+      const base = this.buildCandidateBarcode();
       const code = base + checkDigit(base);
 
       const [usedProduct, usedAlias] = await Promise.all([

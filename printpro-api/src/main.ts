@@ -6,6 +6,22 @@ import { join } from 'path';
 import { mkdirSync } from 'fs';
 import { AppModule } from './app.module';
 
+function isTrustedDevOrigin(origin: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(origin);
+    if (!['http:', 'https:'].includes(protocol)) return false;
+    return (
+      hostname === 'localhost' ||
+      /^127\./.test(hostname) ||
+      /^10\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function bootstrap() {
   // Гарантируем папку для загруженных файлов
   mkdirSync(join(process.cwd(), 'uploads'), { recursive: true });
@@ -36,10 +52,14 @@ async function bootstrap() {
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
       if (!origin) return callback(null, true);
-      if (!isProduction && allowedOrigins.length === 0) {
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (
+        !isProduction &&
+        allowedOrigins.length === 0 &&
+        isTrustedDevOrigin(origin)
+      ) {
         return callback(null, true);
       }
-      if (allowedOrigins.includes(origin)) return callback(null, true);
       return callback(new Error('Origin is not allowed by CORS'), false);
     },
   });

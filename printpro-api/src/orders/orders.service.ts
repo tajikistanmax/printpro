@@ -862,7 +862,11 @@ export class OrdersService {
       });
       const returnedByItem = new Map<string, number>();
       for (const r of priorReturns) {
-        for (const li of (r.items as any[]) ?? []) {
+        const items = (Array.isArray(r.items) ? r.items : []) as Array<{
+          orderItemId?: string;
+          quantity?: number;
+        }>;
+        for (const li of items) {
           if (li?.orderItemId) {
             returnedByItem.set(
               li.orderItemId,
@@ -1099,7 +1103,11 @@ export class OrdersService {
       });
       const returnedByItem = new Map<string, number>();
       for (const r of priorReturns) {
-        for (const li of (r.items as any[]) ?? []) {
+        const items = (Array.isArray(r.items) ? r.items : []) as Array<{
+          orderItemId?: string;
+          quantity?: number;
+        }>;
+        for (const li of items) {
           if (li?.orderItemId) {
             returnedByItem.set(
               li.orderItemId,

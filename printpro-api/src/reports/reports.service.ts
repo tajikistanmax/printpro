@@ -1,8 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  OrderStatus,
+  OrderType,
+  OrderUrgency,
   PaymentMethod,
+  PaymentStatus,
   Prisma,
   ProductionStatus,
+  StockMovementType,
   TaskStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,6 +15,21 @@ import { PrismaService } from '../prisma/prisma.service';
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private parseEnumValue<T extends Record<string, string>>(
+    label: string,
+    value: string | undefined,
+    enumType: T,
+  ): T[keyof T] | undefined {
+    const normalized = value?.trim();
+    if (!normalized) return undefined;
+    if (
+      (Object.values(enumType) as string[]).includes(normalized)
+    ) {
+      return normalized as T[keyof T];
+    }
+    throw new BadRequestException(`Некорректное значение параметра ${label}`);
+  }
 
   // ======================================================================
   // 1) Финансовая сводка за период
@@ -1592,12 +1612,17 @@ export class ReportsService {
     type?: string,
   ) {
     const range = this.range(from, to);
+    const movementType = this.parseEnumValue(
+      'type',
+      type,
+      StockMovementType,
+    );
     const where: Prisma.StockMovementWhereInput = {
       companyId,
       createdAt: range,
       ...(branchId ? { branchId } : {}),
       ...(productId ? { productId } : {}),
-      ...(type ? { type: type as any } : {}),
+      ...(movementType ? { type: movementType } : {}),
     };
 
     // Сводка по типам
@@ -2073,16 +2098,28 @@ export class ReportsService {
     const range = this.range(from, to);
     const now = new Date();
     const dayMs = 24 * 60 * 60 * 1000;
+    const orderStatus = this.parseEnumValue('status', status, OrderStatus);
+    const orderType = this.parseEnumValue('type', type, OrderType);
+    const orderPaymentStatus = this.parseEnumValue(
+      'paymentStatus',
+      paymentStatus,
+      PaymentStatus,
+    );
+    const orderUrgency = this.parseEnumValue(
+      'urgency',
+      urgency,
+      OrderUrgency,
+    );
 
     const orders = await this.prisma.order.findMany({
       where: {
         companyId,
         createdAt: range,
         ...(branchId ? { branchId } : {}),
-        ...(status ? { status: status as any } : {}),
-        ...(type ? { orderType: type as any } : {}),
-        ...(paymentStatus ? { paymentStatus: paymentStatus as any } : {}),
-        ...(urgency ? { urgency: urgency as any } : {}),
+        ...(orderStatus ? { status: orderStatus } : {}),
+        ...(orderType ? { orderType } : {}),
+        ...(orderPaymentStatus ? { paymentStatus: orderPaymentStatus } : {}),
+        ...(orderUrgency ? { urgency: orderUrgency } : {}),
         ...(clientId ? { clientId } : {}),
       },
       select: {

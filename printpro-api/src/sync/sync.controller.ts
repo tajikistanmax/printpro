@@ -120,6 +120,15 @@ export class SyncController {
     return 'legacy';
   }
 
+  private normalizeLegacyPeer(peer?: string): string {
+    const value = (peer ?? '').trim();
+    if (!value) return 'legacy';
+    if (!/^[A-Za-z0-9_.:-]{1,64}$/.test(value)) {
+      throw new ForbiddenException('Invalid legacy peer');
+    }
+    return value;
+  }
+
   @Post('pull')
   async pull(
     @Headers('x-sync-secret') secret: string,
@@ -157,7 +166,10 @@ export class SyncController {
       nonce,
       body,
     );
-    return this.sync.push(body?.changes ?? {}, peer === 'legacy' ? body?.peer : peer);
+    return this.sync.push(
+      body?.changes ?? {},
+      peer === 'legacy' ? this.normalizeLegacyPeer(body?.peer) : peer,
+    );
   }
 
   @Post('heartbeat')

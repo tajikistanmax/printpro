@@ -82,9 +82,18 @@ export class SyncService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private parseSince(since?: string): Date {
+    if (!since) return new Date(0);
+    const parsed = new Date(since);
+    if (!Number.isFinite(parsed.getTime())) {
+      throw new BadRequestException('Invalid sync cursor');
+    }
+    return parsed;
+  }
+
   // Отдать все изменения после метки времени `since`
   async pull(since?: string, peer?: string) {
-    const from = since ? new Date(since) : new Date(0);
+    const from = this.parseSince(since);
     const until = new Date().toISOString();
     const changes: Record<string, unknown[]> = {};
 
@@ -158,6 +167,9 @@ export class SyncService {
             });
 
             // Сохраняем исходную метку времени и источник, чтобы не было эха
+            if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(t.table)) {
+              throw new BadRequestException('Invalid sync table');
+            }
             await tx.$executeRawUnsafe(
               `UPDATE "${t.table}" SET "updatedAt" = $1, "syncNode" = $2 WHERE id = $3`,
               new Date(row.updatedAt),

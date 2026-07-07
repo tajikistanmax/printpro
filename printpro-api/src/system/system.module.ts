@@ -27,9 +27,7 @@ class SystemController {
     // Версия СУБД — реальный запрос к PostgreSQL.
     let dbVersion = 'PostgreSQL';
     try {
-      const rows = await this.prisma.$queryRawUnsafe<{ version: string }[]>(
-        'SELECT version()',
-      );
+      const rows = await this.prisma.$queryRaw<{ version: string }[]>`SELECT version()`;
       const full = rows?.[0]?.version ?? '';
       const m = full.match(/PostgreSQL\s+([\d.]+)/i);
       dbVersion = m ? `PostgreSQL ${m[1]}` : full || 'PostgreSQL';
