@@ -22,6 +22,7 @@ export class SettingsService {
       'customerDisplayLayout',
       'displayQr',
       'companyName',
+      'logoDataUrl', // логотип компании — для чеков/ценников (не секрет)
       'currency',
       'language',
       // Контакты компании — для чека (не секреты)

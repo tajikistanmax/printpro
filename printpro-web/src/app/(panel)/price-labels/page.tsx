@@ -33,8 +33,14 @@ const DESIGNS: { key: Design; label: string; hint: string }[] = [
   { key: 'v3', label: 'Дизайн 3 — Акцент', hint: 'Цена в фигуре + нижняя полоса' },
   { key: 'v4', label: 'Дизайн 4 — Тёмная шапка', hint: 'Тёмная шапка с диагональю' },
 ];
-const RICH_W = 90; // мм — размер карточек дизайнов 1/3/4
+const RICH_W = 90; // мм — базовый размер карточек дизайнов 1/3/4
 const RICH_H = 60;
+type RichSizeKey = '70x47' | '90x60' | '110x73';
+const RICH_SIZES: Record<RichSizeKey, { k: number; label: string }> = {
+  '70x47': { k: 70 / RICH_W, label: '70×47 мм — компакт' },
+  '90x60': { k: 1, label: '90×60 мм — стандарт' },
+  '110x73': { k: 110 / RICH_W, label: '110×73 мм — крупный' },
+};
 
 function money(n: number) {
   return new Intl.NumberFormat('ru-RU').format(Math.round(n || 0));
@@ -92,8 +98,37 @@ function Barcode({ value, heightPx }: { value: string; heightPx: number }) {
   return <svg ref={ref} className="max-w-full" />;
 }
 
-// --- Логотип-марка (градиентная «P» как на макете) ---
-function LogoMark({ size = 26 }: { size?: number }) {
+// --- Логотип-марка: загруженный лого компании, иначе фирменная «P» ---
+function LogoMark({ size = 26, dark = false, logoUrl }: { size?: number; dark?: boolean; logoUrl?: string }) {
+  if (logoUrl) {
+    return (
+      <div
+        style={{ width: size, height: size }}
+        className={`grid shrink-0 place-items-center overflow-hidden rounded-lg ${dark ? 'bg-white p-[1px]' : ''}`}
+      >
+        <img src={logoUrl} alt="" className="h-full w-full object-contain" />
+      </div>
+    );
+  }
+  // На тёмной шапке — белый квадрат с синей «P» (как на макете); на светлых — градиентный квадрат с белой «P».
+  if (dark) {
+    return (
+      <div style={{ width: size, height: size }} className="grid shrink-0 place-items-center rounded-lg bg-white">
+        <span
+          style={{
+            fontSize: size * 0.62,
+            background: 'linear-gradient(160deg,#3b82f6,#4f46e5)',
+            WebkitBackgroundClip: 'text',
+            backgroundClip: 'text',
+            color: 'transparent',
+          }}
+          className="font-black leading-none"
+        >
+          P
+        </span>
+      </div>
+    );
+  }
   return (
     <div
       style={{ width: size, height: size, background: 'linear-gradient(135deg,#6366f1,#a855f7)' }}
@@ -104,14 +139,42 @@ function LogoMark({ size = 26 }: { size?: number }) {
   );
 }
 
-function Brand({ name, tagline, dark }: { name: string; tagline?: string; dark?: boolean }) {
+// Двухцветное написание бренда: хвост «…Pro» — фиолетовый (как «PrintPro» на макете)
+function Wordmark({ name, dark }: { name: string; dark?: boolean }) {
+  const n = (name || 'PrintPro').trim();
+  const base = dark ? 'text-white' : 'text-slate-900';
+  const m = /^(.+?)(pro)$/i.exec(n);
+  return (
+    <div className={`truncate text-[12pt] font-extrabold leading-none ${base}`}>
+      {m ? (
+        <>
+          {m[1]}
+          <span
+            style={{
+              background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              color: 'transparent',
+            }}
+          >
+            {m[2]}
+          </span>
+        </>
+      ) : (
+        n
+      )}
+    </div>
+  );
+}
+
+function Brand({ name, tagline, dark, logoUrl }: { name: string; tagline?: string; dark?: boolean; logoUrl?: string }) {
   return (
     <div className="flex min-w-0 items-center gap-1.5">
-      <LogoMark size={24} />
+      <LogoMark size={26} dark={dark} logoUrl={logoUrl} />
       <div className="min-w-0 leading-tight">
-        <div className={`truncate text-[12pt] font-extrabold ${dark ? 'text-white' : 'text-slate-900'}`}>{name || 'PrintPro'}</div>
+        <Wordmark name={name} dark={dark} />
         {tagline && (
-          <div className={`truncate text-[6pt] ${dark ? 'text-slate-300' : 'text-slate-400'}`}>{tagline}</div>
+          <div className={`mt-[0.5mm] truncate text-[6pt] ${dark ? 'text-slate-300' : 'text-slate-400'}`}>{tagline}</div>
         )}
       </div>
     </div>
@@ -134,12 +197,12 @@ function SpecList({ rows, dark }: { rows: [string, string][]; dark?: boolean }) 
 const cardBox = 'relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-black';
 
 // Дизайн 1 — Классический
-function CardV1({ p, brand, tagline, showBarcode }: any) {
+function CardV1({ p, brand, tagline, showBarcode, logoUrl }: any) {
   const code = codeFor(p);
   return (
     <div style={{ width: `${RICH_W}mm`, height: `${RICH_H}mm` }} className={`${cardBox} p-[4mm]`}>
       <div className="flex items-start justify-between gap-2">
-        <Brand name={brand} tagline={tagline} />
+        <Brand name={brand} tagline={tagline} logoUrl={logoUrl} />
         {p.sku && (
           <span className="shrink-0 rounded-full bg-indigo-600 px-2 py-0.5 text-[7pt] font-bold text-white">АРТ: {p.sku}</span>
         )}
@@ -168,12 +231,12 @@ function CardV1({ p, brand, tagline, showBarcode }: any) {
 }
 
 // Дизайн 3 — Акцент (фигура цены + нижняя полоса)
-function CardV3({ p, brand, tagline, showBarcode }: any) {
+function CardV3({ p, brand, tagline, showBarcode, logoUrl }: any) {
   const code = codeFor(p);
   return (
     <div style={{ width: `${RICH_W}mm`, height: `${RICH_H}mm` }} className={`${cardBox} p-[4mm] pb-[6mm]`}>
       <div className="flex items-start justify-between gap-2">
-        <Brand name={brand} tagline={tagline} />
+        <Brand name={brand} tagline={tagline} logoUrl={logoUrl} />
         {p.sku && (
           <span className="shrink-0 rounded-full bg-violet-600 px-2 py-0.5 text-[7pt] font-bold text-white">АРТ: {p.sku}</span>
         )}
@@ -205,38 +268,83 @@ function CardV3({ p, brand, tagline, showBarcode }: any) {
   );
 }
 
-// Дизайн 4 — Тёмная шапка с диагональю
-function CardV4({ p, brand, tagline, showBarcode }: any) {
+function CardV4({ p, brand, tagline, showBarcode, logoUrl }: any) {
   const code = codeFor(p);
+  const navy = '#071523';
+  const ink = '#050b14';
+  const violet = '#5a2bb7';
+  const priceStr = money(Number(p.salePrice));
+  const priceFs = priceStr.length <= 3 ? 26 : priceStr.length <= 5 ? 23 : 19;
+  const rows: [string, string][] = [
+    ['Материал', String(p.material || p.category?.name || p.unit?.name || 'Баннер 440 г/м²')],
+    ['Печать', String(p.printType || p.print || p.subcategory?.name || 'Широкоформатная')],
+    ['Разрешение', String(p.resolution || '1440 dpi')],
+    ['Тираж', String(p.minRun || p.circulation || `от 1 ${unitOf(p)}`)],
+  ];
   return (
-    <div style={{ width: `${RICH_W}mm`, height: `${RICH_H}mm` }} className={cardBox}>
-      <div
-        className="px-[4mm] pt-[3mm] pb-[7mm]"
-        style={{ background: '#0f172a', clipPath: 'polygon(0 0, 100% 0, 100% 68%, 0 100%)' }}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <Brand name={brand} tagline={tagline} dark />
-          {p.sku && <span className="shrink-0 text-[7pt] text-slate-300">АРТ: {p.sku}</span>}
+    <div
+      style={{ width: `${RICH_W}mm`, height: `${RICH_H}mm` }}
+      className="relative overflow-hidden rounded-[4mm] border border-slate-200 bg-white text-black shadow-sm"
+    >
+      <svg viewBox="0 0 900 600" preserveAspectRatio="none" aria-hidden className="absolute inset-0 h-full w-full">
+        <rect width="900" height="600" fill="#ffffff" />
+        <path d="M0 0H714C640 16 616 86 570 138C519 198 465 198 404 198H0Z" fill={navy} />
+        <path d="M623 0H900V206C858 199 819 183 791 154C744 107 731 31 623 0Z" fill="#f3f4f6" />
+        <path d="M896 7C815 12 778 58 748 105C718 152 690 195 622 212" fill="none" stroke="#e8ebef" strokeWidth="2" opacity="0.8" />
+        <path d="M900 19C825 28 795 71 768 115C740 160 713 202 649 222" fill="none" stroke="#eef0f3" strokeWidth="2" opacity="0.75" />
+        <path d="M900 35C840 45 813 84 788 125C761 169 736 207 681 228" fill="none" stroke="#f3f4f6" strokeWidth="2" opacity="0.9" />
+      </svg>
+
+      <div className="relative flex items-start justify-between px-[5.5mm] pt-[5mm]" style={{ height: '19.5mm' }}>
+        <div className="max-w-[58mm]">
+          <Brand name={brand} tagline={tagline} dark logoUrl={logoUrl} />
         </div>
-      </div>
-      <div className="flex flex-1 flex-col px-[4mm] pb-[3mm]">
-        <div className="-mt-[3mm] line-clamp-1 text-[15pt] font-extrabold leading-tight text-slate-900">{p.name}</div>
-        <div className="mt-[1mm] flex flex-1 items-start justify-between gap-2">
-          <SpecList rows={specRows(p)} />
-          <div className="shrink-0 text-right">
-            <div className="text-[21pt] font-black leading-none text-indigo-600">
-              {money(Number(p.salePrice))}
-              <span className="text-[8pt] font-bold text-indigo-500"> сом</span>
-            </div>
-            <div className="mt-0.5 text-[6.5pt] text-slate-400">за 1 {unitOf(p)}</div>
-          </div>
-        </div>
-        {showBarcode && code && (
-          <div className="mt-auto flex justify-end pt-[1mm]">
-            <Barcode value={code} heightPx={26} />
-          </div>
+        {p.sku && (
+          <span className="shrink-0 pr-[1.5mm] pt-[1mm] text-[11pt] font-black tracking-wide" style={{ color: ink }}>
+            АРТ: {p.sku}
+          </span>
         )}
       </div>
+
+      <div className="relative px-[5.5mm] pt-[4.5mm]">
+        <div className="max-w-[57mm] truncate text-[24pt] font-black leading-none" style={{ color: ink }}>
+          {p.name}
+        </div>
+      </div>
+
+      <div className="relative flex px-[5.5mm] pt-[6mm]">
+        <div className="grid max-w-[54mm] grid-cols-[max-content_1fr] gap-x-[5mm] gap-y-[3.1mm] text-[10.5pt] leading-none">
+          {rows.map(([k, v]) => (
+            <div key={k} className="contents">
+              <div className="font-black" style={{ color: ink }}>{k}:</div>
+              <div className="truncate font-semibold text-slate-700">{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="absolute right-0 top-[25.5mm] flex w-[31mm] flex-col items-center">
+        <div
+          className="flex w-full flex-col items-center rounded-l-[7mm] border-y border-l border-slate-200 bg-[#fbfbfc] pb-[1.8mm] pt-[1.8mm] text-center"
+          style={{ boxShadow: '0 0 0 1px rgba(226,232,240,0.35), inset 0 1px 0 rgba(255,255,255,0.85)' }}
+        >
+          <div className="whitespace-nowrap font-black leading-none" style={{ color: violet, fontSize: `${priceFs}pt` }}>
+            {priceStr}
+          </div>
+          <div className="mt-[0.8mm] text-[10pt] font-black uppercase leading-none" style={{ color: violet }}>
+            сом
+          </div>
+        </div>
+        <div className="mt-[1.2mm] text-[9.5pt] font-black leading-none" style={{ color: ink }}>
+          за 1 {unitOf(p)}
+        </div>
+      </div>
+
+      {showBarcode && code && (
+        <div className="absolute bottom-[2.4mm] right-[5.2mm] flex w-[38mm] justify-end overflow-hidden">
+          <Barcode value={code} heightPx={20} />
+        </div>
+      )}
     </div>
   );
 }
@@ -245,6 +353,7 @@ export default function PriceLabelsPage() {
   const cid = DEFAULT_COMPANY_ID;
   const [products, setProducts] = useState<any[]>([]);
   const [shopName, setShopName] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
   const [tagline, setTagline] = useState('Печатаем идеи в реальность');
   const [q, setQ] = useState('');
 
@@ -254,6 +363,7 @@ export default function PriceLabelsPage() {
   // дизайн + шаблон (по умолчанию — стандартный простой ярлык)
   const [design, setDesign] = useState<Design>('simple');
   const [size, setSize] = useState<SizeKey>('40x30');
+  const [richSize, setRichSize] = useState<RichSizeKey>('90x60');
   const [showName, setShowName] = useState(true);
   const [showBarcode, setShowBarcode] = useState(true);
   const [showShop, setShowShop] = useState(true);
@@ -265,7 +375,10 @@ export default function PriceLabelsPage() {
     api.get(`/products?companyId=${cid}`).then(setProducts).catch(() => {});
     api
       .get(`/settings/ui?companyId=${cid}`)
-      .then((ui: any) => { if (ui?.companyName) setShopName(ui.companyName); })
+      .then((ui: any) => {
+        if (ui?.companyName) setShopName(ui.companyName);
+        if (ui?.logoDataUrl) setLogoUrl(ui.logoDataUrl);
+      })
       .catch(() => {});
   }, [cid]);
 
@@ -305,6 +418,7 @@ export default function PriceLabelsPage() {
 
   const totalLabels = labels.length;
   const s = SIZES[size];
+  const richPreset = RICH_SIZES[richSize];
 
   function selectAllFiltered() {
     setPicked((prev) => {
@@ -318,9 +432,27 @@ export default function PriceLabelsPage() {
   const brand = shopName || 'PrintPro';
 
   function renderLabel(p: any, i: number) {
-    if (design === 'v1') return <CardV1 key={i} p={p} brand={brand} tagline={showShop ? tagline : ''} showBarcode={showBarcode} />;
-    if (design === 'v3') return <CardV3 key={i} p={p} brand={brand} tagline={showShop ? tagline : ''} showBarcode={showBarcode} />;
-    if (design === 'v4') return <CardV4 key={i} p={p} brand={brand} tagline={showShop ? tagline : ''} showBarcode={showBarcode} />;
+    if (design !== 'simple') {
+      const card =
+        design === 'v1' ? (
+          <CardV1 p={p} brand={brand} tagline={showShop ? tagline : ''} showBarcode={showBarcode} logoUrl={logoUrl} />
+        ) : design === 'v3' ? (
+          <CardV3 p={p} brand={brand} tagline={showShop ? tagline : ''} showBarcode={showBarcode} logoUrl={logoUrl} />
+        ) : (
+          <CardV4 p={p} brand={brand} tagline={showShop ? tagline : ''} showBarcode={showBarcode} logoUrl={logoUrl} />
+        );
+      return (
+        <div
+          key={i}
+          style={{ width: `${RICH_W * richPreset.k}mm`, height: `${RICH_H * richPreset.k}mm` }}
+          className="relative shrink-0"
+        >
+          <div style={{ transform: `scale(${richPreset.k})`, transformOrigin: 'top left' }}>
+            {card}
+          </div>
+        </div>
+      );
+    }
     // simple
     const code = codeFor(p);
     return (
@@ -402,9 +534,23 @@ export default function PriceLabelsPage() {
                 </Field>
               )}
               {rich && (
-                <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/40">
-                  Размер карточки: {RICH_W}×{RICH_H} мм · 2 в ряд на листе A4
-                </div>
+                <>
+                  <Field label="Размер карточки">
+                    <Select value={richSize} onChange={(e) => setRichSize(e.target.value as RichSizeKey)}>
+                      {Object.entries(RICH_SIZES).map(([k, v]) => (
+                        <option key={k} value={k}>{v.label}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/40">
+                    <div>
+                      Текущий размер: {Math.round(RICH_W * richPreset.k)}×{Math.round(RICH_H * richPreset.k)} мм
+                    </div>
+                    <div className="mt-1">
+                      Логотип: {logoUrl ? 'из настроек компании ✓' : 'не загружен — фирменная «P». Загрузить: Настройки → Профиль → Логотип'}
+                    </div>
+                  </div>
+                </>
               )}
 
               {!rich && (
