@@ -55,7 +55,9 @@ export class ProductsService {
     const alias = await this.prisma.productBarcodeAlias.findFirst({
       where: {
         barcode: code,
-        product: { companyId, deletedAt: null, ...notSelf },
+        companyId,
+        deletedAt: null,
+        ...(exceptProductId ? { productId: { not: exceptProductId } } : {}),
       },
       select: { product: { select: { name: true } } },
     });
@@ -235,7 +237,7 @@ export class ProductsService {
     for (const p of activeProducts)
       if (p.barcode) usedBarcodes.set(p.barcode, p.id);
     const aliases = await this.prisma.productBarcodeAlias.findMany({
-      where: { product: { companyId, deletedAt: null } },
+      where: { companyId, deletedAt: null },
       select: { barcode: true, productId: true },
     });
     for (const a of aliases) usedBarcodes.set(a.barcode, a.productId);
@@ -355,7 +357,7 @@ export class ProductsService {
           select: { id: true },
         }),
         this.prisma.productBarcodeAlias.findFirst({
-          where: { barcode: code },
+          where: { barcode: code, companyId, deletedAt: null },
           select: { id: true },
         }),
       ]);
@@ -383,7 +385,7 @@ export class ProductsService {
     await this.assertBarcodeFree(product.companyId, code, productId);
     try {
       return await this.prisma.productBarcodeAlias.create({
-        data: { productId, barcode: code },
+        data: { productId, barcode: code, companyId: product.companyId },
         select: { id: true, barcode: true },
       });
     } catch (e: unknown) {
@@ -402,12 +404,18 @@ export class ProductsService {
     const alias = await this.prisma.productBarcodeAlias.findFirst({
       where: {
         id: aliasId,
-        ...(companyId ? { product: { companyId } } : {}),
+        deletedAt: null,
+        ...(companyId ? { companyId } : {}),
       },
       select: { id: true },
     });
     if (!alias) throw new NotFoundException('Barcode alias not found');
-    await this.prisma.productBarcodeAlias.delete({ where: { id: aliasId } });
+    // Мягкое удаление: частичный unique-индекс игнорирует deletedAt IS NOT NULL,
+    // поэтому штрихкод сразу освобождается, а строка остаётся tombstone для sync.
+    await this.prisma.productBarcodeAlias.update({
+      where: { id: aliasId },
+      data: { deletedAt: new Date() },
+    });
     return { ok: true };
   }
 
@@ -577,10 +585,20 @@ export class ProductsService {
     ) {
       throw new NotFoundException('Товар не найден');
     }
-    // Мягкое удаление: сохраняем историю продаж/движений, но убираем из каталога
-    return this.prisma.product.update({
-      where: { id },
-      data: { deletedAt: new Date(), isActive: false },
+    // Мягкое удаление: сохраняем историю продаж/движений, но убираем из каталога.
+    // Alias-штрихкоды тоже мягко удаляем — иначе их коды навечно заняты (частичный
+    // unique их отпустит) и мешали бы новым товарам.
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.product.update({
+        where: { id },
+        data: { deletedAt: now, isActive: false },
+      });
+      await tx.productBarcodeAlias.updateMany({
+        where: { productId: id, deletedAt: null },
+        data: { deletedAt: now },
+      });
+      return updated;
     });
   }
 

@@ -177,6 +177,7 @@ model Company {
   quotes            Quote[]
   promoCodes        PromoCode[]
   complaints        Complaint[]
+  barcodeAliases    ProductBarcodeAlias[]
 }
 
 model Branch {
@@ -559,12 +560,18 @@ model ProductBarcodeAlias {
   deletedAt DateTime?
   syncNode  String?
   id        String    @id @default(uuid())
+  companyId String
+  company   Company   @relation(fields: [companyId], references: [id])
   productId String
   product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  barcode   String    @unique
+  // Уникальность штрихкода — company-scoped и игнорирует soft-delete: частичный
+  // unique-индекс ProductBarcodeAlias_companyId_barcode_active_key (сырой SQL в миграции,
+  // Prisma его не трогает). Глобальный @unique убран — он ломал изоляцию арендаторов.
+  barcode   String
   createdAt DateTime  @default(now())
 
   @@index([productId])
+  @@index([companyId])
 }
 
 model Stock {
