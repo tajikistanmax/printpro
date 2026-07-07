@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<!--
+  PrintPro Desktop — экран первого запуска.
+  Отдельный экран Electron (НЕ часть printpro-web!). Простыми словами, без
+  терминов «Postgres/API/порт» — как задумано в docs/06-АРХИТЕКТУРА-КОРОБКА-ЭЛЕКТРОН.md, §6.
+-->
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>PrintPro — настройка</title>
+  <style>
+    :root {
+      color-scheme: light;
+    }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 32px;
+      background: #f5f6f8;
+      color: #1f2430;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 4px;
+    }
+    p.sub {
+      color: #667;
+      margin: 0 0 24px;
+      font-size: 13px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      margin-bottom: 16px;
+    }
+    label.option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid #e2e5ea;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+    label.option:hover {
+      border-color: #94a6ff;
+    }
+    label.option input[type="radio"] {
+      margin-top: 3px;
+    }
+    .option .title {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .option .desc {
+      font-size: 12px;
+      color: #667;
+      margin-top: 2px;
+    }
+    #cashHostBlock {
+      display: none;
+      margin-top: 8px;
+      padding-left: 34px;
+    }
+    #cashHostBlock input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border: 1px solid #d5d9e0;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .lan-hint {
+      font-size: 12px;
+      color: #556;
+      background: #eef1fb;
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-top: 10px;
+    }
+    button#saveBtn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: #3455db;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button#saveBtn:disabled {
+      background: #a9b3d6;
+      cursor: not-allowed;
+    }
+    #error {
+      color: #c0392b;
+      font-size: 13px;
+      margin-top: 10px;
+      min-height: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Добро пожаловать в PrintPro</h1>
+  <p class="sub">Один раз настройте этот компьютер. Дальше программа запускается сама.</p>
+
+  <div class="card">
+    <label class="option">
+      <input type="radio" name="role" value="main" id="roleMain" />
+      <div>
+        <div class="title">Главный компьютер</div>
+        <div class="desc">Здесь будет храниться база данных. Остальные компьютеры (кассы) подключаются к нему по сети. Выберите этот вариант на компьютере руководителя или склада.</div>
+      </div>
+    </label>
+
+    <label class="option">
+      <input type="radio" name="role" value="cash" id="roleCash" />
+      <div>
+        <div class="title">Касса / рабочее место</div>
+        <div class="desc">Этот компьютер подключается к главному. Понадобится адрес главного компьютера (несколько цифр, его покажет программа на главном компьютере).</div>
+      </div>
+    </label>
+
+    <div id="cashHostBlock">
+      <input type="text" id="mainHost" placeholder="Например: 192.168.1.50" />
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="checkbox-row">
+      <input type="checkbox" id="cloudSync" />
+      <label for="cloudSync">Синхронизировать с облаком (для руководителя и филиалов)</label>
+    </div>
+    <div class="lan-hint" id="lanHint">Адрес этого компьютера в локальной сети: …</div>
+  </div>
+
+  <button id="saveBtn" disabled>Сохранить и продолжить</button>
+  <div id="error"></div>
+
+  <script src="setup.js"></script>
+</body>
+</html>
