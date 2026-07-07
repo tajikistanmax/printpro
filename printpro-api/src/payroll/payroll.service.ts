@@ -62,7 +62,14 @@ export class PayrollService {
   }
 
   // ---------- Рабочее время ----------
-  addWorkTime(dto: AddWorkTimeDto) {
+  async addWorkTime(dto: AddWorkTimeDto) {
+    // userId сотрудника приходит из тела запроса — проверяем принадлежность
+    // компании из токена, иначе можно начислить время чужому сотруднику (IDOR).
+    const employee = await this.prisma.user.findFirst({
+      where: { id: dto.userId, companyId: dto.companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!employee) throw new NotFoundException('Сотрудник не найден');
     return this.prisma.workTimeRecord.create({
       data: {
         companyId: dto.companyId,
@@ -76,6 +83,14 @@ export class PayrollService {
 
   // ---------- Авансы ----------
   async addAdvance(dto: AddAdvanceDto, actorId?: string) {
+    // userId сотрудника из тела запроса — проверяем принадлежность компании
+    // из токена: закрывает и IDOR (аванс чужому), и утечку ФИО чужого сотрудника
+    // в reason кассового движения ниже по коду (PII).
+    const employee = await this.prisma.user.findFirst({
+      where: { id: dto.userId, companyId: dto.companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!employee) throw new NotFoundException('Сотрудник не найден');
     const paidFromCash = dto.paidFromCash ?? true;
     return this.prisma.$transaction(async (tx) => {
       const advance = await tx.salaryAdvance.create({

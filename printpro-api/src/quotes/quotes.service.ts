@@ -21,6 +21,13 @@ export class QuotesService {
   async create(dto: CreateQuoteDto) {
     // Клиент: по id или телефону (найдём/создадим)
     let clientId = dto.clientId;
+    if (clientId) {
+      const client = await this.prisma.client.findFirst({
+        where: { id: clientId, companyId: dto.companyId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!client) throw new BadRequestException('Клиент не найден');
+    }
     if (!clientId && dto.clientPhone) {
       const c = await this.clients.findOrCreate(
         dto.companyId,
@@ -28,6 +35,34 @@ export class QuotesService {
         dto.clientName,
       );
       clientId = c.id;
+    }
+
+    // Позиции: serviceId/productId из тела запроса должны принадлежать той же
+    // компании — иначе можно привязать КП (и затем заказ через convert()) к
+    // чужому товару/услуге (cross-tenant IDOR).
+    const serviceIds = [
+      ...new Set(dto.items.filter((it) => it.serviceId).map((it) => it.serviceId!)),
+    ];
+    const productIds = [
+      ...new Set(dto.items.filter((it) => it.productId).map((it) => it.productId!)),
+    ];
+    if (serviceIds.length) {
+      const found = await this.prisma.service.findMany({
+        where: { id: { in: serviceIds }, companyId: dto.companyId, deletedAt: null },
+        select: { id: true },
+      });
+      if (found.length !== serviceIds.length) {
+        throw new BadRequestException('Услуга не найдена');
+      }
+    }
+    if (productIds.length) {
+      const found = await this.prisma.product.findMany({
+        where: { id: { in: productIds }, companyId: dto.companyId, deletedAt: null },
+        select: { id: true },
+      });
+      if (found.length !== productIds.length) {
+        throw new BadRequestException('Товар не найден');
+      }
     }
 
     const items = dto.items.map((it) => ({

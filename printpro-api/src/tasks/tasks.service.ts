@@ -7,7 +7,24 @@ import { CreateTaskDto } from './dto/task.dto';
 export class TasksService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(dto: CreateTaskDto) {
+  async create(dto: CreateTaskDto) {
+    // orderId/assignedUserId приходят из тела запроса — проверяем, что они
+    // принадлежат компании из токена, иначе задачу можно привязать к чужому
+    // заказу или назначить чужому сотруднику (cross-tenant IDOR).
+    if (dto.orderId) {
+      const order = await this.prisma.order.findFirst({
+        where: { id: dto.orderId, companyId: dto.companyId },
+        select: { id: true },
+      });
+      if (!order) throw new NotFoundException('Заказ не найден');
+    }
+    if (dto.assignedUserId) {
+      const assignee = await this.prisma.user.findFirst({
+        where: { id: dto.assignedUserId, companyId: dto.companyId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!assignee) throw new NotFoundException('Сотрудник не найден');
+    }
     return this.prisma.task.create({
       data: {
         companyId: dto.companyId,

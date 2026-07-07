@@ -92,7 +92,15 @@ export class OrdersService {
   ) {
     // 1. Клиент: по id или по телефону (найдём/создадим)
     let clientId = dto.clientId;
-    if (!clientId && dto.clientPhone) {
+    if (clientId) {
+      // clientId приходит из тела запроса — проверяем, что клиент принадлежит
+      // компании из токена, иначе заказ можно привязать к чужому клиенту (IDOR).
+      const client = await tx.client.findFirst({
+        where: { id: clientId, companyId: dto.companyId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!client) throw new NotFoundException('Клиент не найден');
+    } else if (dto.clientPhone) {
       const phone = normalizeClientPhone(dto.clientPhone);
       const client =
         (await tx.client.findFirst({
@@ -102,6 +110,16 @@ export class OrdersService {
           data: { companyId: dto.companyId, phone, fullName: dto.clientName },
         }));
       clientId = client.id;
+    }
+
+    // Филиал — id приходит из тела запроса, проверяем принадлежность компании
+    // из токена, иначе к заказу можно привязать чужой филиал/склад (IDOR).
+    if (dto.branchId) {
+      const branch = await tx.branch.findFirst({
+        where: { id: dto.branchId, companyId: dto.companyId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!branch) throw new NotFoundException('Филиал не найден');
     }
 
     // 2. Себестоимость услуг — подставим из справочника, если не передана
@@ -141,6 +159,19 @@ export class OrdersService {
           ).map((p) => [p.id, Number(p.purchasePrice)]),
         )
       : new Map<string, number>();
+
+    // serviceId/productId позиций приходят из тела запроса. serviceCosts/productCosts
+    // построены с фильтром companyId — если какой-то id туда не попал, значит это
+    // чужая услуга/товар (или несуществующий id) — блокируем, а не молча ставим
+    // себестоимость 0 и не сохраняем чужой FK в заказе (IDOR).
+    const missingService = serviceIds.find((id) => !serviceCosts.has(id));
+    if (missingService) {
+      throw new BadRequestException('Услуга не найдена');
+    }
+    const missingProduct = productIds.find((id) => !productCosts.has(id));
+    if (missingProduct) {
+      throw new BadRequestException('Товар не найден');
+    }
 
     // Считаем суммы и себестоимость по позициям
     const items = dto.items.map((it) => {
@@ -210,6 +241,25 @@ export class OrdersService {
       '0',
     );
     const orderNumber = `${prefix}-${node}-${year}-${seq}`;
+
+    // assignedUserId/createdById/designerId/operatorId приходят из тела запроса —
+    // проверяем, что указанные сотрудники принадлежат компании из токена, иначе
+    // к заказу можно привязать чужого сотрудника (IDOR).
+    const staffIds = [
+      ...new Set(
+        [dto.assignedUserId, dto.createdById, dto.designerId, dto.operatorId].filter(
+          (v): v is string => !!v,
+        ),
+      ),
+    ];
+    if (staffIds.length) {
+      const staffCount = await tx.user.count({
+        where: { id: { in: staffIds }, companyId: dto.companyId, deletedAt: null },
+      });
+      if (staffCount !== staffIds.length) {
+        throw new BadRequestException('Сотрудник не найден');
+      }
+    }
 
     // Создаём заказ с позициями
     const order = await tx.order.create({

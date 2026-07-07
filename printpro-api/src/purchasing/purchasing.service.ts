@@ -179,6 +179,18 @@ export class PurchasingService {
     });
     if (!branch) throw new BadRequestException('Филиал не найден');
 
+    // Tenant-проверка товаров позиций: productId приходит из тела запроса —
+    // без проверки компания A могла бы приёмкой менять остатки/цены чужого
+    // товара компании B (через product.update и stock.upsert по чужому productId).
+    const productIds = [...new Set(dto.items.map((it) => it.productId))];
+    const ownedProducts = await this.prisma.product.findMany({
+      where: { id: { in: productIds }, companyId: dto.companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (ownedProducts.length !== productIds.length) {
+      throw new BadRequestException('Один или несколько товаров не найдены');
+    }
+
     // Сумма приёмки, оплата поставщику и статус
     const total = Number(
       dto.items.reduce((s, it) => s + (it.cost ?? 0) * it.quantity, 0).toFixed(2),
