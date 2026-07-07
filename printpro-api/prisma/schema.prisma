@@ -621,6 +621,8 @@ model StockMovement {
   @@index([productId])
   @@index([branchId])
   @@index([orderId])
+  // Отчёты по движениям/списаниям фильтруют по компании и диапазону дат.
+  @@index([companyId, createdAt])
 }
 
 model Supplier {
@@ -858,6 +860,8 @@ model Order {
   @@index([companyId, updatedAt])
   // debts()/история клиента фильтруют заказы по клиенту (P0-16).
   @@index([companyId, clientId])
+  // Отчёты фильтруют заказы по компании и диапазону дат создания — горячий путь.
+  @@index([companyId, createdAt])
 }
 
 model OrderStatusHistory {
