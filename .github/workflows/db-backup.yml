@@ -1,0 +1,68 @@
+# Ночной (каждые 6 часов) бэкап боевой БД PrintPro в offsite S3-совместимое хранилище.
+# АКТИВАЦИЯ (владелец): задать секреты репозитория в Settings → Secrets and variables → Actions:
+#   BACKUP_DATABASE_URL   — connection string боевой БД (Render → printpro-db → External Database URL)
+#   S3_ENDPOINT           — endpoint хранилища (Cloudflare R2: https://<acc>.r2.cloudflarestorage.com; B2/S3 — свой)
+#   S3_BUCKET             — имя бакета для бэкапов (напр. printpro-backups)
+#   AWS_ACCESS_KEY_ID     — ключ доступа к хранилищу
+#   AWS_SECRET_ACCESS_KEY — секретный ключ
+#   AWS_DEFAULT_REGION    — регион (для R2 подойдёт auto)
+# Ротацию (хранить N дней) настроить lifecycle-правилом на бакете (R2/B2/S3 → правило удаления >30 дней).
+# ⚠️ Бэкап = не проверенный бэкап, если ни разу не восстанавливали. Раз в неделю прогоняйте restore
+#    в одноразовую БД (см. docs/07-бэкапы.md), иначе гарантий нет.
+
+name: db-backup
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # каждые 6 часов (UTC)
+  workflow_dispatch: {} # и вручную по кнопке
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    # Если секрет не задан — джоб не запустится (защита от ложного «зелёного» без бэкапа).
+    if: ${{ github.repository_owner != '' }}
+    steps:
+      - name: Установить PostgreSQL client (pg_dump)
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+
+      - name: Проверить наличие секретов
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        run: |
+          if [ -z "$BACKUP_DATABASE_URL" ] || [ -z "$S3_BUCKET" ]; then
+            echo "::error::Не заданы секреты BACKUP_DATABASE_URL / S3_BUCKET — бэкап невозможен. См. шапку файла."
+            exit 1
+          fi
+
+      - name: Дамп БД (custom format, сжатый)
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          STAMP=$(date -u +'%Y%m%dT%H%M%SZ')
+          FILE="printpro-${STAMP}.dump"
+          echo "FILE=$FILE" >> "$GITHUB_ENV"
+          # --format=custom — компактный, восстанавливается через pg_restore выборочно/целиком.
+          pg_dump --format=custom --no-owner --no-privileges --dbname="$BACKUP_DATABASE_URL" --file="$FILE"
+          ls -lh "$FILE"
+
+      - name: Загрузить в offsite-хранилище (S3-совместимое)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        run: |
+          # aws-cli предустановлен на ubuntu-runner; --endpoint-url поддерживает R2/B2/S3.
+          aws s3 cp "$FILE" "s3://${S3_BUCKET}/${FILE}" --endpoint-url "$S3_ENDPOINT"
+          echo "Бэкап загружен: s3://${S3_BUCKET}/${FILE}"
