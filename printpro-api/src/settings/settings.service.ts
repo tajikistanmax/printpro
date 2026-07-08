@@ -13,8 +13,11 @@ export class SettingsService {
     return map;
   }
 
-  // Безопасные UI-настройки (без секретов) — доступны без права settings.manage,
-  // чтобы касса/панель могли узнать выбранное оформление, валюту и т.п.
+  // Безопасные UI-настройки (без секретов) — доступны без права settings.manage
+  // и БЕЗ авторизации (страница входа/меню), чтобы касса/панель могли узнать
+  // выбранное оформление, валюту, брендинг компании. Платёжные реквизиты
+  // (payTransferQr/payTransferRequisite) сюда НЕ входят — их отдаёт
+  // getReceiptInfo только авторизованному пользователю (см. ниже).
   async getUi(companyId: string): Promise<Record<string, string>> {
     const all = await this.getAll(companyId);
     const PUBLIC_KEYS = [
@@ -25,13 +28,10 @@ export class SettingsService {
       'logoDataUrl', // логотип компании — для чеков/ценников (не секрет)
       'currency',
       'language',
-      // Контакты компании — для чека (не секреты)
+      // Контакты компании — печатаются на чеке (публичная бизнес-информация)
       'companyAddress',
       'phone',
       'companyInn',
-      // Оплата «Перевод» — QR и реквизит показываются клиенту на кассе (не секреты)
-      'payTransferQr',
-      'payTransferRequisite',
     ];
     const out: Record<string, string> = {};
     for (const k of PUBLIC_KEYS) if (all[k] != null) out[k] = all[k];
@@ -47,6 +47,17 @@ export class SettingsService {
       )
         out[k] = v;
     }
+    return out;
+  }
+
+  // Платёжные реквизиты (куда клиент переводит деньги) — только для
+  // авторизованного пользователя своей компании. НЕ публикуются анонимно,
+  // иначе банковский реквизит/QR любой компании утекал бы по companyId.
+  async getReceiptInfo(companyId: string): Promise<Record<string, string>> {
+    const all = await this.getAll(companyId);
+    const KEYS = ['payTransferQr', 'payTransferRequisite'];
+    const out: Record<string, string> = {};
+    for (const k of KEYS) if (all[k] != null) out[k] = all[k];
     return out;
   }
 

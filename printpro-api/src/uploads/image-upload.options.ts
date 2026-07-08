@@ -88,3 +88,61 @@ export const LAYOUT_UPLOAD_OPTIONS = {
   },
   limits: { fileSize: 25 * 1024 * 1024 }, // до 25 МБ
 };
+
+// Документы клиента (договоры/макеты/сканы): изображения + PDF + офисные форматы.
+// HTML/SVG/JS/исполняемые НЕ допускаются — файлы раздаются статикой с origin API,
+// активный контент дал бы stored-XSS. Office-типы безопасны (не исполняются в браузере).
+const DOCUMENT_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
+const DOCUMENT_EXT = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.gif',
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.xls',
+  '.xlsx',
+]);
+
+export const DOCUMENT_UPLOAD_OPTIONS = {
+  storage: diskStorage({
+    destination: UPLOADS_DEST,
+    filename: (
+      _req: unknown,
+      file: { originalname: string },
+      cb: (err: Error | null, name: string) => void,
+    ) => {
+      cb(null, randomUUID() + extname(file.originalname).toLowerCase());
+    },
+  }),
+  fileFilter: (
+    _req: unknown,
+    file: { mimetype: string; originalname: string },
+    cb: (err: Error | null, accept: boolean) => void,
+  ) => {
+    const ext = extname(file.originalname).toLowerCase();
+    if (DOCUMENT_MIME.has(file.mimetype) && DOCUMENT_EXT.has(ext)) {
+      cb(null, true);
+    } else {
+      cb(
+        new BadRequestException(
+          'Разрешены только изображения (JPEG/PNG/WebP/GIF), PDF или документы Word/Excel',
+        ),
+        false,
+      );
+    }
+  },
+  limits: { fileSize: 25 * 1024 * 1024 }, // до 25 МБ
+};

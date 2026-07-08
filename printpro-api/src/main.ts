@@ -34,7 +34,10 @@ function isTrustedDevOrigin(origin: string): boolean {
 // при старте вместо загадочных 500 в рантайме у клиента).
 function assertRequiredEnv() {
   const required = ['DATABASE_URL'];
-  if (process.env.NODE_ENV === 'production') required.push('JWT_SECRET');
+  // JWT_SECRET обязателен везде, кроме тестов. Раньше проверялся только при
+  // NODE_ENV==='production' — если переменную забыли выставить в деплое, приложение
+  // стартовало без секрета (потенциально небезопасная подпись токенов).
+  if (process.env.NODE_ENV !== 'test') required.push('JWT_SECRET');
   const missing = required.filter((k) => !process.env[k]);
   if (missing.length) {
     // eslint-disable-next-line no-console

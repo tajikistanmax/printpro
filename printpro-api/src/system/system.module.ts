@@ -17,12 +17,18 @@ class PublicSystemController {
   @SkipThrottle()
   @Get('company-id')
   async companyId() {
-    const company = await this.prisma.company.findFirst({
+    // Отдаём companyId ТОЛЬКО когда в базе ровно одна компания (коробка или
+    // одно-тенантный деплой) — там это и нужно фронту для рантайм-резолва.
+    // В мультитенантном облаке (2+ компаний в общей БД) вернуть companyId
+    // анониму — это утечка: id открывает публичные эндпоинты чужого тенанта.
+    // Тогда возвращаем null (облачный фронт всё равно берёт фиксированный id).
+    const companies = await this.prisma.company.findMany({
       where: { deletedAt: null },
       orderBy: { createdAt: 'asc' },
       select: { id: true },
+      take: 2,
     });
-    return { companyId: company?.id ?? null };
+    return { companyId: companies.length === 1 ? companies[0].id : null };
   }
 }
 

@@ -17,6 +17,13 @@ export class SettingsController {
     return this.settings.getAll(user.companyId);
   }
 
+  // Платёжные реквизиты для чека/кассы. Только вход (без settings.manage),
+  // чтобы кассир мог их получить, но НЕ анонимно (защита от утечки по companyId).
+  @Get('receipt-info')
+  getReceiptInfo(@CurrentUser() user: { companyId: string }) {
+    return this.settings.getReceiptInfo(user.companyId);
+  }
+
   @Put()
   @RequirePermissions('settings.manage')
   setMany(

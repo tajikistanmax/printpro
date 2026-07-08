@@ -13,10 +13,8 @@ import {
 } from '@nestjs/common';
 import { ClientType } from '@prisma/client';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import { randomUUID } from 'crypto';
 import { ClientsService } from './clients.service';
+import { DOCUMENT_UPLOAD_OPTIONS } from '../uploads/image-upload.options';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -85,16 +83,7 @@ export class ClientsController {
   // Загрузить файл клиента (документ/договор/макет)
   @Post(':id/files')
   @RequirePermissions('clients.manage')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: './uploads',
-        filename: (_req, file, cb) =>
-          cb(null, randomUUID() + extname(file.originalname)),
-      }),
-      limits: { fileSize: 50 * 1024 * 1024 },
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file', DOCUMENT_UPLOAD_OPTIONS))
   uploadFile(
     @Param('id') id: string,
     @UploadedFile() file: any,

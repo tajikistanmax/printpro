@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -117,6 +118,24 @@ export class PublicController {
 
   // Создание онлайн-заказа с сайта
   async createOrderHandler(dto: PublicOrderDto) {
+    // Проверяем, что услуга принадлежит именно этой компании и активна —
+    // иначе онлайн-заказ можно было бы привязать к услуге чужого тенанта
+    // (нарушение целостности данных между компаниями).
+    if (dto.serviceId) {
+      const service = await this.prisma.service.findFirst({
+        where: {
+          id: dto.serviceId,
+          companyId: dto.companyId,
+          isActive: true,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!service) {
+        throw new BadRequestException('Услуга не найдена');
+      }
+    }
+
     const client = await this.clients.findOrCreate(
       dto.companyId,
       dto.clientPhone,

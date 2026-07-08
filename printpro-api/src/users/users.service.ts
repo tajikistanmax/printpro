@@ -26,6 +26,15 @@ export class UsersService {
       });
       if (!role) throw new BadRequestException('Недопустимая роль');
     }
+    // Филиал тоже должен принадлежать компании — иначе сотрудника можно
+    // привязать к чужому филиалу (нарушение изоляции между тенантами).
+    if (dto.branchId) {
+      const branch = await this.prisma.branch.findFirst({
+        where: { id: dto.branchId, companyId: dto.companyId },
+        select: { id: true },
+      });
+      if (!branch) throw new BadRequestException('Недопустимый филиал');
+    }
     const passwordHash = await AuthService.hashPassword(dto.password);
     const pinHash = dto.pin ? await AuthService.hashPassword(dto.pin) : null;
     const user = await this.prisma.$transaction(async (tx) => {
