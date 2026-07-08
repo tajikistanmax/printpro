@@ -14,7 +14,7 @@
     "electron-updater": "^6.3.9",
     "electron-log": "^5.2.4",
     "electron-store": "8.2.0",
-    "embedded-postgres": "^17.5.0"
+    "embedded-postgres": "17.10.0-beta.17"
   },
   "devDependencies": {
     "electron": "^33.2.1",
@@ -86,8 +86,7 @@
       "**/node_modules/prisma/**"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "build/icon.ico"
+      "target": "nsis"
     },
     "nsis": {
       "oneClick": false,

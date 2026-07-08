@@ -141,13 +141,17 @@ production падал бы на старте (`assertRequiredEnv` требует
    `createDatabase()` — актуальны, `main.js` их использует правильно (onLog/
    onError теперь подключены к `electron-log`). Путь prisma CLI тоже сверен
    (`node_modules/prisma/build/index.js`, prisma v6 — файл существует). Бинарники
-   Postgres пакет тянет из zonky в `node_modules/@embedded-postgres/<os>-<arch>/
-   native/bin` — `main.js` (`findPgBinDir()`) ищет их там динамически (и в
-   `app.asar.unpacked` в собранном .exe); если структура пакета иная —
-   `backup.js` gracefully пропустит бэкап (не роняя приложение). Версию
-   `embedded-postgres` в `package.json` сверьте с актуальной на npm при установке
-   (платформенные бинарники Postgres идут `optionalDependencies` — размер
-   установщика зависит от включённых платформ).
+   Postgres пакет кладёт в `node_modules/@embedded-postgres/<os>-<arch>/native/bin`
+   (подтверждено на реальной установке: `@embedded-postgres/windows-x64/native/bin`) —
+   `main.js` (`findPgBinDir()`) ищет их там (и в `app.asar.unpacked` в собранном
+   .exe). **Версия:** пакет публикует ТОЛЬКО бета-версии, привязанные к мажору
+   Postgres (нет стабильной `17.5.0` — только `17.5.0-beta.15`); в `package.json`
+   зафиксирована точная `17.10.0-beta.17` (Postgres 17). **⚠️ pg_dump НЕ входит в
+   комплект:** windows-пакет содержит только серверные бинарники (`initdb`/`pg_ctl`/
+   `postgres.exe`), клиентского `pg_dump.exe` нет → плановый бэкап `backup.js`
+   пока gracefully пропускается. Варианты: доложить `pg_dump.exe` в extraResources,
+   логический дамп через `getPgClient()`, или JSON-экспорт из API. Не блокер:
+   данные в persistent `pgdata` не теряются.
 9. **Канал автообновлений.** `electron-updater` вызывается в `main.js`
    (`autoUpdater.checkForUpdatesAndNotify()`), но `publish` в
    `package.json` → `build` сейчас `null` (заглушка). Владельцу нужно

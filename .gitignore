@@ -13,3 +13,6 @@
 # Runtime dev logs
 **/.apilog.txt
 **/.weblog.txt
+
+# Electron — выход сборки (.exe/установщики), не коммитим
+electron/release/
