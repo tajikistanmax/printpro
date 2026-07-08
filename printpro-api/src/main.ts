@@ -9,6 +9,7 @@ import { join } from 'path';
 import { mkdirSync } from 'fs';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
+import { initSentry } from './common/sentry';
 
 // Доверенные origin'ы для локальной сети/разработки (localhost и приватные диапазоны).
 // В облаке НЕ используется (там строгий CORS_ORIGINS); включается только в dev
@@ -46,6 +47,8 @@ function assertRequiredEnv() {
 
 async function bootstrap() {
   assertRequiredEnv();
+  // Sentry (если задан SENTRY_DSN) — трекинг ошибок/алерты для прода.
+  initSentry();
 
   const isProduction = process.env.NODE_ENV === 'production';
 

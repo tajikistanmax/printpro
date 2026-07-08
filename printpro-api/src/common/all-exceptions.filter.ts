@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { captureError } from './sentry';
 
 // Глобальный перехватчик ошибок: 5xx логируются со стеком и контекстом
 // (метод/путь/requestId) — раньше необработанные 500 исчезали в эфемерных логах
@@ -47,6 +48,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
         `${req.method} ${req.originalUrl} → ${status} [req:${requestId ?? '-'}]`,
         detail,
       );
+      // Отправка в Sentry (no-op без SENTRY_DSN) — алерты/контекст по 5xx.
+      captureError(exception, {
+        requestId,
+        method: req.method,
+        path: req.originalUrl,
+      });
     }
 
     res.status(status).json(body);

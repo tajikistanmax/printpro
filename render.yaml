@@ -44,6 +44,10 @@ services:
       # на все браузерные запросы к API. Добавьте сюда кастомный домен, когда появится.
       - key: CORS_ORIGINS
         value: https://printpro-web.onrender.com
+      # Трекинг ошибок (опционально): вставьте DSN проекта Sentry, чтобы включить
+      # алерты и контекст по 5xx. Пусто = Sentry выключен (no-op).
+      - key: SENTRY_DSN
+        sync: false
       # Синхронизация: общий секрет (скопируйте его в локальные узлы)
       - key: SYNC_SECRET
         generateValue: true
