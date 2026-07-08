@@ -188,13 +188,9 @@ export class ProductionService {
     if (claim.count === 0) return;
 
       for (const [productId, qty] of need) {
-        const current = await tx.stock.findUnique({
-          where: {
-            productId_branchId: { productId, branchId: order.branchId! },
-          },
-          select: { quantity: true },
-        });
-        const beforeQty = Number(current?.quantity ?? 0);
+        // Условное списание под блокировкой строки; afterQty читаем ПОСЛЕ
+        // decrement (в той же транзакции), beforeQty выводим прибавлением своей
+        // дельты — согласованно со стоком при конкуренции (как stock.adjust).
         const dec = await tx.stock.updateMany({
           where: {
             productId,
@@ -207,6 +203,14 @@ export class ProductionService {
         if (dec.count === 0) {
           throw new BadRequestException('Not enough material stock');
         }
+        const after = await tx.stock.findUnique({
+          where: {
+            productId_branchId: { productId, branchId: order.branchId! },
+          },
+          select: { quantity: true },
+        });
+        const afterQty = Number(after?.quantity ?? 0);
+        const beforeQty = Number((afterQty + qty).toFixed(3));
         const unitCost = costOf.get(productId) ?? 0;
         const totalCost = Number((unitCost * qty).toFixed(4));
         await tx.stockMovement.create({
@@ -217,7 +221,7 @@ export class ProductionService {
             type: StockMovementType.WRITE_OFF,
             quantity: qty,
             beforeQty,
-            afterQty: Number((beforeQty - qty).toFixed(3)),
+            afterQty,
             reason: `Production for order ${order.orderNumber}`,
             orderId: order.id,
             // исполнитель, завершивший задание (для восстановления себестоимости)
@@ -306,16 +310,18 @@ export class ProductionService {
       const netQty = Number((agg.writtenOff - agg.reversed).toFixed(3));
       if (netQty <= 0 || !agg.branchId) continue;
       const branchId = agg.branchId;
-      const current = await tx.stock.findUnique({
-        where: { productId_branchId: { productId, branchId } },
-        select: { quantity: true },
-      });
-      const beforeQty = Number(current?.quantity ?? 0);
-      await tx.stock.upsert({
+      // Атомарно возвращаем остаток: afterQty берём из результата upsert
+      // (increment под блокировкой строки), beforeQty выводим вычитанием своей
+      // дельты — иначе при конкурентных операциях afterQty в леджере расходится
+      // с реальным стоком (как в stock.service.receive).
+      const stock = await tx.stock.upsert({
         where: { productId_branchId: { productId, branchId } },
         create: { productId, branchId, quantity: netQty },
         update: { quantity: { increment: netQty } },
+        select: { quantity: true },
       });
+      const afterQty = Number(stock.quantity);
+      const beforeQty = Number((afterQty - netQty).toFixed(3));
       // Средневзвешенная себестоимость списания — симметричный снимок для реверса.
       const unitCost =
         agg.writtenOff > 0 ? Number((agg.cost / agg.writtenOff).toFixed(4)) : 0;
@@ -329,7 +335,7 @@ export class ProductionService {
           type: StockMovementType.IN,
           quantity: netQty,
           beforeQty,
-          afterQty: Number((beforeQty + netQty).toFixed(3)),
+          afterQty,
           reason: `Reversal of production write-off (job ${job.id})`,
           orderId: job.orderId,
           userId: userId ?? null,

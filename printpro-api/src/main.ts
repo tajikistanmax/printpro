@@ -4,9 +4,11 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import compression from 'compression';
+import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { mkdirSync } from 'fs';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
 // Доверенные origin'ы для локальной сети/разработки (localhost и приватные диапазоны).
 // В облаке НЕ используется (там строгий CORS_ORIGINS); включается только в dev
@@ -59,6 +61,26 @@ async function bootstrap() {
   // реальным IP клиента (иначе rate-limit и аудит видят один IP прокси → self-DoS).
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
+
+  // Request-id: сквозной идентификатор запроса (принимаем входящий или генерим),
+  // кладём в req и в заголовок ответа — по нему логи ошибок связываются с запросом.
+  app.use(
+    (
+      req: { headers: Record<string, unknown>; requestId?: string },
+      res: { setHeader: (k: string, v: string) => void },
+      next: () => void,
+    ) => {
+      const incoming = req.headers['x-request-id'];
+      const id =
+        typeof incoming === 'string' && incoming ? incoming : randomUUID();
+      req.requestId = id;
+      res.setHeader('x-request-id', id);
+      next();
+    },
+  );
+
+  // Глобальный перехватчик ошибок — структурное логирование 5xx с контекстом.
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   // Security-заголовки. CSP выключаем (API отдаёт JSON/Swagger, не HTML-страницы),
   // CORP=cross-origin — чтобы фронт на другом домене мог грузить /uploads-картинки.
