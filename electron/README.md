@@ -159,34 +159,62 @@ production падал бы на старте (`assertRequiredEnv` требует
    или GitHub Releases (`provider: "github"` + токен), см.
    [`docs/06-АРХИТЕКТУРА-КОРОБКА-ЭЛЕКТРОН.md`](../docs/06-АРХИТЕКТУРА-КОРОБКА-ЭЛЕКТРОН.md#7-авто-обновление).
 
-## Проверено реальной сборкой (2026-07-08) ✅
+## Проверено реальной сборкой (2026-07-08) ✅ — УСТАНОВЩИК СОБРАН
 
-`npm install` + `npm run dist` реально прогнаны на Windows. Результат:
+`npm install` + `npm run dist` реально прогнаны на Windows **до конца**. Результат:
 
-**✅ Приложение полностью собирается** — `electron/release/win-unpacked/` содержит
-рабочую сборку: `PrintPro.exe`, наш код (`app.asar`), `printpro-api/dist` (+`node_modules`),
-`printpro-web` (standalone), встроенный Postgres (`initdb/postgres/pg_ctl.exe` в
-`app.asar.unpacked`), Prisma CLI + `schema.prisma` + **48 миграций**, компилируемый seed.
-То есть `win-unpacked/PrintPro.exe` — **уже запускаемая портативная версия** коробки
-(можно запустить напрямую, без установщика).
+**✅ Полноценный установщик собран:** `electron/release/PrintPro Setup 0.1.0.exe`
+(**~283 МБ**, валидный PE-файл, + `.blockmap` для дифф-обновлений, + встроенный
+деинсталлятор). Внутри — `PrintPro.exe`, наш код (`app.asar`), `printpro-api/dist`
+(+`node_modules`), `printpro-web` (standalone), встроенный Postgres
+(`initdb/postgres/pg_ctl.exe` в `app.asar.unpacked`), Prisma CLI + `schema.prisma`
++ **49 миграций**, компилируемый seed. Дополнительно `electron/release/win-unpacked/PrintPro.exe`
+— **запускаемая портативная версия** (можно запустить/раздать без установщика).
+
+> `electron/release/` в `.gitignore` — сами .exe/установщики в git не коммитятся.
 
 **Блокеры, найденные и закрытые при сборке:**
 1. ✅ `embedded-postgres@^17.5.0` не существовал → зафиксирована `17.10.0-beta.17` (в `package.json`).
 2. ✅ Жёсткая ссылка на несуществующую иконку убрана (используется дефолтная Electron-иконка).
 3. ✅ Путь к бинарникам Postgres (`findPgBinDir`) подтверждён на реальной установке.
+4. ✅ **Скачивание бинарников electron-builder с GitHub CDN** (`winCodeSign`,
+   `nsis`, `nsis-resources`) с `release-assets.githubusercontent.com` — из
+   Таджикистана/за файрволом часто отваливается по таймауту. **Решение —
+   зеркало** (см. ниже). С зеркалом установщик собирается полностью.
 
-**Два шага, требующие ОКРУЖЕНИЯ (не кода) — сделать на машине владельца:**
-1. **winCodeSign — симлинки.** electron-builder распаковывает `winCodeSign`, где есть
-   macOS-симлинки; Windows создаёт симлинки только с **Developer Mode** (Параметры → Для
-   разработчиков → вкл) ИЛИ из терминала «от администратора». (Обходной путь без прав:
-   вручную распаковать архив без папки `darwin` — `7za x <кэш>/*.7z -o<кэш>/winCodeSign-2.6.0 -xr!darwin`.)
-2. **`nsis-resources-3.4.1.7z` — скачивание.** Финальная упаковка в установщик качает этот
-   файл с GitHub CDN (`release-assets.githubusercontent.com`). На обычной машине скачается
-   сам; в среде без доступа к GitHub CDN — упадёт по таймауту (тогда win-unpacked уже готов).
+### ⚠️ Если сборка виснет/падает на скачивании (GitHub CDN недоступен)
 
-**Итого для получения `PrintPro Setup.exe`:** на Windows-ПК с обычным интернетом и
-Developer Mode → `npm install && npm run dist` в `electron/` (api и web предварительно
-собрать: `npm run build`). Установщик появится в `electron/release/`.
+electron-builder на первой сборке качает свои бинарники (`winCodeSign-*`,
+`nsis-*`, `nsis-resources-*`) с `release-assets.githubusercontent.com` (Fastly,
+`185.199.*`). Из Душанбе этот хост нестабилен → таймаут вида
+`wsarecv: connection attempt failed`. **Переключите загрузки на зеркало
+npmmirror** — один раз перед сборкой:
+
+```powershell
+# PowerShell (Windows):
+$env:ELECTRON_BUILDER_BINARIES_MIRROR = "https://registry.npmmirror.com/-/binary/electron-builder-binaries/"
+npm run dist
+```
+```bash
+# Git Bash / cmd-эквивалент:
+ELECTRON_BUILDER_BINARIES_MIRROR="https://registry.npmmirror.com/-/binary/electron-builder-binaries/" npm run dist
+```
+
+Зеркало отдаёт те же самые архивы, но по стабильному каналу. Проверено:
+именно так установщик и собрался (нужный `nsis-resources-3.4.1.7z` подтянулся с
+зеркала за секунды вместо таймаута с GitHub).
+
+> Ручной обход (если зеркало тоже недоступно): скачать `nsis-resources-3.4.1.7z`
+> любым способом и распаковать в
+> `%LOCALAPPDATA%\electron-builder\Cache\nsis\nsis-resources-3.4.1\`
+> (внутри должна получиться папка `plugins\`). Аналогично для `winCodeSign` —
+> распаковать без macOS-симлинков: `7za x <архив> -o<кэш>\winCodeSign-2.6.0 -xr!darwin`
+> (симлинки Windows требуют Developer Mode).
+
+**Итого для получения `PrintPro Setup.exe`:** на Windows-ПК →
+`npm install` в `electron/`, собрать api и web (`npm run build` в обеих папках),
+затем (с зеркалом, если GitHub CDN недоступен) `npm run dist` в `electron/`.
+Установщик появится в `electron/release/`.
 
 ## Остаётся по желанию (не блокеры)
 - Иконка приложения (`electron/build/icon.ico`) — сейчас дефолтная.
