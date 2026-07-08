@@ -186,16 +186,19 @@ function spawnNode(scriptPath, args, options) {
 // ──────────────────────────────────────────────────────────────────────────
 
 async function ensureEmbeddedPostgres(paths) {
+  // API пакета сверен с документацией embedded-postgres: конструктор
+  // (databaseDir/user/password/port/persistent/onLog/onError) и методы
+  // initialise()/start()/stop()/createDatabase() — актуальны.
   pg = new EmbeddedPostgres({
     databaseDir: paths.pgData,
     user: PG_USER,
     password: PG_PASSWORD,
     port: PG_PORT,
     persistent: true,
-    // TODO(build): у пакета embedded-postgres есть опция onLog/onError для
-    // перенаправления вывода initdb/postgres — подключить к electron-log
-    // при первой реальной сборке (см. документацию пакета на момент сборки,
-    // API мог измениться).
+    // Вывод initdb/postgres направляем в electron-log.
+    onLog: (msg) => log.info('[postgres]', msg),
+    onError: (err) =>
+      log.error('[postgres]', err && err.message ? err.message : err),
   });
 
   // initdb выполняем один раз — определяем «первый запуск» по отсутствию
@@ -224,9 +227,8 @@ async function ensureEmbeddedPostgres(paths) {
 // Используем CLI prisma напрямую (без npx — коробка работает офлайн).
 function runPrismaMigrateDeploy(paths, databaseUrl) {
   return new Promise((resolve) => {
-    // TODO(build): путь до CLI-точки входа prisma может отличаться между
-    // версиями пакета — сверить с полем "bin" в
-    // printpro-api/node_modules/prisma/package.json при первой сборке.
+    // Точка входа prisma CLI — сверено с prisma v6:
+    // node_modules/prisma/build/index.js.
     const prismaCli = path.join(paths.apiDir, 'node_modules', 'prisma', 'build', 'index.js');
     const schemaPath = path.join(paths.apiDir, 'prisma', 'schema.prisma');
 
@@ -400,13 +402,33 @@ function buildMainMenu(lanIp) {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// Папка с бинарниками Postgres (в т.ч. pg_dump). Пакет embedded-postgres тянет
+// их из zonky и кладёт в scoped-пакеты node_modules/@embedded-postgres/<os>-<arch>/
+// native/bin (в собранном .exe — внутри распакованного asar/resources). Ищем
+// динамически; если структура пакета отличается — backup.js gracefully пропустит.
+function findPgBinDir() {
+  const roots = [
+    path.join(__dirname, 'node_modules', '@embedded-postgres'),
+    path.join(process.resourcesPath || __dirname, 'app.asar.unpacked', 'node_modules', '@embedded-postgres'),
+  ];
+  for (const scopeDir of roots) {
+    try {
+      if (!fs.existsSync(scopeDir)) continue;
+      for (const pkg of fs.readdirSync(scopeDir)) {
+        const bin = path.join(scopeDir, pkg, 'native', 'bin');
+        if (fs.existsSync(bin)) return bin;
+      }
+    } catch {
+      // недоступно — пробуем следующий корень
+    }
+  }
+  return null;
+}
+
 function getBackupContext() {
   const paths = getPaths();
   return {
-    // TODO(build): реальный путь до бинарника pg_dump зависит от того, как
-    // именно embedded-postgres распаковывает платформенные бинарники —
-    // см. подробный TODO в electron/backup.js.
-    pgBinDir: pg ? path.join(paths.pgData, '..', 'pg-bin') : null,
+    pgBinDir: findPgBinDir(),
     databaseUrl: `postgresql://${PG_USER}:${PG_PASSWORD}@127.0.0.1:${PG_PORT}/${PG_DATABASE}?schema=public`,
     backupsDir: paths.backups,
     keep: 14,

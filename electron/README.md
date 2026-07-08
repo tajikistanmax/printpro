@@ -135,15 +135,19 @@ production падал бы на старте (`assertRequiredEnv` требует
    реальным релизом стоит рассмотреть `nest build --webpack` (один файл
    без `node_modules`) или хотя бы `npm ci --omit=dev` перед упаковкой,
    чтобы не тащить `devDependencies`.
-8. **`embedded-postgres` — версия/бинарники под Windows.** В
-   `package.json` зафиксирована `^17.5.0` ориентировочно — версию нужно
-   сверить с актуальной на npm на момент установки (пакет тянет платформенные
-   бинарники Postgres как отдельные `optionalDependencies`, размер
-   установщика сильно зависит от того, какие платформы включены). Также
-   `backup.js` (`ctx.pgBinDir`) и комментарий `TODO(build)` в `main.js`
-   (`ensureEmbeddedPostgres`) отмечают места, где нужно свериться с
-   актуальным API пакета (`initialise()`/`start()`/`createDatabase()`) и
-   реальным расположением бинарника `pg_dump` при первой сборке.
+8. **`embedded-postgres` — API сверен ✅, бинарники под Windows.** API пакета
+   проверен по документации: конструктор (`databaseDir/user/password/port/
+   persistent/onLog/onError`) и методы `initialise()`/`start()`/`stop()`/
+   `createDatabase()` — актуальны, `main.js` их использует правильно (onLog/
+   onError теперь подключены к `electron-log`). Путь prisma CLI тоже сверен
+   (`node_modules/prisma/build/index.js`, prisma v6 — файл существует). Бинарники
+   Postgres пакет тянет из zonky в `node_modules/@embedded-postgres/<os>-<arch>/
+   native/bin` — `main.js` (`findPgBinDir()`) ищет их там динамически (и в
+   `app.asar.unpacked` в собранном .exe); если структура пакета иная —
+   `backup.js` gracefully пропустит бэкап (не роняя приложение). Версию
+   `embedded-postgres` в `package.json` сверьте с актуальной на npm при установке
+   (платформенные бинарники Postgres идут `optionalDependencies` — размер
+   установщика зависит от включённых платформ).
 9. **Канал автообновлений.** `electron-updater` вызывается в `main.js`
    (`autoUpdater.checkForUpdatesAndNotify()`), но `publish` в
    `package.json` → `build` сейчас `null` (заглушка). Владельцу нужно
