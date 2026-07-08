@@ -29,10 +29,11 @@
      Postgres, если он есть у клиента);
    - применяет миграции Prisma (`prisma migrate deploy`, CLI напрямую, без
      `npx` — коробка работает офлайн);
-   - запускает seed (`dist/bootstrap/seed.js` — **пока не существует**, см.
-     «Требуемые изменения в хосте», п.1);
-   - запускает `printpro-api` (`node dist/main.js`) с нужными `env`;
-   - ждёт `GET /api/health` (эндпоинт тоже пока не существует, см. п.4);
+   - запускает компилируемый seed (`dist/bootstrap/seed.js` — **есть**,
+     идемпотентный, не затирает данные при повторных запусках);
+   - запускает `printpro-api` (`node dist/main.js`) с нужными `env`
+     (`DATABASE_URL`, `JWT_SECRET` из config, `UPLOADS_DIR`, `ALLOW_LAN_ORIGINS`);
+   - ждёт `GET /api/health` (эндпоинт **есть** — `HealthController`);
    - запускает `printpro-web` в режиме `standalone` (`node server.js`,
      `HOSTNAME=0.0.0.0`, чтобы кассы по LAN достучались);
    - открывает окно на `http://127.0.0.1:3001`, в заголовке/меню показывает
@@ -82,67 +83,49 @@ npm run dist                    # electron-builder → electron/release/*.exe
 `../printpro-web/.next/standalone` (см. `getPaths()` в `main.js`), то есть
 монорепозиторий должен быть уже собран (`npm run build` в обеих папках).
 
-## Требуемые изменения в хосте (делает оркестратор, НЕ этот агент)
+## Хост-правки — статус (обновлено оркестратором, 2026-07-08)
 
-Эти правки — **вне `electron/`**, по условию задачи их не делает этот
-скелет, только фиксирует список. Без них коробка не заработает полностью:
+Правки в `printpro-api`/`printpro-web`, нужные коробке. **Пункты 1–4 уже
+внесены** (см. коммиты сессии 2026-07-08); 5 — не требуется при сборке на
+Windows; 6 — единственная реальная зависимость для тиражирования на много
+клиентов (см. ниже).
 
-1. **Компилируемый seed.** Сейчас есть только
-   `printpro-api/prisma/seed.ts`, запускаемый через `ts-node`/`npx prisma
-   db seed` (см. `render.yaml`: `npx ts-node prisma/seed.ts`). Нужен
-   вариант, компилируемый в `dist/` вместе с остальным API — например,
-   `printpro-api/src/bootstrap/seed.ts` → `dist/bootstrap/seed.js`, плюс
-   npm-скрипт для явного запуска. `main.js` уже ждёт именно этот путь
-   (`runSeed()` в `electron/main.js`) и не падает, если его нет — просто
-   предупреждает в логе и не создаёт компанию/админа.
-2. **`UPLOADS_DIR` в printpro-api.** Сейчас путь к файлам жёстко
-   `./uploads` (относительно `process.cwd()`) в трёх местах:
-   `printpro-api/src/main.ts:27,68` (`mkdirSync`/`useStaticAssets`) и
-   `printpro-api/src/uploads/image-upload.options.ts:19,61`
-   (`IMAGE_UPLOAD_OPTIONS`/`LAYOUT_UPLOAD_OPTIONS`), плюс
-   `printpro-api/src/clients/clients.controller.ts:91`. Нужно читать из
-   `process.env.UPLOADS_DIR` (по умолчанию `./uploads`, как сейчас) — иначе
-   в коробке файлы будут писаться внутрь `resources/printpro-api/uploads`
-   (потеряются при переустановке/обновлении) вместо `userData/uploads`.
-   `main.js` уже пробрасывает `env.UPLOADS_DIR = paths.uploads` в
-   дочерний процесс API — сейчас API его просто игнорирует.
-3. **Флаг `ALLOW_LAN_ORIGINS`, отвязанный от `NODE_ENV`.** В
-   `printpro-api/src/main.ts` (`isTrustedDevOrigin` + `enableCors`)
-   LAN-эвристика (localhost/10.x/192.168.x/172.16-31.x) сейчас работает
-   только когда `!isProduction`. Коробка запускает API как production
-   (`NODE_ENV=production`, см. `startApiProcess()` в `main.js`) — значит,
-   без отдельного флага касса не сможет постучаться на API главного ПК
-   (CORS отклонит кросс-origin запрос с `http://<mainHost>:3001` на
-   `http://<mainHost>:3000`). `main.js` уже передаёт
-   `env.ALLOW_LAN_ORIGINS = '1'` — нужно в `main.ts` добавить проверку
-   типа `(!isProduction || process.env.ALLOW_LAN_ORIGINS === '1') &&
-   isTrustedDevOrigin(origin)`.
-4. **`/api/health`.** Сейчас в API нет ни одного роута `health` (проверено
-   `grep -r health src`). У `render.yaml` `healthCheckPath: /api`, но это
-   просто корень с global prefix, не полноценный health-check. `main.js`
-   (`waitForHttpOk`) уже ждёт `GET http://127.0.0.1:3000/api/health` перед
-   тем, как открыть окно веб-панели — без эндпоинта просто сработает
-   таймаут (30 сек) и окно откроется всё равно, но без гарантии готовности
-   API.
-5. **`prisma schema.prisma` → `binaryTargets`.** Сейчас в
-   `printpro-api/prisma/schema.prisma` блок `generator client` без
-   `binaryTargets` — Prisma сгенерирует движок только под текущую
-   ОС/архитектуру разработчика. Для сборки `.exe` под Windows нужно
-   `binaryTargets = ["native", "windows"]` (или конкретный таргет сборочной
-   машины CI, если сборка идёт не на Windows), иначе на машине клиента
-   `@prisma/client` не найдёт нужный query-engine бинарник.
-6. **Рантайм-резолв `companyId` вместо хардкода.** `COMPANY_ID` в
-   `printpro-api/prisma/seed.ts:11` и `DEFAULT_COMPANY_ID` в
-   `printpro-web/src/lib/config.ts:58-60` — один и тот же фиксированный
-   UUID (`7628001a-...`), совпадающий с ID компании DushanbePrint в облаке.
-   Для одной изолированной коробки это не страшно (у каждого клиента своя
-   отдельная встроенная база, ID внутри неё не пересекается ни с кем).
-   Но как только заработает облачная синхронизация (Фаза 3, `docs/03-sync.md`)
-   и разные коробки разных клиентов начнут пушить данные в общее облако —
-   все они попытаются писать в **одну и ту же** запись `Company` с этим ID.
-   Нужен рантайм-резолв (companyId, генерируемый при первом seed коробки, а
-   не захардкоженный) до включения облачной синхронизации для нескольких
-   клиентов.
+1. ✅ **Компилируемый seed.** Сделано: `printpro-api/src/bootstrap/seed.ts`
+   → `dist/bootstrap/seed.js` (+ npm-скрипт `seed`), идемпотентный. `main.js`
+   (`runSeed()`) вызывает именно его.
+2. ✅ **`UPLOADS_DIR` в printpro-api.** Сделано: `main.ts` и
+   `image-upload.options.ts` читают `process.env.UPLOADS_DIR` (fallback
+   `./uploads`). `main.js` пробрасывает `UPLOADS_DIR = userData/uploads`.
+3. ✅ **Флаг `ALLOW_LAN_ORIGINS`.** Сделано: в `main.ts` LAN-CORS теперь
+   `(allowLan || !isProduction) && isTrustedDevOrigin(origin)`, где
+   `allowLan = process.env.ALLOW_LAN_ORIGINS === '1'`. `main.js` его передаёт.
+4. ✅ **`/api/health`.** Сделано: `HealthController` (`/api/health` liveness
+   + `/api/health/ready` с проверкой БД). `main.js` (`waitForHttpOk`) ждёт его.
+5. ⏭️ **`prisma binaryTargets` — не требуется при сборке на Windows.**
+   `.exe` собирается на Windows-ПК, где `prisma generate` даёт native =
+   windows-движок; `extraResources` в `package.json` копирует `.prisma`/
+   `@prisma/client`. Явный `binaryTargets` в схему НЕ добавлен намеренно —
+   чтобы не тянуть лишний движок в облачную (Linux) сборку. Если когда-нибудь
+   будете собирать коробку в non-Windows CI — добавьте
+   `binaryTargets = ["native", "windows"]` в `generator client`.
+6. ⏳ **Рантайм-резолв `companyId` — ЕДИНСТВЕННЫЙ оставшийся блокер
+   тиражирования.** `COMPANY_ID` в `src/bootstrap/seed.ts` и
+   `DEFAULT_COMPANY_ID` в `printpro-web/src/lib/config.ts` — один фиксированный
+   UUID. Для ОДНОЙ изолированной коробки это не мешает (у клиента своя база).
+   Но чтобы **один `.exe` обслуживал разных клиентов** (и чтобы облачная
+   синхронизация Фазы 3 не смешала их в одну запись `Company`), нужно:
+   (а) seed при первом запуске коробки генерирует случайный `companyId`
+   (гейт по env, напр. `BOX_MODE=1`, чтобы облако сохранило фиксированный);
+   (б) публичный эндпоинт `GET /api/system/company-id`, возвращающий
+   companyId этой установки; (в) фронт (`config.ts`) резолвит companyId в
+   рантайме через этот эндпоинт (fallback на `NEXT_PUBLIC_COMPANY_ID`).
+   Отложено намеренно: (в) — рефактор фронта, затрагивает и живое облако,
+   лучше делать отдельным выверенным заходом. Для ПЕРВОГО работающего `.exe`
+   (собственный магазин / первый клиент) фиксированный `companyId` подойдёт.
+
+**Также внесено при ревью скелета (2026-07-08):** `main.js` теперь генерирует
+и хранит `JWT_SECRET` в `config` и передаёт его в API — без этого API в
+production падал бы на старте (`assertRequiredEnv` требует `JWT_SECRET`).
 
 ### Дополнительно — найдено при сборке скелета (сверх исходного списка ТЗ)
 
@@ -173,8 +156,9 @@ npm run dist                    # electron-builder → electron/release/*.exe
 
 ## Что осталось до реального `.exe`
 
-- Внести 6(+3) правок из раздела выше в `printpro-api`/`printpro-web`
-  (делает ведущий инженер, не этот скелет).
+- ✅ Хост-правки 1–4 (seed/UPLOADS_DIR/ALLOW_LAN_ORIGINS/health) + JWT_SECRET —
+  **сделаны**. Осталась только правка 6 (рантайм-companyId) — и то лишь для
+  тиражирования на разных клиентов; для первого `.exe` не нужна.
 - Установить зависимости (`npm install` в `electron/`) и один раз реально
   собрать (`npm run dist`) — проверить, что `embedded-postgres` действительно
   тянет и распаковывает бинарники Postgres под Windows, уточнить все

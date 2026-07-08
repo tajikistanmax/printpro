@@ -85,6 +85,7 @@ const store = new Store({
     mainHost: '', // адрес главного ПК (только для роли "cash"), напр. 192.168.1.50
     cloudSync: false, // галочка «синхронизировать с облаком» (для будущей Фазы 3)
     nodeId: '', // короткий код этой точки для sync-worker; генерируем при первом сохранении
+    jwtSecret: '', // секрет подписи JWT; генерируем один раз при первом запуске (см. getOrCreateJwtSecret)
   },
 });
 
@@ -111,6 +112,19 @@ let backupTimer = null;
 // 4. Вспомогательные функции
 // ──────────────────────────────────────────────────────────────────────────
 
+// JWT-секрет коробки. API в production (а коробка запускает его именно так)
+// ТРЕБУЕТ JWT_SECRET (assertRequiredEnv в printpro-api/src/main.ts) — без него
+// API упадёт на старте. Генерируем один раз и храним в config: постоянный секрет
+// нужен, чтобы токены не инвалидировались при каждом перезапуске программы.
+function getOrCreateJwtSecret() {
+  let secret = store.get('jwtSecret');
+  if (!secret) {
+    secret = require('crypto').randomBytes(48).toString('hex');
+    store.set('jwtSecret', secret);
+  }
+  return secret;
+}
+
 // IP этого компьютера в локальной сети — показываем на главном ПК, чтобы на
 // кассах ввести те же цифры (см. §6 docs/06-АРХИТЕКТУРА-КОРОБКА-ЭЛЕКТРОН.md).
 function getLanIp() {
@@ -123,10 +137,9 @@ function getLanIp() {
   return '127.0.0.1';
 }
 
-// Ждём, пока API ответит на /api/health (эндпоинт добавляет оркестратор —
-// см. README, раздел «Требуемые изменения в хосте», п.4). Пока эндпоинта
-// нет — этот poll будет всегда таймаутить; API от этого не перестаёт
-// работать, просто веб-окно откроется чуть позже/по таймауту.
+// Ждём, пока API ответит на /api/health (эндпоинт уже есть в printpro-api —
+// HealthController, liveness). Если по какой-то причине не ответит за таймаут,
+// веб-окно всё равно откроется чуть позже.
 function waitForHttpOk(url, { timeoutMs = 30000, intervalMs = 500 } = {}) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve) => {
@@ -231,10 +244,10 @@ function runPrismaMigrateDeploy(paths, databaseUrl) {
   });
 }
 
-// Заводим компанию/админа. Файл dist/bootstrap/seed.js пока НЕ существует —
-// его добавляет оркестратор (см. README, п.1 «Требуемые изменения в хосте»).
-// Если файла нет — не роняем запуск, просто предупреждаем в логе: без seed
-// не будет ни компании, ни пользователя admin/admin123 для первого входа.
+// Заводим компанию/админа компилируемым seed (dist/bootstrap/seed.js — уже есть
+// в printpro-api, идемпотентный). Если по какой-то причине файл не найден — не
+// роняем запуск, а предупреждаем в логе: без seed не будет ни компании, ни
+// пользователя admin/admin123 для первого входа.
 function runSeed(paths, databaseUrl) {
   return new Promise((resolve) => {
     const seedScript = path.join(paths.apiDir, 'dist', 'bootstrap', 'seed.js');
@@ -266,19 +279,18 @@ function startApiProcess(paths, databaseUrl) {
       DATABASE_URL: databaseUrl,
       PORT: String(API_PORT),
       NODE_ENV: 'production',
+      // Секрет подписи JWT (обязателен в production) — постоянный для этой установки.
+      JWT_SECRET: getOrCreateJwtSecret(),
       // Папка загруженных файлов — ВНЕ установленной программы, в userData,
-      // чтобы обновление приложения не стирало файлы клиентов.
-      // Требует поддержки env UPLOADS_DIR на стороне printpro-api — см.
-      // README, «Требуемые изменения в хосте», п.2 (пока api пишет в
-      // <cwd>/uploads, т.е. фактически внутрь paths.apiDir/uploads).
+      // чтобы обновление приложения не стирало файлы клиентов. printpro-api
+      // уже читает UPLOADS_DIR (main.ts + image-upload.options.ts).
       UPLOADS_DIR: paths.uploads,
       // Короткий код этой точки — нужен sync-worker'у (Фаза 3); пока не
       // используется, но пробрасываем заранее.
       NODE_ID: store.get('nodeId') || 'BOX',
-      // Разрешить CORS для адресов локальной сети даже в production-сборке
-      // (по умолчанию LAN-эвристика в main.ts работает только при
-      // NODE_ENV !== 'production'). Требует отдельного флага на стороне
-      // printpro-api — см. README, п.3.
+      // Разрешить CORS для адресов локальной сети в production-сборке (кассы
+      // ходят к главному ПК по LAN-IP). printpro-api уже поддерживает флаг
+      // ALLOW_LAN_ORIGINS (main.ts), развязанный от NODE_ENV.
       ALLOW_LAN_ORIGINS: '1',
     },
   });
