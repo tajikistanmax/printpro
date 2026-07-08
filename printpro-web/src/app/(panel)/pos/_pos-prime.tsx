@@ -152,6 +152,7 @@ function OrderPanelPrime({ ctx }: { ctx: PosCtx }) {
   };
 
   const payDisabled =
+    c.paying ||
     c.cart.length === 0 ||
     (c.isMixed && c.splitLeft !== 0) ||
     (c.method === 'DEBT' && !c.phone.trim());
@@ -492,7 +493,7 @@ function OrderPanelPrime({ ctx }: { ctx: PosCtx }) {
           disabled={payDisabled}
           className="mt-4 flex w-full items-center justify-between rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-3.5 font-semibold text-white shadow-md shadow-indigo-500/25 transition hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 disabled:shadow-none"
         >
-          <span>{c.method === 'DEBT' ? 'Записать в долг' : 'Оплатить'}</span>
+          <span>{c.paying ? 'Оплата…' : c.method === 'DEBT' ? 'Записать в долг' : 'Оплатить'}</span>
           <span className="text-lg font-bold tabular-nums">{c.money(c.total)}</span>
         </button>
         <button

@@ -312,7 +312,9 @@ export default function LoginPage() {
               Язык: Русский
               <ChevronDown className="h-4 w-4" />
             </button>
-            <span className="text-slate-400">Версия 2.5.0.0</span>
+            {/* Реальную версию системы показываем в «Настройки → О системе»
+                (берётся из package.json бэкенда). Прежний хардкод «2.5.0.0»
+                вводил в заблуждение — расходился с фактической версией. */}
           </div>
           <p className="mt-4 text-xs text-slate-400">
             © 2025 MaxSoft. Все права защищены.

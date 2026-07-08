@@ -89,6 +89,10 @@ export default function PosPage() {
   const [cashReceived, setCashReceived] = useState(''); // получено наличными (для сдачи)
   const [note, setNote] = useState(''); // примечание к заказу
   const [msg, setMsg] = useState('');
+  // Защита от двойной оплаты: ref блокирует повторный вход в pay() мгновенно
+  // (второй клик не дожидается ре-рендера), state — для визуальной блокировки кнопок.
+  const payingRef = useRef(false);
+  const [paying, setPaying] = useState(false);
   const [receipt, setReceipt] = useState<any | null>(null);
   // Ключ идемпотентности: один на «корзину», новый — после успешной продажи.
   // Защищает от двойного списания при двойном клике / обрыве сети.
@@ -137,9 +141,14 @@ export default function PosPage() {
             phone: ui.phone,
             inn: ui.companyInn,
           });
-          setTransferPay({ qr: ui.payTransferQr, requisite: ui.payTransferRequisite });
         }
       })
+      .catch(() => {});
+    // Платёжные реквизиты (перевод) — только для авторизованного кассира
+    // (не публикуются анонимно через /settings/ui).
+    api
+      .get(`/settings/receipt-info`)
+      .then((r) => setTransferPay({ qr: r?.payTransferQr, requisite: r?.payTransferRequisite }))
       .catch(() => {});
     // Недавние заказы + статистика (для богатых оформлений). Требует orders.view —
     // если права нет, просто останутся пустыми.
@@ -525,6 +534,11 @@ export default function PosPage() {
 
   async function pay(overrideMethod?: string) {
     if (cart.length === 0) return;
+    // Повторный вход блокируем сразу (двойной клик по «Оплатить»). Бэкенд ещё и
+    // идемпотентен по saleKey — но и на фронте не даём уйти двум запросам.
+    if (payingRef.current) return;
+    payingRef.current = true;
+    setPaying(true);
     setMsg('');
     const useMethod = overrideMethod ?? method;
 
@@ -538,6 +552,8 @@ export default function PosPage() {
       const sum = Number(payments.reduce((s, p) => s + p.amount, 0).toFixed(2));
       if (sum !== total) {
         setMsg(`Сумма частей (${sum} c.) должна равняться итогу (${total} c.)`);
+        payingRef.current = false;
+        setPaying(false);
         return;
       }
     }
@@ -599,6 +615,9 @@ export default function PosPage() {
       );
     } catch (err: any) {
       setMsg('Ошибка: ' + err.message);
+    } finally {
+      payingRef.current = false;
+      setPaying(false);
     }
   }
 
@@ -759,6 +778,7 @@ export default function PosPage() {
       void pay();
     },
     payWith,
+    paying,
     msg,
     recentOrders,
     orderStats,

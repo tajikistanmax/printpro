@@ -97,6 +97,7 @@ export interface PosCtx {
   transferRequisite: string;
   pay: () => void;
   payWith: (method: string) => void;
+  paying: boolean; // идёт оплата — блокировать кнопки от повторного клика
   msg: string;
   // для богатых оформлений
   recentOrders: any[];
@@ -632,13 +633,14 @@ function OrderPanelShop({ ctx }: { ctx: PosCtx }) {
           }
         }}
         disabled={
+          c.paying ||
           c.cart.length === 0 ||
           (c.isMixed && c.splitLeft !== 0) ||
           (c.method === 'DEBT' && !c.phone.trim())
         }
         className="mt-4 flex w-full items-center justify-between rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
       >
-        <span>{c.method === 'DEBT' ? 'Записать в долг' : `Оплатить ${c.money(c.total)}`}</span>
+        <span>{c.paying ? 'Оплата…' : c.method === 'DEBT' ? 'Записать в долг' : `Оплатить ${c.money(c.total)}`}</span>
         <span className="text-xs opacity-70">F2</span>
       </button>
       <button

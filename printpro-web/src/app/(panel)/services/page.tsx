@@ -230,8 +230,14 @@ export default function ServicesPage() {
 
   async function deleteService(id: string) {
     if (!confirm('Удалить услугу? Это действие необратимо.')) return;
-    try { await api.del(`/services/${id}`); } catch {}
-    if (editId === id) setEditId(null);
+    // Ошибку удаления показываем, а не глотаем: раньше отказ (403 / услуга занята)
+    // проходил молча, список просто перезагружался и услуга «оставалась» без причины.
+    try {
+      await api.del(`/services/${id}`);
+      if (editId === id) setEditId(null);
+    } catch (err: any) {
+      setEditMsg('Не удалось удалить услугу: ' + (err?.message ?? 'ошибка'));
+    }
     load();
   }
 

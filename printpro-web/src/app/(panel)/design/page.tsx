@@ -159,7 +159,15 @@ export default function DesignPage() {
     const next = { ...cur, [k]: !cur[k] };
     setSelected({ ...selected, checklist: next });
     setProofs((ps) => ps.map((p) => (p.id === selected.id ? { ...p, checklist: next } : p)));
-    try { await api.patch(`/design/${selected.id}`, { checklist: next }); } catch {}
+    try {
+      await api.patch(`/design/${selected.id}`, { checklist: next });
+    } catch (err: any) {
+      // Откатываем оптимистичное изменение: раньше при ошибке галочка «сохранялась»
+      // в UI, но не на сервере — при перезагрузке пропадала без объяснений.
+      setSelected({ ...selected, checklist: cur });
+      setProofs((ps) => ps.map((p) => (p.id === selected.id ? { ...p, checklist: cur } : p)));
+      setMsg('Не удалось сохранить чек-лист: ' + (err?.message ?? 'ошибка'));
+    }
   }
 
   function pickFile(proofId: string) {

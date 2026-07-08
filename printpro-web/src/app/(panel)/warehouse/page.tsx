@@ -310,7 +310,13 @@ export default function WarehousePage() {
 
   // ---- панель материала ----
   async function openMaterial(id: string) {
-    try { const full = await api.get(`/products/${id}`); setMaterial(full); } catch {}
+    // Ошибку не глотаем: раньше при сбое карточка молча не открывалась.
+    try {
+      const full = await api.get(`/products/${id}`);
+      setMaterial(full);
+    } catch (e: any) {
+      alert('Не удалось открыть карточку товара: ' + (e?.message ?? e));
+    }
   }
   async function addAlias() {
     const code = aliasInput.trim();
