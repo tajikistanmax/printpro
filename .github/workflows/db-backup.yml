@@ -24,27 +24,33 @@ concurrency:
 jobs:
   dump:
     runs-on: ubuntu-latest
-    # Если секрет не задан — джоб не запустится (защита от ложного «зелёного» без бэкапа).
-    if: ${{ github.repository_owner != '' }}
     steps:
+      # Пока секреты не заданы — аккуратно ПРОПУСКАЕМ бэкап (не падаем), чтобы
+      # по расписанию не копились «красные» прогоны до активации владельцем.
+      # Как только секреты появятся, все шаги ниже включаются автоматически.
+      - name: Проверить наличие секретов
+        id: guard
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        run: |
+          if [ -z "$BACKUP_DATABASE_URL" ] || [ -z "$S3_BUCKET" ]; then
+            echo "::notice::Секреты бэкапа (BACKUP_DATABASE_URL / S3_BUCKET) не заданы — шаг пропущен. См. шапку файла для активации."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Установить PostgreSQL client (pg_dump)
+        if: steps.guard.outputs.configured == 'true'
         run: |
           sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
           sudo apt-get update
           sudo apt-get install -y postgresql-client-16
 
-      - name: Проверить наличие секретов
-        env:
-          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
-          S3_BUCKET: ${{ secrets.S3_BUCKET }}
-        run: |
-          if [ -z "$BACKUP_DATABASE_URL" ] || [ -z "$S3_BUCKET" ]; then
-            echo "::error::Не заданы секреты BACKUP_DATABASE_URL / S3_BUCKET — бэкап невозможен. См. шапку файла."
-            exit 1
-          fi
-
       - name: Дамп БД (custom format, сжатый)
+        if: steps.guard.outputs.configured == 'true'
         env:
           BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
         run: |
@@ -56,6 +62,7 @@ jobs:
           ls -lh "$FILE"
 
       - name: Загрузить в offsite-хранилище (S3-совместимое)
+        if: steps.guard.outputs.configured == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

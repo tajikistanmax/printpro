@@ -4,9 +4,12 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-# По умолчанию панель обращается к локальному API на этом же компьютере
-ENV NEXT_PUBLIC_API_BASE=http://localhost:3000/api
-ENV NEXT_PUBLIC_SERVER_ORIGIN=http://localhost:3000
+# ВАЖНО: НЕ зашиваем NEXT_PUBLIC_API_BASE/SERVER_ORIGIN на этапе сборки.
+# Они попадают в клиентский бандл навсегда и ломают LAN-автоопределение:
+# касса на другой машине пошла бы в свой localhost:3000 (где API нет) вместо
+# главного ПК. Адрес API определяется в рантайме по хосту браузера
+# (см. printpro-web/src/lib/config.ts). Если для конкретного деплоя нужен
+# фиксированный адрес — задать эти переменные при сборке снаружи (--build-arg).
 RUN npm run build
 
 FROM node:20-alpine AS run

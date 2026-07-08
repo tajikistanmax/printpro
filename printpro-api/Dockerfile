@@ -21,5 +21,7 @@ COPY scripts ./scripts
 # Папка загрузок — монтируется томом в compose
 RUN mkdir -p uploads
 EXPOSE 3000
-# При старте: применяем миграции, заполняем (если пусто), затем запускаем API
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
+# При старте: применяем миграции, идемпотентно заполняем (компания/роли/admin —
+# иначе в свежий узел нельзя войти), затем запускаем API. Seed безопасен при
+# повторе (findFirst-guard'ы, роли не перезатираются).
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/bootstrap/seed.js && node dist/main"]
