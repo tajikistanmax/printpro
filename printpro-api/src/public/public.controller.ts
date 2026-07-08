@@ -125,8 +125,17 @@ export class PublicController {
 
     // Канонический номер как во внутреннем create: PREFIX-УЗЕЛ-ГОД-NNNNNN
     // (раньше был неканоничный «00042», ломавший поиск/сверку по номеру).
+    // Префикс — из настройки компании orderPrefix (а не хардкод 'ORD'), чтобы
+    // онлайн-заказы и заказы с кассы имели одинаковый префикс номера.
+    const prefixSetting = await this.prisma.setting.findFirst({
+      where: { companyId: dto.companyId, key: 'orderPrefix' },
+      select: { value: true },
+    });
+    const prefix =
+      (prefixSetting?.value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase() ||
+      'ORD';
     const orderNumber = docNumber(
-      'ORD',
+      prefix,
       await nextSeq(this.prisma, dto.companyId, 'ORDER'),
       6,
     );
