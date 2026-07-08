@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
@@ -65,12 +65,24 @@ async function bootstrap() {
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
 
-  // Request-id: сквозной идентификатор запроса (принимаем входящий или генерим),
-  // кладём в req и в заголовок ответа — по нему логи ошибок связываются с запросом.
+  // Request-id + access-лог: сквозной id запроса (входящий или сгенерированный)
+  // в req и заголовке ответа; по завершении — строка лога метод/путь/код/latency
+  // (кроме health-check, иначе шум от частых проверок Render). 5xx детально
+  // логирует AllExceptionsFilter; здесь — обзор трафика и времени ответа.
+  const httpLogger = new Logger('HTTP');
   app.use(
     (
-      req: { headers: Record<string, unknown>; requestId?: string },
-      res: { setHeader: (k: string, v: string) => void },
+      req: {
+        headers: Record<string, unknown>;
+        method?: string;
+        originalUrl?: string;
+        requestId?: string;
+      },
+      res: {
+        setHeader: (k: string, v: string) => void;
+        on: (event: string, cb: () => void) => void;
+        statusCode?: number;
+      },
       next: () => void,
     ) => {
       const incoming = req.headers['x-request-id'];
@@ -78,6 +90,14 @@ async function bootstrap() {
         typeof incoming === 'string' && incoming ? incoming : randomUUID();
       req.requestId = id;
       res.setHeader('x-request-id', id);
+      const start = Date.now();
+      res.on('finish', () => {
+        const url = req.originalUrl ?? '';
+        if (url.startsWith('/api/health')) return;
+        httpLogger.log(
+          `${req.method ?? '?'} ${url} ${res.statusCode ?? '?'} ${Date.now() - start}ms [req:${id}]`,
+        );
+      });
       next();
     },
   );
