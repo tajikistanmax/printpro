@@ -20,7 +20,11 @@ const http = require('http');
 const { spawn } = require('child_process');
 const Store = require('electron-store');
 const log = require('electron-log');
-const EmbeddedPostgres = require('embedded-postgres');
+// ВНИМАНИЕ: embedded-postgres v17 — чистый ESM ("type":"module"), его НЕЛЬЗЯ
+// грузить через require() из CJS-главного процесса (иначе ERR_REQUIRE_ESM и
+// приложение падает на старте). Загружаем динамическим import() ниже, внутри
+// async-функции ensureEmbeddedPostgres(). Та же причина, что и с electron-store
+// (см. комментарий у секции настроек).
 
 const { schedulePgDumpBackups, runBackupOnce } = require('./backup');
 
@@ -185,7 +189,49 @@ function spawnNode(scriptPath, args, options) {
 // 5. Встроенная база данных (роль "main")
 // ──────────────────────────────────────────────────────────────────────────
 
+// Оборачивает promise таймаутом: если встроенный Postgres «зависнет» (например,
+// initdb.exe не найден по пути и spawn не вернёт ни close, ни error — у
+// embedded-postgres нет обработчика 'error'), пользователь увидит понятную
+// ошибку, а не вечный спиннер.
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Таймаут (${Math.round(ms / 1000)}с): ${label}`)),
+      ms,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function ensureEmbeddedPostgres(paths) {
+  // embedded-postgres — ESM-only, поэтому грузим через динамический import()
+  // (require() бросил бы ERR_REQUIRE_ESM). default-экспорт = класс EmbeddedPostgres.
+  const { default: EmbeddedPostgres } = await import('embedded-postgres');
+
+  // Диагностика путей к серверным бинарникам Postgres. В собранном .exe пакеты
+  // embedded-postgres / @embedded-postgres лежат в app.asar.unpacked (см.
+  // asarUnpack) — иначе spawn(initdb) не находит .exe внутри asar и процесс
+  // инициализации зависает. Логируем реальные пути и их наличие.
+  try {
+    const winBins = await withTimeout(
+      import('@embedded-postgres/windows-x64'),
+      15000,
+      'загрузка @embedded-postgres/windows-x64',
+    );
+    log.info(
+      `[pg-bins] initdb=${winBins.initdb} exists=${fs.existsSync(winBins.initdb)}`,
+    );
+    log.info(
+      `[pg-bins] postgres=${winBins.postgres} exists=${fs.existsSync(winBins.postgres)}`,
+    );
+  } catch (e) {
+    log.error(
+      '[pg-bins] не удалось получить пути к бинарникам Postgres: ' +
+        (e && e.message ? e.message : e),
+    );
+  }
+
   // API пакета сверен с документацией embedded-postgres: конструктор
   // (databaseDir/user/password/port/persistent/onLog/onError) и методы
   // initialise()/start()/stop()/createDatabase() — актуальны.
@@ -195,6 +241,13 @@ async function ensureEmbeddedPostgres(paths) {
     password: PG_PASSWORD,
     port: PG_PORT,
     persistent: true,
+    // ВАЖНО: кодировка БД — строго UTF8. По умолчанию initdb берёт локаль
+    // системы (на русской Windows это WIN1251), а миграции/данные содержат
+    // Unicode-символы (например «→» в комментарии миграции, эмодзи, разные
+    // языки) — в WIN1251 они не влезают и миграция падает (SqlState 22P05).
+    // locale=C делает кластер независимым от системной локали (сортировка —
+    // побайтовая; для типографии не критично, зато одинаково на любой машине).
+    initdbFlags: ['--encoding=UTF8', '--locale=C'],
     // Вывод initdb/postgres направляем в electron-log.
     onLog: (msg) => log.info('[postgres]', msg),
     onError: (err) =>
@@ -206,10 +259,10 @@ async function ensureEmbeddedPostgres(paths) {
   const firstRun = !fs.existsSync(path.join(paths.pgData, 'PG_VERSION'));
   if (firstRun) {
     log.info('Встроенный Postgres: первый запуск, инициализация (initdb)...');
-    await pg.initialise();
+    await withTimeout(pg.initialise(), 120000, 'инициализация Postgres (initdb)');
   }
 
-  await pg.start();
+  await withTimeout(pg.start(), 60000, 'запуск Postgres');
   log.info(`Встроенный Postgres запущен на порту ${PG_PORT}`);
 
   // Создаём базу printpro, если её ещё нет (после initdb есть только служебные БД).
