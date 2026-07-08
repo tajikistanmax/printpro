@@ -8,7 +8,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "publish": "electron-builder --publish always"
   },
   "dependencies": {
     "electron-updater": "^6.3.9",
@@ -100,6 +101,10 @@
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico"
     },
-    "publish": null
+    "publish": {
+      "provider": "github",
+      "owner": "tajikistanmax",
+      "repo": "printpro-releases"
+    }
   }
 }
