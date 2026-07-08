@@ -53,8 +53,39 @@ export const SERVER_ORIGIN = pick(
   '',
 );
 
-// Пока нет выбора компании по поддомену — используем нашу тестовую компанию.
-// Позже определим автоматически по адресу (dushanbeprint.printpro.app).
-export const DEFAULT_COMPANY_ID =
+// companyId арендатора.
+//  - Облако: фиксированный (env NEXT_PUBLIC_COMPANY_ID или fallback-UUID).
+//  - Коробка: у каждого клиента СВОЙ. Фронт узнаёт его в рантайме через
+//    /api/system/company-id и кэширует в localStorage. DEFAULT_COMPANY_ID
+//    синхронно отдаёт кэш (если уже разрешён), иначе fallback. На сервере
+//    (SSR) — всегда fallback.
+const FALLBACK_COMPANY_ID =
   process.env.NEXT_PUBLIC_COMPANY_ID ??
   '7628001a-5f9c-45ec-8f6f-a80280d409c5';
+
+export const DEFAULT_COMPANY_ID =
+  (typeof window !== 'undefined' &&
+    window.localStorage.getItem('companyId')) ||
+  FALLBACK_COMPANY_ID;
+
+// Разрешить companyId этой установки в рантайме — вызвать один раз на клиенте
+// при старте. Облако: id совпадает с fallback → ничего не меняется. Коробка:
+// id отличается → кэшируем и ОДИН раз перезагружаем, чтобы модульная константа
+// его подхватила (после перезагрузки id уже в localStorage → совпадёт → без
+// повторной перезагрузки). Офлайн/ошибка — остаёмся на текущем companyId.
+export async function ensureCompanyIdResolved(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const res = await fetch(`${API_BASE}/system/company-id`);
+    if (!res.ok) return;
+    const data = (await res.json()) as { companyId?: string | null };
+    const id = data?.companyId;
+    if (!id) return;
+    if (id !== window.localStorage.getItem('companyId')) {
+      window.localStorage.setItem('companyId', id);
+      if (id !== DEFAULT_COMPANY_ID) window.location.reload();
+    }
+  } catch {
+    // офлайн/ошибка — companyId остаётся текущим (кэш или fallback)
+  }
+}

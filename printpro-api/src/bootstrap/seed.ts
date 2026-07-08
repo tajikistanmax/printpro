@@ -2,14 +2,31 @@
 // Компилируемый (не требует ts-node в проде/коробке): `node dist/bootstrap/seed.js`.
 // Идемпотентен: повторный запуск не теряет и не затирает данные/кастомизацию ролей.
 import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { PERMISSIONS, SYSTEM_ROLES } from '../auth/permissions';
 
-// Фиксированный ID компании — совпадает с DEFAULT_COMPANY_ID на фронтенде,
+// Фиксированный ID компании (облако/дефолт) — совпадает с fallback на фронтенде,
 // чтобы система работала и локально, и в облаке одинаково.
-const COMPANY_ID = '7628001a-5f9c-45ec-8f6f-a80280d409c5';
+const DEFAULT_COMPANY_ID = '7628001a-5f9c-45ec-8f6f-a80280d409c5';
+
+// В коробке (BOX_MODE=1) у каждого клиента — СВОЙ companyId: на первом запуске
+// генерируем случайный, на последующих переиспользуем уже созданный (иначе seed
+// плодил бы новые компании). Фронт коробки узнаёт его через /api/system/company-id.
+// Без BOX_MODE (облако) — фиксированный DEFAULT_COMPANY_ID (поведение как было).
+async function resolveCompanyId(prisma: PrismaClient): Promise<string> {
+  if (process.env.BOX_MODE === '1') {
+    const existing = await prisma.company.findFirst({
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    return existing?.id ?? randomUUID();
+  }
+  return DEFAULT_COMPANY_ID;
+}
 
 export async function runSeed(prisma: PrismaClient): Promise<void> {
+  const COMPANY_ID = await resolveCompanyId(prisma);
   // 0. Гарантируем компанию, филиал и единицу измерения
   await prisma.company.upsert({
     where: { id: COMPANY_ID },

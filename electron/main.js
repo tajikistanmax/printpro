@@ -261,7 +261,9 @@ function runSeed(paths, databaseUrl) {
     }
     const child = spawnNode(seedScript, [], {
       cwd: paths.apiDir,
-      env: { DATABASE_URL: databaseUrl },
+      // BOX_MODE=1 — seed сгенерирует СВОЙ companyId для этой установки коробки
+      // (у каждого клиента свой tenant), а не фиксированный облачный.
+      env: { DATABASE_URL: databaseUrl, BOX_MODE: '1' },
     });
     child.on('exit', (code) => resolve(code === 0));
   });
