@@ -14,4 +14,5 @@ export class AdjustStockDto {
 
   @IsOptional() @IsString() reason?: string;
   @IsOptional() @IsString() userId?: string;
+  @IsOptional() @IsString() idempotencyKey?: string;
 }

@@ -8,4 +8,5 @@ export class WriteOffDto {
   @IsNumber() @Min(0.001) quantity: number;
   @IsOptional() @IsString() reason?: string;
   @IsOptional() @IsString() userId?: string;
+  @IsOptional() @IsString() idempotencyKey?: string;
 }

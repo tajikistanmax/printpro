@@ -11,4 +11,6 @@ export class ReceiveStockDto {
   @IsOptional() @IsNumber() cost?: number; // закупочная цена за единицу
   @IsOptional() @IsString() reason?: string;
   @IsOptional() @IsString() userId?: string;
+  // Идемпотентность: повтор с тем же ключом (двойной клик/ретрай) не задваивает приход.
+  @IsOptional() @IsString() idempotencyKey?: string;
 }

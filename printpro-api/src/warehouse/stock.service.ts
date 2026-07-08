@@ -69,6 +69,27 @@ export class StockService {
       await this.ensureProduct(tx, dto.companyId, dto.productId);
       await this.ensureBranch(tx, dto.companyId, dto.branchId);
 
+      if (dto.idempotencyKey) {
+        const dup = await tx.stockMovement.findFirst({
+          where: { idempotencyKey: dto.idempotencyKey },
+          select: { id: true },
+        });
+        // Повтор (двойной клик/ретрай) — операция уже выполнена: возвращаем
+        // текущий остаток без повторного применения. Гонку добивает unique-индекс
+        // (вторая транзакция упадёт на P2002 и откатится целиком).
+        if (dup) {
+          return tx.stock.findUnique({
+            where: {
+              productId_branchId: {
+                productId: dto.productId,
+                branchId: dto.branchId,
+              },
+            },
+            include: { product: true, branch: true },
+          });
+        }
+      }
+
       // 1. Сначала атомарно увеличиваем (или создаём) остаток. Факт «после»
       //    берём из результата upsert (increment под блокировкой строки), а не
       //    из незалоченного пред-чтения — иначе при конкурентном приходе afterQty
@@ -104,6 +125,7 @@ export class StockService {
           afterQty,
           reason: dto.reason ?? 'Приход товара',
           userId: dto.userId,
+          idempotencyKey: dto.idempotencyKey ?? null,
         },
       });
 
@@ -139,6 +161,23 @@ export class StockService {
     return this.prisma.$transaction(async (tx) => {
       await this.ensureProduct(tx, dto.companyId, dto.productId);
       await this.ensureBranch(tx, dto.companyId, dto.branchId);
+      if (dto.idempotencyKey) {
+        const dup = await tx.stockMovement.findFirst({
+          where: { idempotencyKey: dto.idempotencyKey },
+          select: { id: true },
+        });
+        if (dup) {
+          return tx.stock.findUnique({
+            where: {
+              productId_branchId: {
+                productId: dto.productId,
+                branchId: dto.branchId,
+              },
+            },
+            include: { product: true, branch: true },
+          });
+        }
+      }
       // Условное списание: атомарно уменьшаем, только если остатка хватает.
       const dec = await tx.stock.updateMany({
         where: {
@@ -183,6 +222,7 @@ export class StockService {
           afterQty,
           reason: dto.reason ?? 'Списание',
           userId: dto.userId,
+          idempotencyKey: dto.idempotencyKey ?? null,
         },
       });
 
@@ -217,6 +257,13 @@ export class StockService {
       await this.ensureProduct(tx, dto.companyId, dto.productId);
       await this.ensureBranch(tx, dto.companyId, dto.fromBranchId);
       await this.ensureBranch(tx, dto.companyId, dto.toBranchId);
+      if (dto.idempotencyKey) {
+        const dup = await tx.stockMovement.findFirst({
+          where: { idempotencyKey: dto.idempotencyKey },
+          select: { id: true },
+        });
+        if (dup) return { ok: true };
+      }
       const qty = Number(dto.quantity);
       // Списываем из источника условно (атомарно), чтобы не увести в минус.
       const dec = await tx.stock.updateMany({
@@ -286,6 +333,8 @@ export class StockService {
             afterQty: Number((available - qty).toFixed(3)),
             reason: 'Перемещение между филиалами',
             userId: dto.userId,
+            // Ключ идемпотентности вешаем на OUT-движение (IN остаётся без ключа).
+            idempotencyKey: dto.idempotencyKey ?? null,
           },
           {
             companyId: dto.companyId,
@@ -506,6 +555,12 @@ export class StockService {
     return this.prisma.$transaction(async (tx) => {
       const product = await this.ensureProduct(tx, dto.companyId, dto.productId);
       await this.ensureBranch(tx, dto.companyId, dto.branchId);
+      if (dto.idempotencyKey) {
+        const dup = await tx.writeOff.findFirst({
+          where: { idempotencyKey: dto.idempotencyKey },
+        });
+        if (dup) return dup; // повтор — уже списано, возвращаем существующий документ
+      }
       // Условное списание: атомарно, только если остатка хватает.
       const dec = await tx.stock.updateMany({
         where: {
@@ -543,6 +598,7 @@ export class StockService {
           cost,
           reason: dto.reason,
           userId: dto.userId,
+          idempotencyKey: dto.idempotencyKey ?? null,
         },
       });
 
@@ -557,6 +613,7 @@ export class StockService {
           afterQty,
           reason: dto.reason ?? 'Списание',
           userId: dto.userId,
+          idempotencyKey: dto.idempotencyKey ?? null,
         },
       });
 

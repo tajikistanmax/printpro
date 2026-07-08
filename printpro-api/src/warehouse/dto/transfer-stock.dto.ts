@@ -8,6 +8,7 @@ export class TransferStockDto {
   @IsString() toBranchId: string;
   @IsNumber() @Min(0.001) quantity: number;
   @IsOptional() @IsString() userId?: string;
+  @IsOptional() @IsString() idempotencyKey?: string;
 }
 
 // Инвентаризация: выставить фактический остаток

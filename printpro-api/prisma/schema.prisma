@@ -615,6 +615,9 @@ model StockMovement {
   totalCost       Decimal?       @db.Decimal(12, 4) // unitCost * quantity
   productionJobId String? // производственное задание, вызвавшее списание
   productionJob   ProductionJob? @relation(fields: [productionJobId], references: [id])
+  // Идемпотентность stock-мутаций: двойной сабмит (двойной клик/ретрай) с тем же
+  // ключом не задваивает движение/остаток. Для перемещений ключ на OUT-движении.
+  idempotencyKey String?      @unique
   createdAt DateTime          @default(now())
 
   // Индексы под горячие агрегаты склада/отчётов (P0-16) — Postgres не индексирует FK сам.
@@ -796,6 +799,7 @@ model WriteOff {
   cost      Decimal   @default(0) @db.Decimal(12, 2) // себестоимость списанного
   reason    String?
   userId    String?
+  idempotencyKey String? @unique // защита от двойного сабмита списания
   createdAt DateTime  @default(now())
 
   @@index([companyId])
