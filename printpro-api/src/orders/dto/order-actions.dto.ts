@@ -17,6 +17,9 @@ export class AddPaymentDto {
   @IsEnum(PaymentMethod) method: PaymentMethod;
   @IsOptional() @IsString() userId?: string;
   @IsOptional() @IsString() shiftId?: string;
+  // Идемпотентность частичной оплаты (двойной клик/ретрай POS): повтор с тем же
+  // ключом возвращает уже проведённую оплату, а не создаёт вторую.
+  @IsOptional() @IsString() idempotencyKey?: string;
 }
 
 // Возврат по чеку/заказу (частичный): какие позиции и сколько вернуть

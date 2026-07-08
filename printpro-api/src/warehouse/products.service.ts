@@ -215,7 +215,10 @@ export class ProductsService {
         .replace(',', '.');
       if (s === '') return undefined;
       const n = Number(s);
-      return Number.isFinite(n) ? n : undefined;
+      // Отрицательные цены/остатки — заведомо ошибочные данные (импорт минует
+      // @Min(0) DTO). Игнорируем такую ячейку (как пустую), чтобы отрицательная
+      // цена не попала в отчёты прибыли/оценку склада.
+      return Number.isFinite(n) && n >= 0 ? n : undefined;
     };
     const str = (v: any) => {
       const s = String(v ?? '').trim();

@@ -458,6 +458,8 @@ model ServicePriceTier {
   minQty    Int
   maxQty    Int?
   price     Decimal   @db.Decimal(12, 2)
+
+  @@index([serviceId])
 }
 
 model ServiceSize {
@@ -470,6 +472,8 @@ model ServiceSize {
   service   Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   label     String // например 10x15, A4
   price     Decimal   @db.Decimal(12, 2)
+
+  @@index([serviceId])
 }
 
 model ServiceOption {
@@ -482,6 +486,8 @@ model ServiceOption {
   service       Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   name          String // тип бумаги, срочность
   priceModifier Decimal   @default(0) @db.Decimal(12, 2)
+
+  @@index([serviceId])
 }
 
 // ======================= ТОВАРЫ И СКЛАД =======================
@@ -703,6 +709,9 @@ model StockReceiptItem {
   quantity  Decimal      @db.Decimal(12, 3)
   cost      Decimal      @default(0) @db.Decimal(12, 2) // закупочная цена за единицу
   salePrice Decimal?     @db.Decimal(12, 2) // цена продажи, заданная при приёмке
+
+  @@index([receiptId])
+  @@index([productId])
 }
 
 // Заявка на закупку (что нужно докупить). Хранится как снимок для печати/доказательства:
@@ -904,6 +913,12 @@ model OrderItem {
   updatedAt   DateTime  @default(now()) @updatedAt
   deletedAt   DateTime?
   syncNode    String?
+
+  // Позиции грузятся в каждой карточке заказа и каскадятся при удалении —
+  // Postgres не индексирует FK автоматически.
+  @@index([orderId])
+  @@index([serviceId])
+  @@index([productId])
 }
 
 model OrderRepairDetail {
@@ -981,6 +996,10 @@ model Payment {
   amount    Decimal       @db.Decimal(12, 2)
   method    PaymentMethod @default(CASH)
   createdAt DateTime      @default(now())
+  // Идемпотентность частичной оплаты: повтор с тем же ключом (двойной клик/ретрай
+  // POS) не создаёт вторую оплату. Ключи случайные (UUID), поэтому глобальный
+  // unique — как у Order/Return/StockMovement.
+  idempotencyKey String? @unique
   // --- синхронизация ---
   updatedAt DateTime      @default(now()) @updatedAt
   deletedAt DateTime?
@@ -1026,6 +1045,10 @@ model ClientDebt {
   dueDate   DateTime?
   isClosed  Boolean   @default(false)
   createdAt DateTime  @default(now())
+
+  @@index([companyId])
+  @@index([clientId])
+  @@index([orderId])
 }
 
 // ======================= ЗАДАЧИ =======================
@@ -1151,6 +1174,8 @@ model QuoteItem {
   quantity    Decimal   @default(1) @db.Decimal(12, 3)
   unitPrice   Decimal   @default(0) @db.Decimal(12, 2)
   lineTotal   Decimal   @default(0) @db.Decimal(12, 2)
+
+  @@index([quoteId])
 }
 
 // ======================= ДИЗАЙН-МАКЕТЫ =======================
@@ -1287,6 +1312,11 @@ model AuditLog {
   entityId  String?
   data      Json?
   createdAt DateTime @default(now())
+
+  // Журнал растёт быстрее всех; выборки/отчёты — по компании и времени,
+  // фильтр по сущности — для истории конкретной записи.
+  @@index([companyId, createdAt])
+  @@index([entity, entityId])
 }
 
 model Setting {

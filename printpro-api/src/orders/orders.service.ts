@@ -198,6 +198,11 @@ export class OrdersService {
     // превышают лимит — блок. Проверяем ВНУТРИ транзакции (не до неё), чтобы
     // два параллельных заказа не проскочили лимит по отдельности.
     if (clientId) {
+      // Блокируем строку клиента до конца транзакции (FOR UPDATE). Без этого
+      // под READ COMMITTED два параллельных заказа читают один и тот же долг
+      // и оба проскакивают лимит. С блокировкой второй заказ ждёт коммита
+      // первого и видит его в агрегате долга — гонка кредит-лимита закрыта.
+      await tx.$executeRaw`SELECT id FROM "Client" WHERE id = ${clientId} FOR UPDATE`;
       const client = await tx.client.findUnique({
         where: { id: clientId },
         select: { creditLimit: true },
@@ -407,6 +412,19 @@ export class OrdersService {
       throw new NotFoundException('Заказ не найден');
     }
 
+    // Идемпотентность: если оплата с этим ключом уже проведена (двойной клик/ретрай
+    // POS после потерянного ответа) — возвращаем текущее состояние заказа, не создавая
+    // вторую оплату. Проверка ДО контроля остатка, иначе повтор упал бы на «уже оплачен».
+    if (dto.idempotencyKey) {
+      const existing = await tx.payment.findUnique({
+        where: { idempotencyKey: dto.idempotencyKey },
+        select: { id: true, orderId: true },
+      });
+      if (existing) {
+        return this.loadFull(tx, existing.orderId ?? orderId);
+      }
+    }
+
     // Защита от переплаты: нельзя внести больше, чем осталось к оплате.
     // Долговая оплата (method DEBT) здесь не проводится — это отдельный сценарий POS.
     // Эффективный итог = total − возвращённое: после частичного возврата к оплате
@@ -447,6 +465,10 @@ export class OrdersService {
           companyId: order.companyId,
           closedAt: null,
           deletedAt: null,
+          // Явно переданная смена должна принадлежать самому кассиру — иначе
+          // платёж можно провести в чужую открытую смену и исказить атрибуцию
+          // Z-отчёта/инкассации между кассирами.
+          ...(cashierId ? { userId: cashierId } : {}),
         },
         select: { id: true },
       });
@@ -487,6 +509,7 @@ export class OrdersService {
         method: dto.method,
         userId: cashierId,
         shiftId,
+        idempotencyKey: dto.idempotencyKey,
       },
     });
 
@@ -1043,18 +1066,10 @@ export class OrdersService {
         // фактически полученных денег (order.paid, уже за вычетом прошлых возвратов).
         const earned = Number((paid * 0.01).toFixed(2));
         if (earned > 0) {
-          const client = await tx.client.findUnique({
-            where: { id: order.clientId },
-            select: { bonusPoints: true },
-          });
-          const newBonus = Math.max(
-            0,
-            Number((Number(client?.bonusPoints ?? 0) - earned).toFixed(2)),
-          );
-          await tx.client.update({
-            where: { id: order.clientId },
-            data: { bonusPoints: newBonus },
-          });
+          // Атомарное списание бонусов с клампом на 0 (GREATEST). Read-modify-write
+          // (прочитать → вычесть → записать) терял параллельные начисления/списания
+          // по тому же клиенту; здесь одно атомарное UPDATE без гонки.
+          await tx.$executeRaw`UPDATE "Client" SET "bonusPoints" = GREATEST(0, "bonusPoints" - ${earned}) WHERE id = ${order.clientId}`;
         }
       }
 
@@ -1362,18 +1377,9 @@ export class OrdersService {
       if (order.clientId && moneyBack > 0) {
         const earned = Number((moneyBack * 0.01).toFixed(2));
         if (earned > 0) {
-          const client = await tx.client.findUnique({
-            where: { id: order.clientId },
-            select: { bonusPoints: true },
-          });
-          const newBonus = Math.max(
-            0,
-            Number((Number(client?.bonusPoints ?? 0) - earned).toFixed(2)),
-          );
-          await tx.client.update({
-            where: { id: order.clientId },
-            data: { bonusPoints: newBonus },
-          });
+          // Атомарное списание бонусов с клампом на 0 (см. refund выше) —
+          // без гонки read-modify-write при параллельных операциях клиента.
+          await tx.$executeRaw`UPDATE "Client" SET "bonusPoints" = GREATEST(0, "bonusPoints" - ${earned}) WHERE id = ${order.clientId}`;
         }
       }
 
