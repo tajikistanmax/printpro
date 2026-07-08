@@ -17,6 +17,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const http = require('http');
+const net = require('net');
 const { spawn } = require('child_process');
 const Store = require('electron-store');
 const log = require('electron-log');
@@ -492,9 +493,99 @@ function getBackupContext() {
 // 8. Оркестрация запуска
 // ──────────────────────────────────────────────────────────────────────────
 
+// Проверяет, свободен ли TCP-порт (пытаемся встать на него сервером). host=null
+// → слушаем ВСЕ интерфейсы (как это делают API на '::' и web на 0.0.0.0). Это
+// важно: проверка только на 127.0.0.1 НЕ ловит конфликт с программой, занявшей
+// 0.0.0.0:PORT (Windows разрешает отдельный bind на loopback) — а именно так и
+// падал API с EADDRINUSE, хотя порт «казался» свободным.
+function isPortFree(port, host) {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once('error', () => resolve(false));
+    srv.once('listening', () => srv.close(() => resolve(true)));
+    if (host) srv.listen(port, host);
+    else srv.listen(port);
+  });
+}
+
+// Перед запуском главного ПК убеждаемся, что нужные порты свободны. Иначе —
+// понятная ошибка (а не тихий полу-запуск: раньше при занятом 3000/3001 API/web
+// молча не поднимались, и пользователь видел пустую/битую панель без объяснения).
+async function assertPortsFree() {
+  const checks = [
+    // Postgres слушает только 127.0.0.1 — проверяем там же.
+    { port: PG_PORT, host: '127.0.0.1', what: 'встроенная база данных' },
+    // API ('::') и web (0.0.0.0) слушают ВСЕ интерфейсы — проверяем так же
+    // (host=null), иначе не поймаем чужой bind на 0.0.0.0:PORT.
+    { port: API_PORT, host: null, what: 'API-сервер' },
+    { port: WEB_PORT, host: null, what: 'веб-панель' },
+  ];
+  const busy = [];
+  for (const c of checks) {
+    // eslint-disable-next-line no-await-in-loop
+    if (!(await isPortFree(c.port, c.host))) {
+      busy.push(`порт ${c.port} — ${c.what}`);
+    }
+  }
+  if (busy.length) {
+    throw new Error(
+      'Не удаётся запустить PrintPro — нужные порты заняты другой программой:\n\n  ' +
+        busy.join('\n  ') +
+        '\n\nЧаще всего это уже запущенный экземпляр PrintPro или сервер разработки.\n' +
+        'Закройте эту программу и запустите PrintPro снова.',
+    );
+  }
+}
+
+// Холодный бэкап встроенной БД: копируем папку pgData ДО старта Postgres —
+// кластер ещё не запущен, значит копия консистентна (без pg_dump, которого нет
+// в комплекте embedded-postgres). Делаем не чаще раза в minIntervalMs, храним
+// последние `keep` копий. Восстановление: закрыть PrintPro и заменить папку
+// userData/pgdata содержимым нужной копии backups/pgdata_*.
+function maybeBackupPgdata(paths, keep = 7, minIntervalMs = 20 * 60 * 60 * 1000) {
+  try {
+    // Если база ещё не инициализирована (нет PG_VERSION) — копировать нечего.
+    if (!fs.existsSync(path.join(paths.pgData, 'PG_VERSION'))) return;
+    fs.mkdirSync(paths.backups, { recursive: true });
+
+    const listBackups = () =>
+      fs
+        .readdirSync(paths.backups)
+        .filter((f) => f.startsWith('pgdata_'))
+        .map((f) => ({ f, m: fs.statSync(path.join(paths.backups, f)).mtimeMs }))
+        .sort((a, b) => b.m - a.m);
+
+    const existing = listBackups();
+    if (existing.length && Date.now() - existing[0].m < minIntervalMs) {
+      log.info('Бэкап БД: свежая копия уже есть — пропускаем.');
+      return;
+    }
+
+    const stamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+    const dest = path.join(paths.backups, `pgdata_${stamp}`);
+    log.info('Бэкап БД: холодная копия pgdata → ' + dest);
+    fs.cpSync(paths.pgData, dest, { recursive: true });
+    log.info('Бэкап БД: копия готова.');
+
+    // Ротация — оставляем только `keep` самых свежих.
+    for (const { f } of listBackups().slice(keep)) {
+      fs.rmSync(path.join(paths.backups, f), { recursive: true, force: true });
+      log.info('Бэкап БД: удалена старая копия ' + f);
+    }
+  } catch (err) {
+    // Бэкап не должен ронять запуск приложения.
+    log.error('Бэкап БД (cold copy) не удался: ' + (err && err.message ? err.message : err));
+  }
+}
+
 async function startAsMain() {
   const paths = getPaths();
   ensureDirs(paths);
+
+  // 1) Порты свободны? (иначе понятная ошибка вместо тихого полу-запуска)
+  await assertPortsFree();
+  // 2) Холодный бэкап БД ДО старта Postgres (консистентная копия).
+  maybeBackupPgdata(paths);
 
   const databaseUrl = await ensureEmbeddedPostgres(paths);
   await runPrismaMigrateDeploy(paths, databaseUrl);
