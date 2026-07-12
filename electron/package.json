@@ -1,6 +1,6 @@
 {
   "name": "printpro-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "PrintPro — коробочная версия: устанавливается одним кликом, база данных встроена. Обёртка (Electron) вокруг printpro-api + printpro-web — код этих двух приложений НЕ дублируется.",
   "private": true,
   "author": "DushanbePrint",
