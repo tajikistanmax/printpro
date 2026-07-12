@@ -103,6 +103,46 @@
       background: #a9b3d6;
       cursor: not-allowed;
     }
+    button.secondary {
+      padding: 9px 14px;
+      border: 1px solid #c3cbe0;
+      border-radius: 7px;
+      background: #fff;
+      color: #2a3350;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.secondary:hover {
+      border-color: #94a6ff;
+      background: #f3f5ff;
+    }
+    #backupCard .title {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+    #backupCard .desc {
+      font-size: 12px;
+      color: #667;
+      margin-bottom: 10px;
+    }
+    #backupDirRow {
+      font-size: 13px;
+      margin-bottom: 10px;
+      word-break: break-all;
+    }
+    #backupDirRow b {
+      color: #1f2430;
+    }
+    #backupDirRow b.unset {
+      color: #c0392b;
+    }
+    .restore-block {
+      border-top: 1px solid #eef;
+      margin-top: 14px;
+      padding-top: 12px;
+    }
     #error {
       color: #c0392b;
       font-size: 13px;
@@ -134,6 +174,26 @@
 
     <div id="cashHostBlock">
       <input type="text" id="mainHost" placeholder="Например: 192.168.1.50" />
+    </div>
+  </div>
+
+  <div class="card" id="backupCard" style="display: none">
+    <div class="title">Резервные копии базы</div>
+    <div class="desc">
+      Чтобы данные не пропали при переустановке Windows, копии базы стоит хранить
+      <b>на флешке или другом диске</b> (не на диске C). Программа будет сохранять
+      туда копию автоматически.
+    </div>
+    <div id="backupDirRow">Папка для копий: <b id="backupDirVal" class="unset">не задана</b></div>
+    <button type="button" id="pickBackupBtn" class="secondary">Выбрать папку…</button>
+    <div class="lan-hint" id="driveHint" style="display: none"></div>
+
+    <div class="restore-block">
+      <div class="desc" style="margin-bottom: 8px">
+        Уже есть копия базы (например, после переустановки Windows)? Восстановите её:
+      </div>
+      <button type="button" id="restoreBtn" class="secondary">Восстановить из копии…</button>
+      <div id="restoreMsg" style="font-size: 12px; color: #556; margin-top: 8px; min-height: 14px"></div>
     </div>
   </div>
 

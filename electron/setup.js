@@ -12,11 +12,79 @@ const cloudSyncCheckbox = document.getElementById('cloudSync');
 const saveBtn = document.getElementById('saveBtn');
 const errorEl = document.getElementById('error');
 const lanHint = document.getElementById('lanHint');
+const backupCard = document.getElementById('backupCard');
+const backupDirVal = document.getElementById('backupDirVal');
+const pickBackupBtn = document.getElementById('pickBackupBtn');
+const driveHint = document.getElementById('driveHint');
+const restoreBtn = document.getElementById('restoreBtn');
+const restoreMsg = document.getElementById('restoreMsg');
 
 function updateVisibility() {
   cashHostBlock.style.display = roleCash.checked ? 'block' : 'none';
+  // Настройка копий и восстановление нужны только на главном ПК (там база).
+  backupCard.style.display = roleMain.checked ? 'block' : 'none';
   updateSaveEnabled();
 }
+
+// Показать текущую папку для копий (или «не задана» красным).
+function renderBackupDir(dir) {
+  if (dir) {
+    backupDirVal.textContent = dir;
+    backupDirVal.classList.remove('unset');
+  } else {
+    backupDirVal.textContent = 'не задана';
+    backupDirVal.classList.add('unset');
+  }
+}
+
+// Подтянуть инфо о копиях: текущая папка + подсказка про найденные диски.
+function loadBackupInfo() {
+  window.electronAPI
+    .getBackupInfo()
+    .then((info) => {
+      if (!info) return;
+      renderBackupDir(info.backupDir);
+      if (info.drives && info.drives.length) {
+        driveHint.style.display = 'block';
+        driveHint.textContent =
+          'Найдены диски: ' + info.drives.join('  ') + ' — можно выбрать флешку или диск D.';
+      } else {
+        driveHint.style.display = 'block';
+        driveHint.textContent =
+          'Второй диск/флешка не найдены. Вставьте флешку и нажмите «Выбрать папку…».';
+      }
+    })
+    .catch(() => {});
+}
+
+pickBackupBtn.addEventListener('click', async () => {
+  try {
+    const chosen = await window.electronAPI.pickBackupDir();
+    if (chosen) renderBackupDir(chosen);
+  } catch (err) {
+    restoreMsg.style.color = '#c0392b';
+    restoreMsg.textContent = 'Не удалось выбрать папку: ' + (err && err.message ? err.message : err);
+  }
+});
+
+restoreBtn.addEventListener('click', async () => {
+  restoreMsg.style.color = '#556';
+  restoreMsg.textContent = 'Выберите папку с копией…';
+  try {
+    // При успехе главный процесс сам перезапустит приложение — сообщение ниже
+    // покажется только при отмене/ошибке.
+    const res = await window.electronAPI.restoreAtSetup();
+    if (res && res.canceled) {
+      restoreMsg.textContent = '';
+    } else if (res && !res.ok) {
+      restoreMsg.style.color = '#c0392b';
+      restoreMsg.textContent = 'Не удалось восстановить: ' + (res.reason || 'неизвестная ошибка');
+    }
+  } catch (err) {
+    restoreMsg.style.color = '#c0392b';
+    restoreMsg.textContent = 'Ошибка восстановления: ' + (err && err.message ? err.message : err);
+  }
+});
 
 function updateSaveEnabled() {
   const roleChosen = roleMain.checked || roleCash.checked;
@@ -74,3 +142,6 @@ window.electronAPI
     updateVisibility();
   })
   .catch(() => {});
+
+// Текущая папка для копий и подсказка про диски (для карточки главного ПК).
+loadBackupInfo();

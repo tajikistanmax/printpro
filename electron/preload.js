@@ -26,4 +26,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Сохранить выбор роли ПК. Главный процесс сам перезапустит приложение
   // после сохранения (см. main.js, ipcMain.handle('config:save', ...)).
   saveConfig: (config) => ipcRenderer.invoke('config:save', config),
+
+  // Резервные копии (для экрана настройки главного ПК):
+  // — инфо о текущей папке копий и найденных дисках;
+  getBackupInfo: () => ipcRenderer.invoke('config:get-backup-info'),
+  // — открыть диалог выбора папки для копий (возвращает выбранный путь или null);
+  pickBackupDir: () => ipcRenderer.invoke('config:pick-backup-dir'),
+  // — восстановить базу из копии при первом запуске (после переустановки Windows).
+  restoreAtSetup: () => ipcRenderer.invoke('backup:restore-at-setup'),
 });

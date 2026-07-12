@@ -27,7 +27,9 @@ const log = require('electron-log');
 // async-функции ensureEmbeddedPostgres(). Та же причина, что и с electron-store
 // (см. комментарий у секции настроек).
 
-const { schedulePgDumpBackups, runBackupOnce } = require('./backup');
+// Модуль резервных копий: «холодная копия» папки данных Postgres + восстановление.
+// (pg_dump в комплекте embedded-postgres нет — см. backup.js, шапка.)
+const backup = require('./backup');
 
 // electron-log: пишем и в файл (userData/logs/main.log), и в консоль.
 log.transports.file.level = 'info';
@@ -91,6 +93,10 @@ const store = new Store({
     cloudSync: false, // галочка «синхронизировать с облаком» (для будущей Фазы 3)
     nodeId: '', // короткий код этой точки для sync-worker; генерируем при первом сохранении
     jwtSecret: '', // секрет подписи JWT; генерируем один раз при первом запуске (см. getOrCreateJwtSecret)
+    // Папка для резервных копий базы ВНЕ диска C (флешка/внешний диск/диск D).
+    // Пусто — копии пишутся только локально (диск C) + показываем предупреждение,
+    // потому что при переустановке Windows такие копии пропадают вместе с базой.
+    backupDir: '',
   },
 });
 
@@ -105,13 +111,28 @@ const PG_USER = 'postgres';
 const PG_PASSWORD = 'printpro_local'; // локальная встроенная БД, наружу не смотрит
 const PG_DATABASE = 'printpro';
 
+// Мажорная версия встроенного Postgres (пакет embedded-postgres 17.x). Нужна
+// восстановлению: копию можно ставить только в кластер той же мажорной версии.
+// При обновлении embedded-postgres на новый мажор — поменять здесь.
+const PG_MAJOR = '17';
+
+// Сколько копий храним и как часто пишем (без force). Локальные (диск C) — на
+// случай порчи базы при живом диске; внешние (флешка/диск D) — переживают
+// переустановку Windows. force=true (копия при выходе / вручную) игнорирует
+// интервал.
+const LOCAL_KEEP = 5;
+const EXTERNAL_KEEP = 10;
+const BACKUP_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000; // не чаще раза в 6 часов при обычном старте
+
 let mainWindow = null;
 let setupWindow = null;
 let apiProcess = null;
 let webProcess = null;
 /** @type {EmbeddedPostgres|null} */
 let pg = null;
-let backupTimer = null;
+// Флаг «идёт остановка/перезапуск» — чтобы обработчик before-quit не дублировал
+// остановку процессов, когда мы уже сделали её вручную (напр., при восстановлении).
+let shuttingDown = false;
 
 // ──────────────────────────────────────────────────────────────────────────
 // 4. Вспомогательные функции
@@ -446,7 +467,13 @@ function buildMainMenu(lanIp) {
             });
           },
         },
-        { label: 'Сделать резервную копию сейчас', click: () => runBackupOnce(getBackupContext()) },
+        { type: 'separator' },
+        { label: 'Сделать резервную копию сейчас', click: () => doBackupNow() },
+        {
+          label: 'Папка для копий: ' + (store.get('backupDir') || 'не задана') + ' — изменить…',
+          click: () => pickBackupDir(mainWindow),
+        },
+        { label: 'Восстановить из копии…', click: () => restoreFromBackupInteractive(mainWindow) },
         { type: 'separator' },
         { role: 'quit', label: 'Выход' },
       ],
@@ -456,37 +483,110 @@ function buildMainMenu(lanIp) {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// Папка с бинарниками Postgres (в т.ч. pg_dump). Пакет embedded-postgres тянет
-// их из zonky и кладёт в scoped-пакеты node_modules/@embedded-postgres/<os>-<arch>/
-// native/bin (в собранном .exe — внутри распакованного asar/resources). Ищем
-// динамически; если структура пакета отличается — backup.js gracefully пропустит.
-function findPgBinDir() {
-  const roots = [
-    path.join(__dirname, 'node_modules', '@embedded-postgres'),
-    path.join(process.resourcesPath || __dirname, 'app.asar.unpacked', 'node_modules', '@embedded-postgres'),
-  ];
-  for (const scopeDir of roots) {
-    try {
-      if (!fs.existsSync(scopeDir)) continue;
-      for (const pkg of fs.readdirSync(scopeDir)) {
-        const bin = path.join(scopeDir, pkg, 'native', 'bin');
-        if (fs.existsSync(bin)) return bin;
-      }
-    } catch {
-      // недоступно — пробуем следующий корень
-    }
-  }
-  return null;
+// ──────────────────────────────────────────────────────────────────────────
+// 7.1. Резервные копии: место хранения и определение дисков
+// ──────────────────────────────────────────────────────────────────────────
+
+// Буква системного диска (обычно "C"). Копии, лежащие на нём, НЕ переживают
+// переустановку Windows — их складываем только как локальную страховку.
+function systemDriveLetter() {
+  return (process.env.SystemDrive || 'C:').charAt(0).toUpperCase();
 }
 
-function getBackupContext() {
+// Лежит ли путь на системном диске (C:)?
+function isOnSystemDrive(p) {
+  try {
+    const root = path.parse(path.resolve(p)).root.toUpperCase();
+    return root.startsWith(systemDriveLetter());
+  } catch {
+    return false;
+  }
+}
+
+// Диски, пригодные для копий (все существующие, кроме системного). Пробуем буквы
+// D..Z (A/B — исторически дискеты, C — система). Так подсказываем клиенту флешку
+// или второй диск.
+function detectBackupDrives() {
+  const sys = systemDriveLetter();
+  const found = [];
+  for (let code = 'D'.charCodeAt(0); code <= 'Z'.charCodeAt(0); code++) {
+    const letter = String.fromCharCode(code);
+    if (letter === sys) continue;
+    const root = letter + ':\\';
+    try {
+      if (fs.existsSync(root)) found.push(root);
+    } catch {
+      /* диск недоступен — пропускаем */
+    }
+  }
+  return found;
+}
+
+// Эффективная внешняя папка для копий: то, что указал владелец, если она сейчас
+// доступна для записи (флешку могли вынуть — тогда молча пропускаем внешнюю
+// копию, не роняя приложение). Возвращает '' если не задана/недоступна.
+function getExternalBackupDir() {
+  const d = String(store.get('backupDir') || '').trim();
+  if (!d) return '';
+  try {
+    fs.mkdirSync(d, { recursive: true }); // создаст, если папки ещё нет; бросит, если носитель недоступен
+    return d;
+  } catch (err) {
+    log.warn('backup: указанная папка для копий недоступна (' + d + '): ' + (err && err.message ? err.message : err));
+    return '';
+  }
+}
+
+// Делает резервные копии базы: всегда локально (диск C, страховка от порчи базы)
+// и, если задана и доступна, во внешнюю папку (флешка/диск D — переживает
+// переустановку Windows). ВАЖНО: вызывать только когда Postgres ОСТАНОВЛЕН
+// (при старте до pg.start(), при выходе после pg.stop()), иначе копия может
+// оказаться несогласованной. Возвращает список результатов для показа человеку.
+function runBackups({ force = false, note } = {}) {
   const paths = getPaths();
-  return {
-    pgBinDir: findPgBinDir(),
-    databaseUrl: `postgresql://${PG_USER}:${PG_PASSWORD}@127.0.0.1:${PG_PORT}/${PG_DATABASE}?schema=public`,
-    backupsDir: paths.backups,
-    keep: 14,
-  };
+  const appVersion = app.getVersion();
+  const minInterval = force ? 0 : BACKUP_MIN_INTERVAL_MS;
+  const results = [];
+
+  // 1) Локальная копия (диск C). Полезна, если база повредилась, а диск цел.
+  results.push({
+    where: 'на этом компьютере',
+    dir: paths.backups,
+    ...backup.coldCopy({
+      pgDataDir: paths.pgData,
+      destRoot: paths.backups,
+      keep: LOCAL_KEEP,
+      minIntervalMs: minInterval,
+      force,
+      appVersion,
+      note,
+    }),
+  });
+
+  // 2) Внешняя копия (флешка/диск D) — главная защита от переустановки Windows.
+  const ext = getExternalBackupDir();
+  if (ext) {
+    results.push({
+      where: 'на внешнем носителе',
+      dir: ext,
+      ...backup.coldCopy({
+        pgDataDir: paths.pgData,
+        destRoot: ext,
+        keep: EXTERNAL_KEEP,
+        minIntervalMs: minInterval,
+        force,
+        appVersion,
+        note,
+      }),
+    });
+  }
+
+  for (const r of results) {
+    if (r.ok && !r.skipped) log.info(`backup: копия ${r.where} готова → ${r.dest}`);
+    else if (r.skipped) log.info(`backup: копия ${r.where} пропущена (${r.reason || 'нет причины'})`);
+    else log.warn(`backup: копия ${r.where} НЕ создана: ${r.reason || 'ошибка'}`);
+  }
+  return results;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -537,44 +637,234 @@ async function assertPortsFree() {
   }
 }
 
-// Холодный бэкап встроенной БД: копируем папку pgData ДО старта Postgres —
-// кластер ещё не запущен, значит копия консистентна (без pg_dump, которого нет
-// в комплекте embedded-postgres). Делаем не чаще раза в minIntervalMs, храним
-// последние `keep` копий. Восстановление: закрыть PrintPro и заменить папку
-// userData/pgdata содержимым нужной копии backups/pgdata_*.
-function maybeBackupPgdata(paths, keep = 7, minIntervalMs = 20 * 60 * 60 * 1000) {
+// Короткое описание результата копий для показа человеку.
+function describeBackupResults(results) {
+  const lines = [];
+  for (const r of results) {
+    if (r.ok && !r.skipped) lines.push(`✓ ${r.where}: ${r.dir}`);
+    else if (r.ok && r.skipped) lines.push(`• ${r.where}: пропущено (${r.reason || 'свежая копия уже есть'})`);
+    else lines.push(`✗ ${r.where}: не удалось (${r.reason || 'ошибка'})`);
+  }
+  return lines.join('\n');
+}
+
+// Выбор папки для копий (диалог). Ведём клиента на флешку/диск D (кроме C).
+// Возвращает выбранный путь или null. Обновляет меню, чтобы показать новый путь.
+async function pickBackupDir(parentWindow) {
+  const drives = detectBackupDrives();
+  const defaultPath = drives.length ? path.join(drives[0], 'PrintPro-Копии') : undefined;
+  const res = await dialog.showOpenDialog(parentWindow || undefined, {
+    title: 'Папка для резервных копий (лучше флешка или другой диск, не C:)',
+    defaultPath,
+    buttonLabel: 'Выбрать эту папку',
+    properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
+  });
+  if (res.canceled || !res.filePaths || !res.filePaths[0]) return null;
+  const chosen = res.filePaths[0];
+
+  if (isOnSystemDrive(chosen)) {
+    const proceed = dialog.showMessageBoxSync(parentWindow || undefined, {
+      type: 'warning',
+      title: 'Папка на системном диске',
+      message: 'Эта папка находится на системном диске (C:).',
+      detail:
+        'При переустановке Windows копии в ней пропадут вместе с базой. ' +
+        'Лучше выбрать флешку или другой диск (D:). Всё равно использовать эту папку?',
+      buttons: ['Выбрать другую', 'Использовать всё равно'],
+      defaultId: 0,
+      cancelId: 0,
+    });
+    if (proceed !== 1) return null;
+  }
+
+  store.set('backupDir', chosen);
+  log.info('backup: папка для копий = ' + chosen);
+  if (store.get('role') === 'main' && mainWindow) buildMainMenu(getLanIp());
+  return chosen;
+}
+
+// «Сделать резервную копию сейчас» (роль main, база запущена). Чтобы копия была
+// консистентной, ненадолго останавливаем Postgres, копируем, снова запускаем.
+// Касса на эти секунды переподключится. Если поднять базу обратно не удалось —
+// перезапускаем приложение (надёжное восстановление рабочего состояния).
+async function doBackupNow() {
+  if (store.get('role') !== 'main' || !pg) {
+    dialog.showMessageBox(mainWindow || undefined, {
+      type: 'info',
+      title: 'Резервная копия',
+      message: 'Резервную копию делает только главный компьютер (где хранится база).',
+    });
+    return;
+  }
+  const confirm = dialog.showMessageBoxSync(mainWindow || undefined, {
+    type: 'question',
+    title: 'Резервная копия',
+    message: 'Создать резервную копию базы сейчас?',
+    detail: 'База на несколько секунд приостановится, кассы автоматически переподключатся.',
+    buttons: ['Сделать копию', 'Отмена'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (confirm !== 0) return;
+
   try {
-    // Если база ещё не инициализирована (нет PG_VERSION) — копировать нечего.
-    if (!fs.existsSync(path.join(paths.pgData, 'PG_VERSION'))) return;
-    fs.mkdirSync(paths.backups, { recursive: true });
+    await pg.stop();
+    const results = runBackups({ force: true, note: 'вручную' });
+    await pg.start();
+    dialog.showMessageBox(mainWindow || undefined, {
+      type: 'info',
+      title: 'Резервная копия',
+      message: 'Готово.',
+      detail: describeBackupResults(results),
+    });
+  } catch (err) {
+    log.error('backup now: ошибка — перезапускаем приложение: ' + (err && err.message ? err.message : err));
+    dialog.showErrorBox(
+      'Резервная копия',
+      'Не удалось завершить копию: ' + (err && err.message ? err.message : err) + '\nПрограмма перезапустится.',
+    );
+    app.relaunch();
+    app.exit(0);
+  }
+}
 
-    const listBackups = () =>
-      fs
-        .readdirSync(paths.backups)
-        .filter((f) => f.startsWith('pgdata_'))
-        .map((f) => ({ f, m: fs.statSync(path.join(paths.backups, f)).mtimeMs }))
-        .sort((a, b) => b.m - a.m);
-
-    const existing = listBackups();
-    if (existing.length && Date.now() - existing[0].m < minIntervalMs) {
-      log.info('Бэкап БД: свежая копия уже есть — пропускаем.');
-      return;
+// Остановить процессы, сделать страховочную копию текущей базы, восстановить из
+// выбранной папки и перезапустить приложение. Используется меню (роль main).
+async function performRestoreAndRelaunch(backupFolder) {
+  shuttingDown = true; // before-quit не должен второй раз останавливать процессы
+  try {
+    if (webProcess) webProcess.kill();
+    if (apiProcess) apiProcess.kill();
+    if (pg) {
+      try {
+        await pg.stop();
+      } catch (e) {
+        log.error('restore: ошибка остановки Postgres: ' + (e && e.message ? e.message : e));
+      }
     }
+    // Страховочная копия ТЕКУЩЕЙ базы перед заменой (на случай передумать).
+    runBackups({ force: true, note: 'перед восстановлением' });
 
-    const stamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
-    const dest = path.join(paths.backups, `pgdata_${stamp}`);
-    log.info('Бэкап БД: холодная копия pgdata → ' + dest);
-    fs.cpSync(paths.pgData, dest, { recursive: true });
-    log.info('Бэкап БД: копия готова.');
-
-    // Ротация — оставляем только `keep` самых свежих.
-    for (const { f } of listBackups().slice(keep)) {
-      fs.rmSync(path.join(paths.backups, f), { recursive: true, force: true });
-      log.info('Бэкап БД: удалена старая копия ' + f);
+    const r = backup.restore({
+      backupFolder,
+      pgDataDir: getPaths().pgData,
+      expectPgMajor: PG_MAJOR,
+    });
+    if (!r.ok) {
+      dialog.showErrorBox('Восстановление не удалось', r.reason || 'неизвестная ошибка');
     }
   } catch (err) {
-    // Бэкап не должен ронять запуск приложения.
-    log.error('Бэкап БД (cold copy) не удался: ' + (err && err.message ? err.message : err));
+    log.error('restore: ' + (err && err.message ? err.message : err));
+    dialog.showErrorBox('Восстановление', 'Ошибка: ' + (err && err.message ? err.message : err));
+  } finally {
+    // В любом случае перезапускаем: при успехе — на восстановленной базе, при
+    // ошибке — возвращаем приложение в рабочее состояние (база не тронута, либо
+    // цела страховочная .before-restore).
+    app.relaunch();
+    app.exit(0);
+  }
+}
+
+// Интерактивное восстановление (меню роли main): выбрать папку копии → показать
+// дату → подтвердить → восстановить.
+async function restoreFromBackupInteractive(parentWindow) {
+  const ext = getExternalBackupDir();
+  const res = await dialog.showOpenDialog(parentWindow || undefined, {
+    title: 'Выберите папку резервной копии (pgdata_…)',
+    defaultPath: ext || getPaths().backups,
+    buttonLabel: 'Восстановить из этой папки',
+    properties: ['openDirectory'],
+  });
+  if (res.canceled || !res.filePaths || !res.filePaths[0]) return;
+  const folder = res.filePaths[0];
+
+  if (!backup.looksLikePgdata(folder)) {
+    dialog.showErrorBox(
+      'Восстановление',
+      'Выбранная папка не похожа на резервную копию базы (нет служебных файлов PostgreSQL).\n' +
+        'Выберите папку с именем вида pgdata_ГГГГ-ММ-ДД…',
+    );
+    return;
+  }
+
+  const man = backup.readManifest(folder);
+  let when = 'неизвестно';
+  try {
+    if (man && man.createdAt) when = new Date(man.createdAt).toLocaleString('ru-RU');
+  } catch {
+    /* оставим 'неизвестно' */
+  }
+
+  const confirm = dialog.showMessageBoxSync(parentWindow || undefined, {
+    type: 'warning',
+    title: 'Восстановление базы',
+    message: 'Восстановить базу из этой копии?',
+    detail:
+      `Копия от: ${when}.\n\n` +
+      'Текущие данные будут заменены. Прежняя база сохранится рядом как страховка.\n' +
+      'Программа перезапустится.',
+    buttons: ['Восстановить', 'Отмена'],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  if (confirm !== 0) return;
+
+  await performRestoreAndRelaunch(folder);
+}
+
+// Разовое предупреждение, если внешняя папка для копий не задана: объясняем
+// простыми словами риск переустановки Windows и предлагаем выбрать папку.
+function maybeWarnNoExternalBackup(parentWindow) {
+  if (getExternalBackupDir()) return; // всё настроено — молчим
+  dialog
+    .showMessageBox(parentWindow || undefined, {
+      type: 'warning',
+      title: 'Резервные копии базы',
+      message: 'Сейчас копии базы хранятся только на этом компьютере.',
+      detail:
+        'Если Windows переустановят или диск C выйдет из строя — данные пропадут вместе с копиями.\n\n' +
+        'Вставьте флешку (или используйте другой диск, например D:) и укажите папку для копий. ' +
+        'Тогда копия базы будет сохраняться и там, и её можно будет восстановить после переустановки.',
+      buttons: ['Позже', 'Выбрать папку сейчас'],
+      defaultId: 1,
+      cancelId: 0,
+    })
+    .then((r) => {
+      if (r.response === 1) pickBackupDir(parentWindow);
+    })
+    .catch(() => {});
+}
+
+// Удаляем временные остатки восстановления/копирования из папки userData, чтобы
+// они не копились: `.copying`/`.restoring_` — брошенные на середине; из
+// страховочных `.before-restore_` оставляем только самый свежий (одна страховка).
+function pruneRestoreLeftovers(paths) {
+  try {
+    const parent = path.dirname(paths.pgData);
+    const entries = fs.readdirSync(parent);
+    const beforeRestore = [];
+    for (const name of entries) {
+      const full = path.join(parent, name);
+      if (name.endsWith('.copying') || name.includes('.restoring_')) {
+        fs.rmSync(full, { recursive: true, force: true });
+        log.info('backup: удалён временный остаток ' + name);
+      } else if (name.includes('.before-restore_')) {
+        let m = 0;
+        try {
+          m = fs.statSync(full).mtimeMs;
+        } catch {
+          /* пропускаем */
+        }
+        beforeRestore.push({ full, name, m });
+      }
+    }
+    beforeRestore.sort((a, b) => b.m - a.m);
+    for (const b of beforeRestore.slice(1)) {
+      fs.rmSync(b.full, { recursive: true, force: true });
+      log.info('backup: удалена старая страховочная база ' + b.name);
+    }
+  } catch (err) {
+    log.warn('backup: чистка временных остатков не удалась: ' + (err && err.message ? err.message : err));
   }
 }
 
@@ -584,8 +874,12 @@ async function startAsMain() {
 
   // 1) Порты свободны? (иначе понятная ошибка вместо тихого полу-запуска)
   await assertPortsFree();
-  // 2) Холодный бэкап БД ДО старта Postgres (консистентная копия).
-  maybeBackupPgdata(paths);
+  // 2) Чистим временные остатки прошлых восстановлений/копий.
+  pruneRestoreLeftovers(paths);
+  // 3) Резервные копии базы ДО старта Postgres (кластер не запущен → копия
+  //    консистентна). Не форсируем — интервал бережёт флешку от записи на каждом
+  //    запуске; свежая копия при выходе и «копия сейчас» делаются с force.
+  runBackups({ force: false, note: 'при запуске' });
 
   const databaseUrl = await ensureEmbeddedPostgres(paths);
   await runPrismaMigrateDeploy(paths, databaseUrl);
@@ -602,9 +896,9 @@ async function startAsMain() {
 
   createMainWindow(`http://127.0.0.1:${WEB_PORT}`, 'главный компьютер');
 
-  // Плановый бэкап — раз в 6 часов, ротация хранится в backup.js.
-  // TODO(build): вынести интервал в настройки (setup.html) при желании.
-  backupTimer = schedulePgDumpBackups(getBackupContext(), 6 * 60 * 60 * 1000);
+  // Если внешняя папка для копий не задана — один раз мягко предупредим владельца
+  // о риске (копии только на диске C пропадут при переустановке Windows).
+  maybeWarnNoExternalBackup(mainWindow);
 }
 
 function startAsCash() {
@@ -650,13 +944,16 @@ ipcMain.handle('config:get', () => store.store);
 ipcMain.handle('config:get-lan-ip', () => getLanIp());
 
 ipcMain.handle('config:save', async (_event, config) => {
-  // config: { role: 'main'|'cash', mainHost?: string, cloudSync: boolean }
+  // config: { role: 'main'|'cash', mainHost?: string, cloudSync: boolean, backupDir?: string }
   if (!config || (config.role !== 'main' && config.role !== 'cash')) {
     throw new Error('Некорректная роль ПК');
   }
   store.set('role', config.role);
   store.set('mainHost', config.mainHost || '');
   store.set('cloudSync', !!config.cloudSync);
+  // Папку для копий обычно задают отдельной кнопкой (config:pick-backup-dir),
+  // но если пришла в конфиге — тоже сохраняем.
+  if (typeof config.backupDir === 'string') store.set('backupDir', config.backupDir.trim());
   if (!store.get('nodeId')) {
     // Короткий уникальный код этой точки (для будущей синхронизации, Фаза 3).
     store.set('nodeId', `BOX-${Math.random().toString(36).slice(2, 8).toUpperCase()}`);
@@ -668,6 +965,54 @@ ipcMain.handle('config:save', async (_event, config) => {
   app.relaunch();
   app.exit(0);
   return true;
+});
+
+// Инфо для экрана настройки: текущая папка копий, найденные диски, флаг «на C:».
+ipcMain.handle('config:get-backup-info', () => {
+  const dir = String(store.get('backupDir') || '');
+  return {
+    backupDir: dir,
+    drives: detectBackupDrives(),
+    onSystemDrive: dir ? isOnSystemDrive(dir) : false,
+  };
+});
+
+// Кнопка «Выбрать папку…» на экране настройки. Возвращает выбранный путь (или null).
+ipcMain.handle('config:pick-backup-dir', async () => {
+  const chosen = await pickBackupDir(setupWindow || mainWindow);
+  return chosen;
+});
+
+// Восстановление при первом запуске (экран настройки): клиент переустановил
+// Windows, поставил программу заново и хочет вернуть базу из копии на флешке.
+// База ещё не запущена (роль не выбрана) — просто укладываем копию в userData/
+// pgdata, делаем этот ПК главным и перезапускаемся.
+ipcMain.handle('backup:restore-at-setup', async () => {
+  const res = await dialog.showOpenDialog(setupWindow || undefined, {
+    title: 'Выберите папку резервной копии (pgdata_…)',
+    buttonLabel: 'Восстановить из этой папки',
+    properties: ['openDirectory'],
+  });
+  if (res.canceled || !res.filePaths || !res.filePaths[0]) return { ok: false, canceled: true };
+  const folder = res.filePaths[0];
+
+  if (!backup.looksLikePgdata(folder)) {
+    return { ok: false, reason: 'Выбранная папка не похожа на резервную копию базы.' };
+  }
+
+  const paths = getPaths();
+  ensureDirs(paths);
+  const r = backup.restore({ backupFolder: folder, pgDataDir: paths.pgData, expectPgMajor: PG_MAJOR });
+  if (!r.ok) return { ok: false, reason: r.reason };
+
+  // Раз восстанавливаем базу — этот компьютер становится главным.
+  store.set('role', 'main');
+  if (!store.get('nodeId')) {
+    store.set('nodeId', `BOX-${Math.random().toString(36).slice(2, 8).toUpperCase()}`);
+  }
+  app.relaunch();
+  app.exit(0);
+  return { ok: true };
 });
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -694,15 +1039,14 @@ app.on('activate', () => {
 });
 
 // Гасим дочерние процессы (API, веб, встроенный Postgres) перед выходом —
-// иначе они останутся «висеть» в фоне после закрытия окна.
-let shuttingDown = false;
+// иначе они останутся «висеть» в фоне после закрытия окна. shuttingDown объявлен
+// выше (может быть уже true, если выход инициировали восстановление/копия).
 app.on('before-quit', async (event) => {
   if (shuttingDown) return;
   shuttingDown = true;
   event.preventDefault();
 
   log.info('Остановка PrintPro Desktop...');
-  if (backupTimer) clearInterval(backupTimer);
 
   if (webProcess) webProcess.kill();
   if (apiProcess) apiProcess.kill();
@@ -713,6 +1057,16 @@ app.on('before-quit', async (event) => {
       log.info('Встроенный Postgres остановлен.');
     } catch (err) {
       log.error('Ошибка остановки Postgres:', err);
+    }
+
+    // Postgres остановлен → безопасный момент для свежей консистентной копии
+    // (конец рабочего дня). Форсируем, чтобы копия точно появилась.
+    if (store.get('role') === 'main') {
+      try {
+        runBackups({ force: true, note: 'при выходе' });
+      } catch (err) {
+        log.error('backup: копия при выходе не удалась: ' + (err && err.message ? err.message : err));
+      }
     }
   }
 
