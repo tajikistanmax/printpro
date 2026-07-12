@@ -116,13 +116,20 @@ const PG_DATABASE = 'printpro';
 // При обновлении embedded-postgres на новый мажор — поменять здесь.
 const PG_MAJOR = '17';
 
-// Сколько копий храним и как часто пишем (без force). Локальные (диск C) — на
-// случай порчи базы при живом диске; внешние (флешка/диск D) — переживают
-// переустановку Windows. force=true (копия при выходе / вручную) игнорирует
-// интервал.
+// Сколько копий храним и как часто пишем «фоновые» копии (запуск/закрытие
+// программы). Локальные (диск C) — на случай порчи базы при живом диске; внешние
+// (флешка/диск D) — переживают переустановку Windows.
 const LOCAL_KEEP = 5;
 const EXTERNAL_KEEP = 10;
-const BACKUP_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000; // не чаще раза в 6 часов при обычном старте
+// Основная копия делается при ЗАКРЫТИИ СМЕНЫ (Z-отчёт) — это раз в день, с
+// полными данными за день (см. IPC 'backup:shift-closed'). А копии при
+// запуске/закрытии ПРОГРАММЫ — лишь подстраховка и потому throttled: не чаще
+// раза в сутки. Иначе, если программу открывают/закрывают по многу раз в день,
+// копий было бы слишком много (износ флешки + ротация съедала бы историю).
+const BACKUP_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000; // подстраховочная копия — не чаще раза в сутки
+// Минимальный зазор между копиями «при закрытии смены» — на случай, если веб
+// пришлёт сигнал повторно (перерисовка/двойной клик); закрытий смен в день мало.
+const SHIFT_BACKUP_MIN_GAP_MS = 10 * 60 * 1000;
 
 let mainWindow = null;
 let setupWindow = null;
@@ -133,6 +140,11 @@ let pg = null;
 // Флаг «идёт остановка/перезапуск» — чтобы обработчик before-quit не дублировал
 // остановку процессов, когда мы уже сделали её вручную (напр., при восстановлении).
 let shuttingDown = false;
+// Флаг «сейчас делается копия с приостановкой базы» — чтобы не запустить две
+// параллельно (напр., ручная копия и копия при закрытии смены одновременно).
+let backupInProgress = false;
+// Время последней копии «при закрытии смены» — для минимального зазора.
+let lastShiftBackupAt = 0;
 
 // ──────────────────────────────────────────────────────────────────────────
 // 4. Вспомогательные функции
@@ -683,10 +695,37 @@ async function pickBackupDir(parentWindow) {
   return chosen;
 }
 
-// «Сделать резервную копию сейчас» (роль main, база запущена). Чтобы копия была
-// консистентной, ненадолго останавливаем Postgres, копируем, снова запускаем.
-// Касса на эти секунды переподключится. Если поднять базу обратно не удалось —
-// перезапускаем приложение (надёжное восстановление рабочего состояния).
+// Безопасная копия, когда база ЗАПУЩЕНА (роль main). Копию нельзя снимать с
+// работающего кластера, поэтому ненадолго останавливаем Postgres, копируем, снова
+// поднимаем — после выхода процесса записи в pgdata нет, копия консистентна.
+// Касса на эти секунды переподключится. Две такие копии сразу не запускаем
+// (backupInProgress). Если поднять базу обратно не удалось — перезапускаем
+// приложение (надёжное восстановление рабочего состояния).
+async function safeBackupWhileRunning({ note } = {}) {
+  if (store.get('role') !== 'main' || !pg) return { ok: false, reason: 'не главный ПК' };
+  if (backupInProgress) return { ok: false, reason: 'копия уже выполняется' };
+  backupInProgress = true;
+  try {
+    await pg.stop();
+    const results = runBackups({ force: true, note });
+    await pg.start();
+    return { ok: true, results };
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    log.error('safeBackup: не удалось (' + msg + ') — перезапуск приложения');
+    dialog.showErrorBox(
+      'Резервная копия',
+      'Не удалось завершить копию: ' + msg + '\nПрограмма перезапустится.',
+    );
+    app.relaunch();
+    app.exit(0);
+    return { ok: false, reason: msg, relaunching: true };
+  } finally {
+    backupInProgress = false;
+  }
+}
+
+// «Сделать резервную копию сейчас» (меню): подтверждение + показ результата.
 async function doBackupNow() {
   if (store.get('role') !== 'main' || !pg) {
     dialog.showMessageBox(mainWindow || undefined, {
@@ -707,24 +746,20 @@ async function doBackupNow() {
   });
   if (confirm !== 0) return;
 
-  try {
-    await pg.stop();
-    const results = runBackups({ force: true, note: 'вручную' });
-    await pg.start();
+  const r = await safeBackupWhileRunning({ note: 'вручную' });
+  if (r.ok) {
     dialog.showMessageBox(mainWindow || undefined, {
       type: 'info',
       title: 'Резервная копия',
       message: 'Готово.',
-      detail: describeBackupResults(results),
+      detail: describeBackupResults(r.results),
     });
-  } catch (err) {
-    log.error('backup now: ошибка — перезапускаем приложение: ' + (err && err.message ? err.message : err));
-    dialog.showErrorBox(
-      'Резервная копия',
-      'Не удалось завершить копию: ' + (err && err.message ? err.message : err) + '\nПрограмма перезапустится.',
-    );
-    app.relaunch();
-    app.exit(0);
+  } else if (!r.relaunching) {
+    dialog.showMessageBox(mainWindow || undefined, {
+      type: 'info',
+      title: 'Резервная копия',
+      message: 'Копия сейчас не была создана: ' + (r.reason || 'причина неизвестна'),
+    });
   }
 }
 
@@ -876,9 +911,10 @@ async function startAsMain() {
   await assertPortsFree();
   // 2) Чистим временные остатки прошлых восстановлений/копий.
   pruneRestoreLeftovers(paths);
-  // 3) Резервные копии базы ДО старта Postgres (кластер не запущен → копия
-  //    консистентна). Не форсируем — интервал бережёт флешку от записи на каждом
-  //    запуске; свежая копия при выходе и «копия сейчас» делаются с force.
+  // 3) Подстраховочная копия базы ДО старта Postgres (кластер не запущен → копия
+  //    консистентна). Не форсируем — throttled раз в сутки, чтобы частые запуски
+  //    не плодили копии. Основная копия делается по закрытию смены (см.
+  //    'backup:shift-closed'), а «копия сейчас» — кнопкой (с force).
   runBackups({ force: false, note: 'при запуске' });
 
   const databaseUrl = await ensureEmbeddedPostgres(paths);
@@ -1015,6 +1051,29 @@ ipcMain.handle('backup:restore-at-setup', async () => {
   return { ok: true };
 });
 
+// ОСНОВНАЯ резервная копия — по закрытию смены (Z-отчёт). Веб-панель зовёт это
+// после успешного закрытия смены (см. preload notifyShiftClosed). Смену закрывают
+// раз в день в конце дня → копия примерно раз в день, с полными данными за день,
+// независимо от того, сколько раз открывали/закрывали программу.
+// Копию делаем с небольшой задержкой, чтобы веб успел обновить экран до
+// кратковременной паузы базы; повторные сигналы в пределах зазора игнорируем.
+ipcMain.handle('backup:shift-closed', () => {
+  if (store.get('role') !== 'main' || !pg) return { ok: false, reason: 'не главный ПК' };
+  const now = Date.now();
+  if (now - lastShiftBackupAt < SHIFT_BACKUP_MIN_GAP_MS) {
+    log.info('backup: сигнал закрытия смены проигнорирован (копия делалась недавно).');
+    return { ok: true, skipped: true };
+  }
+  lastShiftBackupAt = now; // застолбили сразу — дубликаты сигналов в зазоре не сработают
+  setTimeout(() => {
+    log.info('backup: закрытие смены — делаем резервную копию базы.');
+    safeBackupWhileRunning({ note: 'закрытие смены' }).catch((e) =>
+      log.error('backup: копия по закрытию смены не удалась: ' + (e && e.message ? e.message : e)),
+    );
+  }, 4000);
+  return { ok: true, scheduled: true };
+});
+
 // ──────────────────────────────────────────────────────────────────────────
 // 10. Жизненный цикл приложения
 // ──────────────────────────────────────────────────────────────────────────
@@ -1059,11 +1118,12 @@ app.on('before-quit', async (event) => {
       log.error('Ошибка остановки Postgres:', err);
     }
 
-    // Postgres остановлен → безопасный момент для свежей консистентной копии
-    // (конец рабочего дня). Форсируем, чтобы копия точно появилась.
+    // Postgres остановлен → безопасный момент для копии. Это ПОДСТРАХОВКА
+    // (основная копия — по закрытию смены), поэтому throttled: не форсируем, чтобы
+    // частое открытие/закрытие программы не плодило копии (не чаще раза в сутки).
     if (store.get('role') === 'main') {
       try {
-        runBackups({ force: true, note: 'при выходе' });
+        runBackups({ force: false, note: 'при выходе' });
       } catch (err) {
         log.error('backup: копия при выходе не удалась: ' + (err && err.message ? err.message : err));
       }

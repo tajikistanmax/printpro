@@ -34,4 +34,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pickBackupDir: () => ipcRenderer.invoke('config:pick-backup-dir'),
   // — восстановить базу из копии при первом запуске (после переустановки Windows).
   restoreAtSetup: () => ipcRenderer.invoke('backup:restore-at-setup'),
+
+  // Веб-панель зовёт это при закрытии смены (Z-отчёт) — коробка делает резервную
+  // копию базы (основной момент копии: день завершён). В облаке метода нет.
+  notifyShiftClosed: () => ipcRenderer.invoke('backup:shift-closed'),
 });

@@ -101,6 +101,10 @@ export default function CashPage() {
       await api.post(`/cash/shifts/${shift.id}/close`, {
         countedBalance: counted ? Number(counted) : undefined,
       });
+      // Коробочная версия (Electron): при закрытии смены — сделать резервную
+      // копию базы (день завершён, в копии все данные за день). В облаке/браузере
+      // window.electronAPI нет — вызов ничего не делает (принцип «один код»).
+      (window as any).electronAPI?.notifyShiftClosed?.();
       setCounted('');
       load();
     } catch (err: any) {
