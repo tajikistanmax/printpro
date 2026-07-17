@@ -31,10 +31,68 @@ const log = require('electron-log');
 // (pg_dump в комплекте embedded-postgres нет — см. backup.js, шапка.)
 const backup = require('./backup');
 
-// electron-log: пишем и в файл (userData/logs/main.log), и в консоль.
+// Общий модуль путей к данным (ProgramData) — ОДНО место для окна и для службы
+// Windows (server-host.js). См. data-paths.js, шапка (Уровень 2).
+const dataPaths = require('./data-paths');
+
+// electron-log: пишем и в файл, и в консоль. Файл кладём в ОБЩУЮ папку данных
+// (ProgramData/PrintPro/logs), чтобы логи окна и службы лежали рядом.
 log.transports.file.level = 'info';
 log.transports.console.level = 'debug';
+try {
+  const logsDir = dataPaths.getDataPaths().logs;
+  fs.mkdirSync(logsDir, { recursive: true });
+  log.transports.file.resolvePathFn = () => path.join(logsDir, 'main.log');
+} catch {
+  /* если ProgramData недоступна — electron-log останется на пути по умолчанию */
+}
 Object.assign(console, log.functions);
+
+// ──────────────────────────────────────────────────────────────────────────
+// 1.0. Одноразовый перенос данных из профиля пользователя в ProgramData.
+//    До Уровня 2 база/загрузки/настройки лежали в userData (профиль конкретного
+//    пользователя). Служба Windows работает от SYSTEM и туда не достучится,
+//    поэтому данные должны жить в общесистемной ProgramData/PrintPro. Здесь —
+//    БЕЗОПАСНЫЙ перенос: КОПИРУЕМ (не двигаем — старое остаётся как страховка) и
+//    только ОДИН раз (если в новом месте базы ещё нет, а в старом — есть).
+//    Выполняется до создания electron-store, чтобы store сразу читал config.json
+//    уже из нового места.
+// ──────────────────────────────────────────────────────────────────────────
+function migrateUserDataToProgramDataOnce() {
+  try {
+    const target = dataPaths.getDataPaths();
+    const oldRoot = app.getPath('userData');
+    if (path.resolve(oldRoot) === path.resolve(target.root)) return; // dev: совпадают
+
+    const oldPgVersion = path.join(oldRoot, 'pgdata', 'PG_VERSION');
+    const newPgVersion = path.join(target.pgData, 'PG_VERSION');
+    // Переносим только если старая база есть, а новой ещё нет.
+    if (!fs.existsSync(oldPgVersion) || fs.existsSync(newPgVersion)) return;
+
+    log.info('migrate: переносим данные из', oldRoot, '→', target.root);
+    fs.mkdirSync(target.root, { recursive: true });
+
+    const copy = (name, dest) => {
+      const src = path.join(oldRoot, name);
+      if (!fs.existsSync(src)) return;
+      fs.cpSync(src, dest, { recursive: true });
+      log.info('migrate: скопировано', name);
+    };
+    copy('pgdata', target.pgData);
+    copy('uploads', target.uploads);
+    // config.json — чтобы сохранить роль/секрет JWT/папку копий/nodeId.
+    const oldCfg = path.join(oldRoot, 'config.json');
+    if (fs.existsSync(oldCfg)) {
+      fs.copyFileSync(oldCfg, target.configFile);
+      log.info('migrate: скопирован config.json');
+    }
+    // Папку backups НЕ копируем (может быть большой; старые копии остаются на месте).
+    log.info('migrate: перенос завершён. Старые данные оставлены в', oldRoot, 'как страховка.');
+  } catch (err) {
+    log.error('migrate: перенос данных не удался:', err && err.stack ? err.stack : err);
+  }
+}
+migrateUserDataToProgramDataOnce();
 
 // ──────────────────────────────────────────────────────────────────────────
 // 1. Пути. Всё «изменяемое» (база, файлы, бэкапы, настройки) хранится в
@@ -43,11 +101,14 @@ Object.assign(console, log.functions);
 // ──────────────────────────────────────────────────────────────────────────
 
 function getPaths() {
-  const userData = app.getPath('userData');
-  const pgData = path.join(userData, 'pgdata');
-  const uploads = path.join(userData, 'uploads');
-  const backups = path.join(userData, 'backups');
-  const logs = path.join(userData, 'logs');
+  // Изменяемые данные — в ОБЩЕЙ папке (ProgramData/PrintPro), а не в профиле
+  // пользователя, чтобы служба Windows (SYSTEM) и окно смотрели в одно место.
+  const dp = dataPaths.getDataPaths();
+  const userData = dp.root;
+  const pgData = dp.pgData;
+  const uploads = dp.uploads;
+  const backups = dp.backups;
+  const logs = dp.logs;
 
   // В собранном .exe ресурсы (printpro-api/dist, printpro-web, prisma) лежат
   // в process.resourcesPath (папка resources/ рядом с exe — задаётся полем
@@ -87,6 +148,9 @@ function ensureDirs(paths) {
 /** @type {{ role: 'main'|'cash'|null, mainHost: string, cloudSync: boolean, nodeId: string }} */
 const store = new Store({
   name: 'config',
+  // cwd = общая папка данных (ProgramData/PrintPro). Тот же config.json читает и
+  // служба (server-host.js через data-paths.js) — окно и служба не расходятся.
+  cwd: dataPaths.getDataRoot(),
   defaults: {
     role: null, // не задано — покажем экран настройки при первом запуске
     mainHost: '', // адрес главного ПК (только для роли "cash"), напр. 192.168.1.50
@@ -107,6 +171,7 @@ const store = new Store({
 const API_PORT = 3000;
 const WEB_PORT = 3001;
 const PG_PORT = 5433; // не 5432 — чтобы не конфликтовать с системным Postgres, если он есть у клиента
+const CONTROL_PORT = 3002; // управляющий эндпоинт службы сервера (server-host.js), только 127.0.0.1
 const PG_USER = 'postgres';
 const PG_PASSWORD = 'printpro_local'; // локальная встроенная БД, наружу не смотрит
 const PG_DATABASE = 'printpro';
@@ -140,6 +205,11 @@ let pg = null;
 // Флаг «идёт остановка/перезапуск» — чтобы обработчик before-quit не дублировал
 // остановку процессов, когда мы уже сделали её вручную (напр., при восстановлении).
 let shuttingDown = false;
+// Уровень 2: true — на этом (главном) ПК сервер держит СЛУЖБА Windows, а окно
+// только показывает панель и направляет копии в службу. false — «встроенный»
+// запасной путь: окно само поднимает Postgres/API/веб (как до Уровня 2), если
+// служба не установлена. Определяется при старте (pingService).
+let serviceMode = false;
 // Флаг «сейчас делается копия с приостановкой базы» — чтобы не запустить две
 // параллельно (напр., ручная копия и копия при закрытии смены одновременно).
 let backupInProgress = false;
@@ -173,6 +243,51 @@ function getLanIp() {
     }
   }
   return '127.0.0.1';
+}
+
+// ── Уровень 2: связь окна со службой сервера (server-host.js) ─────────────────
+
+// Жива ли служба сервера? Стучимся на её управляющий эндпоинт (только loopback).
+// Коротко, чтобы не задерживать открытие окна, если службы нет.
+function pingService(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:${CONTROL_PORT}/control/ping`, (res) => {
+      res.resume();
+      resolve(res.statusCode === 200);
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+// Просим службу сделать резервную копию (базой владеет служба, не окно).
+// Возвращает { ok, results? , reason? } — совместимо с describeBackupResults.
+function requestServiceBackup() {
+  return new Promise((resolve) => {
+    const req = http.request(
+      { host: '127.0.0.1', port: CONTROL_PORT, path: '/control/backup-now', method: 'POST', timeout: 120000 },
+      (res) => {
+        let body = '';
+        res.on('data', (d) => (body += d));
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch {
+            resolve({ ok: res.statusCode === 200 });
+          }
+        });
+      },
+    );
+    req.on('error', (e) => resolve({ ok: false, reason: e.message }));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({ ok: false, reason: 'таймаут' });
+    });
+    req.end();
+  });
 }
 
 // Ждём, пока API ответит на /api/health (эндпоинт уже есть в printpro-api —
@@ -422,12 +537,15 @@ function createSetupWindow() {
     resizable: false,
     title: 'PrintPro — настройка',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload-setup.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
   setupWindow.setMenuBarVisibility(false);
+  setupWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  setupWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   setupWindow.loadFile(path.join(__dirname, 'setup.html'));
 }
 
@@ -440,6 +558,7 @@ function createMainWindow(targetUrl, roleLabel) {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
 
@@ -453,12 +572,29 @@ function createMainWindow(targetUrl, roleLabel) {
     Menu.setApplicationMenu(null);
   }
 
+  const allowedOrigin = new URL(targetUrl).origin;
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    try {
+      if (new URL(url).origin === allowedOrigin) return;
+    } catch {
+      // Некорректный URL также не должен заменять содержимое рабочего окна.
+    }
+    event.preventDefault();
+  });
+
   mainWindow.loadURL(targetUrl);
 
   // Внешние ссылки (если где-то есть target=_blank) открываем в системном
   // браузере, а не создаём второе Electron-окно.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        void shell.openExternal(url);
+      }
+    } catch {
+      log.warn(`Заблокирована внешняя ссылка с некорректным URL: ${url}`);
+    }
     return { action: 'deny' };
   });
 }
@@ -727,7 +863,9 @@ async function safeBackupWhileRunning({ note } = {}) {
 
 // «Сделать резервную копию сейчас» (меню): подтверждение + показ результата.
 async function doBackupNow() {
-  if (store.get('role') !== 'main' || !pg) {
+  // Копию делает главный ПК. База может быть либо у службы (serviceMode), либо у
+  // самого окна (запасной путь) — в обоих случаях копия возможна.
+  if (store.get('role') !== 'main' || (!serviceMode && !pg)) {
     dialog.showMessageBox(mainWindow || undefined, {
       type: 'info',
       title: 'Резервная копия',
@@ -746,7 +884,8 @@ async function doBackupNow() {
   });
   if (confirm !== 0) return;
 
-  const r = await safeBackupWhileRunning({ note: 'вручную' });
+  // serviceMode → просим службу (она владеет базой); иначе — своя база в окне.
+  const r = serviceMode ? await requestServiceBackup() : await safeBackupWhileRunning({ note: 'вручную' });
   if (r.ok) {
     dialog.showMessageBox(mainWindow || undefined, {
       type: 'info',
@@ -803,6 +942,25 @@ async function performRestoreAndRelaunch(backupFolder) {
 // Интерактивное восстановление (меню роли main): выбрать папку копии → показать
 // дату → подтвердить → восстановить.
 async function restoreFromBackupInteractive(parentWindow) {
+  // При работающей СЛУЖБЕ базой владеет она (папка pgdata занята процессом
+  // Postgres службы) — окно не может её подменить на ходу. Восстановление «на
+  // живой службе» будет добавлено отдельным управляющим действием; пока даём
+  // понятную инструкцию, а не молча ломаемся.
+  if (serviceMode) {
+    dialog.showMessageBox(parentWindow || undefined, {
+      type: 'info',
+      title: 'Восстановление базы',
+      message: 'Сейчас базой управляет служба PrintPro.',
+      detail:
+        'Чтобы восстановить базу из копии:\n' +
+        '1) Остановите службу: «Службы» Windows → PrintPro Server → Остановить\n' +
+        '   (или в командной строке администратора: net stop PrintProServer)\n' +
+        '2) Запустите PrintPro — при остановленной службе окно поднимет базу само,\n' +
+        '   и появится обычное «Восстановить из копии…».\n' +
+        '3) После восстановления снова запустите службу (net start PrintProServer).',
+    });
+    return;
+  }
   const ext = getExternalBackupDir();
   const res = await dialog.showOpenDialog(parentWindow || undefined, {
     title: 'Выберите папку резервной копии (pgdata_…)',
@@ -948,10 +1106,27 @@ function startAsCash() {
   createMainWindow(`http://${mainHost}:${WEB_PORT}`, `касса (главный: ${mainHost})`);
 }
 
+// Роль «главный», когда сервер держит СЛУЖБА: окно ничего не поднимает, просто
+// открывает панель на localhost (служба уже слушает 3001). Закрытие окна теперь
+// НЕ гасит сервер — кассы продолжают работать (это и есть решение Уровня 2).
+function startAsMainViaService() {
+  createMainWindow(`http://127.0.0.1:${WEB_PORT}`, 'главный компьютер');
+  maybeWarnNoExternalBackup(mainWindow);
+}
+
 async function startByRole() {
   const role = store.get('role');
   if (role === 'main') {
-    await startAsMain();
+    // Есть ли живая служба сервера? Если да — окно работает как клиент к ней;
+    // если нет — запасной «встроенный» путь (окно само поднимает сервер).
+    serviceMode = await pingService();
+    if (serviceMode) {
+      log.info('Уровень 2: обнаружена служба сервера — окно открывается как клиент (localhost).');
+      startAsMainViaService();
+    } else {
+      log.info('Уровень 2: служба сервера не найдена — окно поднимает встроенный сервер (запасной путь).');
+      await startAsMain();
+    }
   } else if (role === 'cash') {
     startAsCash();
   } else {
@@ -975,11 +1150,43 @@ async function startByRole() {
 // 9. IPC — мост с экраном настройки (setup.html / preload.js)
 // ──────────────────────────────────────────────────────────────────────────
 
-ipcMain.handle('config:get', () => store.store);
+function assertSetupSender(event) {
+  if (
+    !setupWindow ||
+    setupWindow.isDestroyed() ||
+    event.sender.id !== setupWindow.webContents.id
+  ) {
+    throw new Error('IPC-операция доступна только экрану настройки');
+  }
+}
 
-ipcMain.handle('config:get-lan-ip', () => getLanIp());
+function assertMainSender(event) {
+  if (
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    event.sender.id !== mainWindow.webContents.id
+  ) {
+    throw new Error('IPC-операция доступна только рабочему окну PrintPro');
+  }
+}
 
-ipcMain.handle('config:save', async (_event, config) => {
+ipcMain.handle('config:get', (event) => {
+  assertSetupSender(event);
+  return {
+    role: store.get('role'),
+    mainHost: store.get('mainHost'),
+    cloudSync: store.get('cloudSync'),
+    backupDir: store.get('backupDir'),
+  };
+});
+
+ipcMain.handle('config:get-lan-ip', (event) => {
+  assertSetupSender(event);
+  return getLanIp();
+});
+
+ipcMain.handle('config:save', async (event, config) => {
+  assertSetupSender(event);
   // config: { role: 'main'|'cash', mainHost?: string, cloudSync: boolean, backupDir?: string }
   if (!config || (config.role !== 'main' && config.role !== 'cash')) {
     throw new Error('Некорректная роль ПК');
@@ -1004,7 +1211,8 @@ ipcMain.handle('config:save', async (_event, config) => {
 });
 
 // Инфо для экрана настройки: текущая папка копий, найденные диски, флаг «на C:».
-ipcMain.handle('config:get-backup-info', () => {
+ipcMain.handle('config:get-backup-info', (event) => {
+  assertSetupSender(event);
   const dir = String(store.get('backupDir') || '');
   return {
     backupDir: dir,
@@ -1014,8 +1222,9 @@ ipcMain.handle('config:get-backup-info', () => {
 });
 
 // Кнопка «Выбрать папку…» на экране настройки. Возвращает выбранный путь (или null).
-ipcMain.handle('config:pick-backup-dir', async () => {
-  const chosen = await pickBackupDir(setupWindow || mainWindow);
+ipcMain.handle('config:pick-backup-dir', async (event) => {
+  assertSetupSender(event);
+  const chosen = await pickBackupDir(setupWindow);
   return chosen;
 });
 
@@ -1023,8 +1232,9 @@ ipcMain.handle('config:pick-backup-dir', async () => {
 // Windows, поставил программу заново и хочет вернуть базу из копии на флешке.
 // База ещё не запущена (роль не выбрана) — просто укладываем копию в userData/
 // pgdata, делаем этот ПК главным и перезапускаемся.
-ipcMain.handle('backup:restore-at-setup', async () => {
-  const res = await dialog.showOpenDialog(setupWindow || undefined, {
+ipcMain.handle('backup:restore-at-setup', async (event) => {
+  assertSetupSender(event);
+  const res = await dialog.showOpenDialog(setupWindow, {
     title: 'Выберите папку резервной копии (pgdata_…)',
     buttonLabel: 'Восстановить из этой папки',
     properties: ['openDirectory'],
@@ -1057,8 +1267,11 @@ ipcMain.handle('backup:restore-at-setup', async () => {
 // независимо от того, сколько раз открывали/закрывали программу.
 // Копию делаем с небольшой задержкой, чтобы веб успел обновить экран до
 // кратковременной паузы базы; повторные сигналы в пределах зазора игнорируем.
-ipcMain.handle('backup:shift-closed', () => {
-  if (store.get('role') !== 'main' || !pg) return { ok: false, reason: 'не главный ПК' };
+ipcMain.handle('backup:shift-closed', (event) => {
+  assertMainSender(event);
+  // База — у службы (serviceMode) или у окна (запасной путь). В обоих случаях
+  // копию по закрытию смены делаем; если ни того, ни другого — это не главный ПК.
+  if (store.get('role') !== 'main' || (!serviceMode && !pg)) return { ok: false, reason: 'не главный ПК' };
   const now = Date.now();
   if (now - lastShiftBackupAt < SHIFT_BACKUP_MIN_GAP_MS) {
     log.info('backup: сигнал закрытия смены проигнорирован (копия делалась недавно).');
@@ -1067,7 +1280,9 @@ ipcMain.handle('backup:shift-closed', () => {
   lastShiftBackupAt = now; // застолбили сразу — дубликаты сигналов в зазоре не сработают
   setTimeout(() => {
     log.info('backup: закрытие смены — делаем резервную копию базы.');
-    safeBackupWhileRunning({ note: 'закрытие смены' }).catch((e) =>
+    // serviceMode → служба (владеет базой); иначе — своя база в окне.
+    const p = serviceMode ? requestServiceBackup() : safeBackupWhileRunning({ note: 'закрытие смены' });
+    Promise.resolve(p).catch((e) =>
       log.error('backup: копия по закрытию смены не удалась: ' + (e && e.message ? e.message : e)),
     );
   }, 4000);
@@ -1078,12 +1293,35 @@ ipcMain.handle('backup:shift-closed', () => {
 // 10. Жизненный цикл приложения
 // ──────────────────────────────────────────────────────────────────────────
 
-app.whenReady().then(() => {
-  startByRole().catch((err) => {
-    log.error('Ошибка запуска:', err);
-    dialog.showErrorBox('PrintPro — ошибка запуска', String(err && err.stack ? err.stack : err));
+// Защита от второго запуска. Без неё повторный клик по ярлыку (или двойной клик,
+// пока программа ещё открывается) запускает ВТОРОЙ экземпляр, который пытается
+// снова поднять сервер на тех же портах (5433/3000) → падает с ошибкой
+// «порты заняты» (assertPortsFree). Берём OS-блокировку СРАЗУ, до любой работы:
+// первый экземпляр её удерживает, второй мгновенно получает отказ и просто
+// показывает уже открытое окно первого, а сам тихо выходит. Работает для обеих
+// ролей (и «главный», и «касса»).
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  // Мы — лишний экземпляр. Выходим немедленно, сервер не трогаем.
+  app.quit();
+} else {
+  // Кто-то запустил программу второй раз → нам прилетает это событие.
+  // Показываем и фокусируем уже работающее окно вместо новой ошибки.
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+    }
   });
-});
+
+  app.whenReady().then(() => {
+    startByRole().catch((err) => {
+      log.error('Ошибка запуска:', err);
+      dialog.showErrorBox('PrintPro — ошибка запуска', String(err && err.stack ? err.stack : err));
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   // На Windows/Linux закрытие всех окон обычно означает выход из приложения

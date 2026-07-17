@@ -106,6 +106,8 @@ function LogoMark({ size = 26, dark = false, logoUrl }: { size?: number; dark?: 
         style={{ width: size, height: size }}
         className={`grid shrink-0 place-items-center overflow-hidden rounded-lg ${dark ? 'bg-white p-[1px]' : ''}`}
       >
+        {/* Динамический URL компании может быть data/blob/LAN; оптимизатор Next здесь неприменим. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={logoUrl} alt="" className="h-full w-full object-contain" />
       </div>
     );

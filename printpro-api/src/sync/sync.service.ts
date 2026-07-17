@@ -6,10 +6,15 @@ import {
 } from '@nestjs/common';
 import { createHash, createHmac, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  assertSyncRowScope,
+  isGlobalSyncModel,
+  syncScopeWhere,
+} from './sync-scope';
 
 // Реестр синхронизируемых таблиц. Порядок важен: родители раньше детей
 // (из-за внешних ключей). Этап 2 — полный охват.
-const SYNC_TABLES: { model: string; table: string }[] = [
+export const SYNC_TABLES: { model: string; table: string }[] = [
   { model: 'company', table: 'Company' },
   { model: 'branch', table: 'Branch' },
   { model: 'permission', table: 'Permission' },
@@ -29,6 +34,8 @@ const SYNC_TABLES: { model: string; table: string }[] = [
   { model: 'productBarcodeAlias', table: 'ProductBarcodeAlias' },
   { model: 'serviceMaterial', table: 'ServiceMaterial' },
   { model: 'supplier', table: 'Supplier' },
+  { model: 'supplierPayment', table: 'SupplierPayment' },
+  { model: 'purchaseRequest', table: 'PurchaseRequest' },
   { model: 'stock', table: 'Stock' },
   { model: 'stockReceipt', table: 'StockReceipt' },
   { model: 'stockReceiptItem', table: 'StockReceiptItem' },
@@ -38,6 +45,7 @@ const SYNC_TABLES: { model: string; table: string }[] = [
   { model: 'orderRepairDetail', table: 'OrderRepairDetail' },
   { model: 'orderRecoveryDetail', table: 'OrderRecoveryDetail' },
   { model: 'orderFile', table: 'OrderFile' },
+  { model: 'heldSale', table: 'HeldSale' },
   { model: 'quote', table: 'Quote' },
   { model: 'quoteItem', table: 'QuoteItem' },
   { model: 'promoCode', table: 'PromoCode' },
@@ -46,7 +54,9 @@ const SYNC_TABLES: { model: string; table: string }[] = [
   { model: 'payment', table: 'Payment' },
   { model: 'cashMovement', table: 'CashMovement' },
   { model: 'clientDebt', table: 'ClientDebt' },
+  { model: 'return', table: 'Return' },
   { model: 'stockMovement', table: 'StockMovement' },
+  { model: 'writeOff', table: 'WriteOff' },
   { model: 'task', table: 'Task' },
   { model: 'equipment', table: 'Equipment' },
   { model: 'productionJob', table: 'ProductionJob' },
@@ -72,6 +82,9 @@ const SENSITIVE_SYNC_MODELS = new Set([
   'payrollPeriod',
   'salaryAdvance',
   'salaryRecord',
+  'supplierPayment',
+  'heldSale',
+  'return',
 ]);
 
 const includeSensitiveSync = () => process.env.SYNC_INCLUDE_SENSITIVE === '1';
@@ -81,6 +94,25 @@ export class SyncService {
   private readonly logger = new Logger('Sync');
 
   constructor(private readonly prisma: PrismaService) {}
+
+  // Legacy/shared-secret режим допустим только для явно заданной компании или
+  // для БД, где физически ровно одна компания. В мультитенантной БД отсутствие
+  // scope — ошибка конфигурации, а не повод синхронизировать все строки.
+  async resolveCompanyScope(configured?: string): Promise<string> {
+    const explicit = configured?.trim();
+    if (explicit) return explicit;
+    const companies = await this.prisma.company.findMany({
+      select: { id: true },
+      take: 2,
+      orderBy: { createdAt: 'asc' },
+    });
+    if (companies.length !== 1) {
+      throw new BadRequestException(
+        'Sync company scope is not configured for a multi-tenant database',
+      );
+    }
+    return companies[0].id;
+  }
 
   private parseSince(since?: string): Date {
     if (!since) return new Date(0);
@@ -92,7 +124,11 @@ export class SyncService {
   }
 
   // Отдать все изменения после метки времени `since`
-  async pull(since?: string, peer?: string) {
+  async pull(
+    since: string | undefined,
+    peer: string | undefined,
+    companyId: string,
+  ) {
     const from = this.parseSince(since);
     const until = new Date().toISOString();
     const changes: Record<string, unknown[]> = {};
@@ -103,7 +139,12 @@ export class SyncService {
         continue;
       }
       changes[t.model] = await (this.prisma as any)[t.model].findMany({
-        where: { updatedAt: { gt: from } },
+        where: {
+          AND: [
+            syncScopeWhere(t.model, companyId),
+            { updatedAt: { gt: from } },
+          ],
+        },
         orderBy: { updatedAt: 'asc' },
       });
     }
@@ -116,7 +157,7 @@ export class SyncService {
   }
 
   // Принять пачку изменений от другого узла (last-write-wins)
-  async push(changes: Record<string, any[]>, peer = 'peer') {
+  async push(changes: Record<string, any[]>, peer: string, companyId: string) {
     let applied = 0;
     let skipped = 0;
     let failed = 0;
@@ -135,6 +176,12 @@ export class SyncService {
             skipped++;
             continue;
           }
+          // Глобальный справочник Permission — pull-only для точек. Облако
+          // может обновить локальную копию, но tenant-узел не меняет общую БД.
+          if (isGlobalSyncModel(t.model) && peer !== 'CLOUD') {
+            skipped++;
+            continue;
+          }
           const incomingTs = new Date(row.updatedAt).getTime();
           if (!Number.isFinite(incomingTs)) {
             skipped++;
@@ -143,8 +190,22 @@ export class SyncService {
           const existing = await (this.prisma as any)[t.model].findUnique({
             where: { id: row.id },
           });
+          await assertSyncRowScope(this.prisma as any, t.model, row, companyId);
+          // Нельзя «перетащить» известный UUID из чужой компании, прислав тот же
+          // id с уже исправленным companyId/parentId.
+          if (existing) {
+            await assertSyncRowScope(
+              this.prisma as any,
+              t.model,
+              existing,
+              companyId,
+            );
+          }
           // Конфликт: у нас версия не старее — пропускаем
-          if (existing && new Date(existing.updatedAt).getTime() >= incomingTs) {
+          if (
+            existing &&
+            new Date(existing.updatedAt).getTime() >= incomingTs
+          ) {
             skipped++;
             continue;
           }
@@ -200,19 +261,21 @@ export class SyncService {
   }
 
   // Синхронизатор отмечается после успешного цикла
-  async heartbeat() {
+  async heartbeat(companyId: string) {
+    const peer = `heartbeat:${companyId}`;
     await this.prisma.syncCursor.upsert({
-      where: { peer: 'heartbeat' },
-      create: { peer: 'heartbeat' },
+      where: { peer },
+      create: { peer },
       update: { lastPullAt: new Date() },
     });
     return { ok: true };
   }
 
   // Статус для панели: когда была последняя синхронизация
-  async status() {
+  async status(companyId?: string) {
+    const peer = companyId ? `heartbeat:${companyId}` : 'heartbeat';
     const hb = await this.prisma.syncCursor.findUnique({
-      where: { peer: 'heartbeat' },
+      where: { peer },
     });
     return {
       now: new Date().toISOString(),
@@ -236,6 +299,9 @@ export class SyncService {
         'Синхронизация не настроена: задайте CLOUD_API и SYNC_SECRET в .env локального сервера',
       );
     }
+    const companyId = await this.resolveCompanyScope(
+      process.env.SYNC_COMPANY_ID,
+    );
 
     const getCursor = async (peer: string) => {
       const c = await this.prisma.syncCursor.findUnique({ where: { peer } });
@@ -296,7 +362,7 @@ export class SyncService {
       const fromCloud = await callCloud('/sync/pull', { since: cloudSince });
       let cloudFailed = 0;
       if (count(fromCloud.changes) > 0) {
-        const r = await this.push(fromCloud.changes, 'CLOUD');
+        const r = await this.push(fromCloud.changes, 'CLOUD', companyId);
         down = r.applied;
         cloudFailed = r.failed;
       }
@@ -309,7 +375,7 @@ export class SyncService {
 
       // 2) Локал → Облако
       const localSince = await getCursor('localPull');
-      const fromLocal = await this.pull(localSince);
+      const fromLocal = await this.pull(localSince, NODE_ID, companyId);
       let localFailed = 0;
       if (count(fromLocal.changes) > 0) {
         const r = await callCloud('/sync/push', {
@@ -323,7 +389,7 @@ export class SyncService {
         await setCursor('localPull', cursorFrom(fromLocal.until));
       }
 
-      await this.heartbeat();
+      await this.heartbeat(companyId);
       return { ok: true, up, down, at: new Date().toISOString() };
     } catch (e: any) {
       throw new ServiceUnavailableException(

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -27,6 +28,7 @@ import {
 import { PromocodesService } from '../promocodes/promocodes.service';
 import { EmailService } from '../email/email.service';
 import { AuditService } from '../audit/audit.service';
+import { lockOpenCashShift } from '../common/open-cash-shift';
 import * as OrderMath from './order-math';
 
 function normalizeClientPhone(phone: string): string {
@@ -65,7 +67,12 @@ export class OrdersService {
           const existing = await tx.order.findUnique({
             where: { idempotencyKey: dto.idempotencyKey },
           });
-          if (existing && existing.status !== OrderStatus.CANCELLED) {
+          if (existing) {
+            if (existing.companyId !== dto.companyId) {
+              throw new ConflictException(
+                'Ключ идемпотентности уже использован другой операцией',
+              );
+            }
             return this.loadFull(tx, existing.id);
           }
         }
@@ -78,8 +85,13 @@ export class OrdersService {
         const existing = await this.prisma.order.findUnique({
           where: { idempotencyKey: dto.idempotencyKey },
         });
-        if (existing && existing.status !== OrderStatus.CANCELLED) {
-          return this.findOne(existing.id);
+        if (existing) {
+          if (existing.companyId !== dto.companyId) {
+            throw new ConflictException(
+              'Ключ идемпотентности уже использован другой операцией',
+            );
+          }
+          return this.findOne(existing.id, dto.companyId);
         }
       }
       throw e;
@@ -394,9 +406,29 @@ export class OrdersService {
         'Способ «В долг» нельзя провести как оплату — заказ остаётся долгом',
       );
     }
-    return this.prisma.$transaction((tx) =>
-      this.addPaymentTx(tx, orderId, dto, userId, companyId),
-    );
+    try {
+      return await this.prisma.$transaction((tx) =>
+        this.addPaymentTx(tx, orderId, dto, userId, companyId),
+      );
+    } catch (e) {
+      // Два одновременных ретрая могли оба не увидеть Payment, после чего один
+      // успел провести оплату, а второй проиграл optimistic-lock заказа. Для
+      // того же ключа/заказа это успех идемпотентного запроса, а не ошибка.
+      if (dto.idempotencyKey) {
+        const existing = await this.prisma.payment.findUnique({
+          where: { idempotencyKey: dto.idempotencyKey },
+          select: { companyId: true, orderId: true },
+        });
+        if (
+          existing &&
+          existing.companyId === companyId &&
+          existing.orderId === orderId
+        ) {
+          return this.findOne(orderId, companyId);
+        }
+      }
+      throw e;
+    }
   }
 
   private async addPaymentTx(
@@ -418,10 +450,18 @@ export class OrdersService {
     if (dto.idempotencyKey) {
       const existing = await tx.payment.findUnique({
         where: { idempotencyKey: dto.idempotencyKey },
-        select: { id: true, orderId: true },
+        select: { id: true, companyId: true, orderId: true },
       });
       if (existing) {
-        return this.loadFull(tx, existing.orderId ?? orderId);
+        if (
+          existing.companyId !== order.companyId ||
+          existing.orderId !== orderId
+        ) {
+          throw new ConflictException(
+            'Ключ идемпотентности уже использован другой оплатой',
+          );
+        }
+        return this.loadFull(tx, orderId);
       }
     }
 
@@ -445,37 +485,14 @@ export class OrdersService {
 
     const cashierId = userId ?? dto.userId;
 
-    // Привязка к открытой смене: явный shiftId или текущая смена кассира
-    let shiftId = dto.shiftId;
-    if (!shiftId && cashierId) {
-      const openShift = await tx.cashShift.findFirst({
-        where: {
-          companyId: order.companyId,
-          userId: cashierId,
-          closedAt: null,
-          deletedAt: null,
-        },
-      });
-      shiftId = openShift?.id;
-    }
-    if (shiftId) {
-      const shift = await tx.cashShift.findFirst({
-        where: {
-          id: shiftId,
-          companyId: order.companyId,
-          closedAt: null,
-          deletedAt: null,
-          // Явно переданная смена должна принадлежать самому кассиру — иначе
-          // платёж можно провести в чужую открытую смену и исказить атрибуцию
-          // Z-отчёта/инкассации между кассирами.
-          ...(cashierId ? { userId: cashierId } : {}),
-        },
-        select: { id: true },
-      });
-      if (!shift) throw new BadRequestException('Open cash shift not found');
-    } else {
-      throw new BadRequestException('Open a cash shift before payment');
-    }
+    // Не просто проверяем, а блокируем открытую смену до коммита оплаты.
+    // Иначе параллельное закрытие могло завершиться между findFirst и insert.
+    const shiftId = await lockOpenCashShift(
+      tx,
+      order.companyId,
+      cashierId,
+      dto.shiftId,
+    );
 
     const newPaid = Number((Number(order.paid) + dto.amount).toFixed(2));
     const balanceDue = Number((effTotal - newPaid).toFixed(2));
@@ -634,7 +651,12 @@ export class OrdersService {
           const existing = await tx.order.findUnique({
             where: { idempotencyKey: dto.idempotencyKey },
           });
-          if (existing && existing.status !== OrderStatus.CANCELLED) {
+          if (existing) {
+            if (existing.companyId !== dto.companyId) {
+              throw new ConflictException(
+                'Ключ идемпотентности уже использован другой операцией',
+              );
+            }
             return this.loadFull(tx, existing.id);
           }
         }
@@ -823,8 +845,13 @@ export class OrdersService {
         const existing = await this.prisma.order.findUnique({
           where: { idempotencyKey: dto.idempotencyKey },
         });
-        if (existing && existing.status !== OrderStatus.CANCELLED) {
-          return this.findOne(existing.id);
+        if (existing) {
+          if (existing.companyId !== dto.companyId) {
+            throw new ConflictException(
+              'Ключ идемпотентности уже использован другой операцией',
+            );
+          }
+          return this.findOne(existing.id, dto.companyId);
         }
       }
       throw e;
@@ -1144,7 +1171,14 @@ export class OrdersService {
       const existing = await this.prisma.return.findUnique({
         where: { idempotencyKey: dto.idempotencyKey },
       });
-      if (existing) return existing;
+      if (existing) {
+        if (existing.companyId !== companyId || existing.orderId !== orderId) {
+          throw new ConflictException(
+            'Ключ идемпотентности уже использован другим возвратом',
+          );
+        }
+        return existing;
+      }
     }
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -1414,7 +1448,14 @@ export class OrdersService {
         const existing = await this.prisma.return.findUnique({
           where: { idempotencyKey: dto.idempotencyKey },
         });
-        if (existing) return existing;
+        if (existing) {
+          if (existing.companyId !== companyId || existing.orderId !== orderId) {
+            throw new ConflictException(
+              'Ключ идемпотентности уже использован другим возвратом',
+            );
+          }
+          return existing;
+        }
       }
       throw e;
     }
@@ -1687,12 +1728,7 @@ export class OrdersService {
     companyId: string,
     userId?: string,
   ): Promise<string> {
-    if (!userId) throw new BadRequestException('Open cash shift not found');
-    const shift = await tx.cashShift.findFirst({
-      where: { companyId, userId, closedAt: null, deletedAt: null },
-    });
-    if (!shift) throw new BadRequestException('Open cash shift not found');
-    return shift.id;
+    return lockOpenCashShift(tx, companyId, userId);
   }
 
   // Запись перехода статуса заказа в историю (OrderStatusHistory).

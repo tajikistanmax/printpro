@@ -32,8 +32,11 @@
     "asar": false,
     "files": [
       "main.js",
+      "data-paths.js",
       "preload.js",
+      "preload-setup.js",
       "backup.js",
+      "server-host.js",
       "setup.html",
       "setup.js",
       "package.json"
@@ -78,6 +81,10 @@
       {
         "from": "../printpro-web/public",
         "to": "printpro-web/public"
+      },
+      {
+        "from": "service",
+        "to": "service"
       }
     ],
     "asarUnpack": [
@@ -94,6 +101,7 @@
     },
     "nsis": {
       "oneClick": false,
+      "perMachine": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,

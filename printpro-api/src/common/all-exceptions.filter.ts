@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { captureError } from './sentry';
 
 // Глобальный перехватчик ошибок: 5xx логируются со стеком и контекстом
@@ -26,7 +27,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+        : exception instanceof Prisma.PrismaClientKnownRequestError &&
+            exception.code === 'P2002'
+          ? HttpStatus.CONFLICT
+          : HttpStatus.INTERNAL_SERVER_ERROR;
     const requestId = req.requestId;
 
     let body: Record<string, unknown>;
@@ -36,6 +40,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
         typeof resp === 'string'
           ? { statusCode: status, message: resp }
           : (resp as Record<string, unknown>);
+    } else if (
+      exception instanceof Prisma.PrismaClientKnownRequestError &&
+      exception.code === 'P2002'
+    ) {
+      body = {
+        statusCode: status,
+        message: 'Такая запись уже существует или запрос уже был выполнен',
+      };
     } else {
       body = { statusCode: status, message: 'Internal server error' };
     }

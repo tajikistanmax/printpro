@@ -1,4 +1,4 @@
-# PrintPro — установка локального узла (сервер на компьютере точки).
+﻿# PrintPro — установка локального узла (сервер на компьютере точки).
 # Поднимает PostgreSQL + API + панель + синхронизатор в Docker одной командой.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -58,11 +58,13 @@ if ([string]::IsNullOrWhiteSpace($SYNC_SECRET)) {
 # Пароль БД и JWT — генерируем один раз и сохраняем
 $DB_PASSWORD = if ($existing.ContainsKey('DB_PASSWORD')) { $existing['DB_PASSWORD'] } else { RandHex 16 }
 $JWT_SECRET  = if ($existing.ContainsKey('JWT_SECRET'))  { $existing['JWT_SECRET'] }  else { RandHex 32 }
+$SYNC_NODE_SECRET = if ($existing.ContainsKey('SYNC_NODE_SECRET')) { $existing['SYNC_NODE_SECRET'] } else { RandHex 32 }
 
 @(
   "# Сгенерировано установщиком PrintPro. Секреты — не публиковать.",
   "CLOUD_API=$CLOUD_API",
   "SYNC_SECRET=$SYNC_SECRET",
+  "SYNC_NODE_SECRET=$SYNC_NODE_SECRET",
   "NODE_ID=$($NODE_ID.ToUpper())",
   "SYNC_INTERVAL=$INTERVAL",
   "DB_PASSWORD=$DB_PASSWORD",
@@ -81,14 +83,21 @@ if ($LASTEXITCODE -ne 0) {
 # 4) Ожидание готовности API
 Section "Проверка готовности"
 $ok = $false
+$companyId = ''
 foreach ($i in 1..40) {
   try {
-    $r = Invoke-WebRequest -Uri 'http://localhost:3000/api/sync/status' -UseBasicParsing -TimeoutSec 3
+    $r = Invoke-WebRequest -Uri 'http://localhost:3000/api/health/ready' -UseBasicParsing -TimeoutSec 3
     if ($r.StatusCode -eq 200) { $ok = $true; break }
   } catch { Start-Sleep -Seconds 3 }
 }
 if ($ok) {
   Write-Host "API готов." -ForegroundColor Green
+  try {
+    $companyInfo = Invoke-RestMethod -Uri 'http://localhost:3000/api/system/company-id' -TimeoutSec 5
+    $companyId = [string]$companyInfo.companyId
+  } catch {
+    Write-Host "Не удалось автоматически определить companyId этого узла." -ForegroundColor Yellow
+  }
 } else {
   Write-Host "API ещё запускается. Через минуту откройте http://localhost:3001 вручную." -ForegroundColor Yellow
 }
@@ -97,6 +106,10 @@ Section "Готово"
 Write-Host "Панель:  http://localhost:3001" -ForegroundColor Green
 Write-Host "API:     http://localhost:3000/api"
 Write-Host "Узел:    $($NODE_ID.ToUpper())  ·  синхронизация каждые $INTERVAL сек"
+Write-Host "HMAC:    добавьте в облаке SYNC_NODE_SECRETS=$($NODE_ID.ToUpper()):$SYNC_NODE_SECRET" -ForegroundColor Yellow
+if (-not [string]::IsNullOrWhiteSpace($companyId)) {
+  Write-Host "TENANT:  добавьте в облаке SYNC_NODE_COMPANIES=$($NODE_ID.ToUpper()):$companyId" -ForegroundColor Yellow
+}
 Write-Host ""
 Write-Host "Полезные команды:"
 Write-Host "  Логи синхронизации:  docker compose -f docker-compose.local.yml logs -f sync"

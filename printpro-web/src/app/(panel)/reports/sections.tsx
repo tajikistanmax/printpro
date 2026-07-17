@@ -93,18 +93,25 @@ function useReport<T>(
   fetcher: () => Promise<T>,
   deps: React.DependencyList,
 ): AsyncState<T> & { reload: () => void } {
-  const [state, setState] = useState<AsyncState<T>>({
+  const [state, setState] = useState<AsyncState<T> & { requestKey: string }>({
     data: null,
     loading: true,
     error: null,
+    requestKey: '',
   });
   const [nonce, setNonce] = useState(0);
+  const requestKey = JSON.stringify([...deps, nonce]);
   useEffect(() => {
     let alive = true;
-    setState((s) => ({ ...s, loading: true, error: null }));
     fetcher()
       .then((d) => {
-        if (alive) setState({ data: d, loading: false, error: null });
+        if (alive)
+          setState({
+            data: d,
+            loading: false,
+            error: null,
+            requestKey,
+          });
       })
       .catch((e: unknown) => {
         if (alive)
@@ -112,14 +119,21 @@ function useReport<T>(
             data: null,
             loading: false,
             error: e instanceof Error ? e.message : 'Ошибка загрузки',
+            requestKey,
           });
       });
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, nonce]);
-  return { ...state, reload: () => setNonce((n) => n + 1) };
+  }, [requestKey]);
+  const current = state.requestKey === requestKey;
+  return {
+    data: current ? state.data : null,
+    loading: !current || state.loading,
+    error: current ? state.error : null,
+    reload: () => setNonce((n) => n + 1),
+  };
 }
 
 /** Обёртка: пока грузится — «Загрузка…», при ошибке — сообщение + «Повторить». */

@@ -11,6 +11,7 @@ import {
 } from './dto/purchasing.dto';
 import { docNumber } from '../common/doc-number';
 import { nextSeq } from '../common/next-number';
+import { lockOpenCashShift } from '../common/open-cash-shift';
 
 @Injectable()
 export class PurchasingService {
@@ -137,16 +138,11 @@ export class PurchasingService {
 
   // Открытая смена кассира — для привязки расходов кассы к Z-отчёту.
   private async openShiftId(
-    tx: any,
+    tx: Parameters<typeof lockOpenCashShift>[0],
     companyId: string,
     userId?: string,
   ): Promise<string> {
-    if (!userId) throw new BadRequestException('Open cash shift not found');
-    const shift = await tx.cashShift.findFirst({
-      where: { companyId, userId, closedAt: null, deletedAt: null },
-    });
-    if (!shift) throw new BadRequestException('Open cash shift not found');
-    return shift.id;
+    return lockOpenCashShift(tx, companyId, userId);
   }
 
   listSuppliers(companyId: string) {
@@ -246,14 +242,10 @@ export class PurchasingService {
 
       // 2. По каждой позиции: остаток (до/после) + движение + закупочная цена товара
       for (const it of dto.items) {
-        const prev = await tx.stock.findUnique({
-          where: {
-            productId_branchId: { productId: it.productId, branchId: dto.branchId },
-          },
-        });
-        const beforeQty = prev ? Number(prev.quantity) : 0;
-
-        await tx.stock.upsert({
+        // Результат атомарного increment — единственный надёжный снимок «после».
+        // Предварительный findUnique давал устаревшее beforeQty при двух
+        // параллельных приёмках, хотя фактический Stock увеличивался правильно.
+        const stock = await tx.stock.upsert({
           where: {
             productId_branchId: {
               productId: it.productId,
@@ -267,6 +259,10 @@ export class PurchasingService {
           },
           update: { quantity: { increment: it.quantity } },
         });
+        const afterQty = Number(stock.quantity);
+        const beforeQty = Number(
+          (afterQty - Number(it.quantity)).toFixed(3),
+        );
 
         // Обновляем цены товара по приёмке: закупочную (для отчёта прибыли)
         // и, если задана, новую цену продажи.
@@ -289,7 +285,7 @@ export class PurchasingService {
             type: StockMovementType.IN,
             quantity: it.quantity,
             beforeQty,
-            afterQty: Number((beforeQty + Number(it.quantity)).toFixed(3)),
+            afterQty,
             reason: receipt.supplier
               ? `Приёмка от «${receipt.supplier.name}»`
               : 'Приёмка товара',

@@ -100,6 +100,7 @@ export class ReportsService {
     // Заказы за период, кроме отменённых (товарно-выручочные метрики)
     const orderWhere: Prisma.OrderWhereInput = {
       companyId,
+      deletedAt: null,
       createdAt: range,
       status: { not: 'CANCELLED' },
       ...(branchId ? { branchId } : {}),
@@ -119,12 +120,13 @@ export class ReportsService {
 
     // Валовая прибыль: (lineTotal − returnedTotal) − (lineCost − returnedCost)
     const itemAgg = await this.prisma.orderItem.aggregate({
-      where: { order: orderWhere },
+      where: { deletedAt: null, order: orderWhere },
       _sum: { lineTotal: true, lineCost: true },
     });
     // Позиции с нулевой себестоимостью — для zeroCostShare
     const zeroCostItems = await this.prisma.orderItem.aggregate({
       where: {
+        deletedAt: null,
         order: orderWhere,
         lineCost: { lte: new Prisma.Decimal(0) },
         lineTotal: { gt: new Prisma.Decimal(0) },
@@ -158,13 +160,14 @@ export class ReportsService {
 
     // Новые клиенты за период (клиент не привязан к филиалу — фильтр только по компании)
     const newClients = await this.prisma.client.count({
-      where: { companyId, createdAt: range },
+      where: { companyId, deletedAt: null, createdAt: range },
     });
 
     // Незакрытые смены за период
     const openShiftsCount = await this.prisma.cashShift.count({
       where: {
         companyId,
+        deletedAt: null,
         openedAt: range,
         closedAt: null,
         ...(branchId ? { branchId } : {}),
@@ -225,6 +228,7 @@ export class ReportsService {
     const orders = await this.prisma.order.findMany({
       where: {
         companyId,
+        deletedAt: null,
         createdAt: range,
         status: { not: 'CANCELLED' },
         ...(branchId ? { branchId } : {}),
@@ -234,7 +238,10 @@ export class ReportsService {
         total: true,
         returnedTotal: true,
         returnedCost: true,
-        items: { select: { lineTotal: true, lineCost: true } },
+        items: {
+          where: { deletedAt: null },
+          select: { lineTotal: true, lineCost: true },
+        },
       },
     });
 
@@ -242,9 +249,13 @@ export class ReportsService {
     const payments = await this.prisma.payment.findMany({
       where: {
         companyId,
+        deletedAt: null,
         createdAt: range,
         method: { not: PaymentMethod.DEBT },
-        ...(branchId ? { order: { branchId } } : {}),
+        order: {
+          deletedAt: null,
+          ...(branchId ? { branchId } : {}),
+        },
       },
       select: { amount: true, createdAt: true },
     });
@@ -303,8 +314,10 @@ export class ReportsService {
     const payments = await this.prisma.payment.findMany({
       where: {
         companyId,
+        deletedAt: null,
         createdAt: { gte: from, lte: to },
         method: { not: PaymentMethod.DEBT },
+        order: { deletedAt: null },
       },
       select: { amount: true, createdAt: true },
     });
@@ -342,8 +355,10 @@ export class ReportsService {
     const range = this.range(from, to);
     const items = await this.prisma.orderItem.findMany({
       where: {
+        deletedAt: null,
         order: {
           companyId,
+          deletedAt: null,
           createdAt: range,
           status: { not: 'CANCELLED' },
           ...(branchId ? { branchId } : {}),
@@ -473,8 +488,10 @@ export class ReportsService {
     const range = this.range(from, to);
     const items = await this.prisma.orderItem.findMany({
       where: {
+        deletedAt: null,
         order: {
           companyId,
+          deletedAt: null,
           createdAt: range,
           status: { not: 'CANCELLED' },
           ...(branchId ? { branchId } : {}),
@@ -621,6 +638,7 @@ export class ReportsService {
     const orders = await this.prisma.order.findMany({
       where: {
         companyId,
+        deletedAt: null,
         createdAt: range,
         status: { not: 'CANCELLED' },
         ...(branchId ? { branchId } : {}),
@@ -819,6 +837,7 @@ export class ReportsService {
     const orders = await this.prisma.order.findMany({
       where: {
         companyId,
+        deletedAt: null,
         createdAt: range,
         status: { not: 'CANCELLED' },
         ...(branchId ? { branchId } : {}),
@@ -831,7 +850,10 @@ export class ReportsService {
         returnedTotal: true,
         returnedCost: true,
         client: { select: { fullName: true, phone: true } },
-        items: { select: { lineTotal: true, lineCost: true } },
+        items: {
+          where: { deletedAt: null },
+          select: { lineTotal: true, lineCost: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -905,6 +927,7 @@ export class ReportsService {
     const movements = await this.prisma.cashMovement.findMany({
       where: {
         companyId,
+        deletedAt: null,
         type: 'OUT',
         createdAt: range,
         NOT: { category: 'Возвраты' },
@@ -964,9 +987,13 @@ export class ReportsService {
     const payments = await this.prisma.payment.findMany({
       where: {
         companyId,
+        deletedAt: null,
         createdAt: range,
         method: { not: PaymentMethod.DEBT },
-        ...(branchId ? { order: { branchId } } : {}),
+        order: {
+          deletedAt: null,
+          ...(branchId ? { branchId } : {}),
+        },
       },
       select: { amount: true, method: true, createdAt: true, shiftId: true },
     });
@@ -975,6 +1002,7 @@ export class ReportsService {
     const movements = await this.prisma.cashMovement.findMany({
       where: {
         companyId,
+        deletedAt: null,
         type: 'OUT',
         createdAt: range,
         ...(branchId ? { shift: { branchId } } : {}),
@@ -986,7 +1014,7 @@ export class ReportsService {
     const supplierPayments = branchId
       ? []
       : await this.prisma.supplierPayment.findMany({
-          where: { companyId, createdAt: range },
+          where: { companyId, deletedAt: null, createdAt: range },
           select: { amount: true, createdAt: true },
         });
 
@@ -1039,6 +1067,7 @@ export class ReportsService {
     const shifts = await this.prisma.cashShift.findMany({
       where: {
         companyId,
+        deletedAt: null,
         openedAt: range,
         ...(branchId ? { branchId } : {}),
       },
@@ -1159,6 +1188,7 @@ export class ReportsService {
     const orders = await this.prisma.order.findMany({
       where: {
         companyId,
+        deletedAt: null,
         status: { not: 'CANCELLED' },
         balanceDue: { gt: new Prisma.Decimal(0) },
         ...(branchId ? { branchId } : {}),
@@ -1245,7 +1275,12 @@ export class ReportsService {
   // ======================================================================
   async debts(companyId: string) {
     const orders = await this.prisma.order.findMany({
-      where: { companyId, balanceDue: { gt: new Prisma.Decimal(0) } },
+      where: {
+        companyId,
+        deletedAt: null,
+        status: { not: 'CANCELLED' },
+        balanceDue: { gt: new Prisma.Decimal(0) },
+      },
       include: { client: true },
       orderBy: { createdAt: 'asc' },
     });
@@ -1267,14 +1302,18 @@ export class ReportsService {
   // ======================================================================
   async payables(companyId: string) {
     const suppliers = await this.prisma.supplier.findMany({
-      where: { companyId, debt: { gt: new Prisma.Decimal(0) } },
+      where: {
+        companyId,
+        deletedAt: null,
+        debt: { gt: new Prisma.Decimal(0) },
+      },
       select: {
         id: true,
         name: true,
         phone: true,
         debt: true,
         receipts: {
-          where: { paymentStatus: { not: 'PAID' } },
+          where: { deletedAt: null, paymentStatus: { not: 'PAID' } },
           select: { dueDate: true, total: true, paidAmount: true, date: true },
         },
       },
@@ -1369,6 +1408,7 @@ export class ReportsService {
     const receipts = await this.prisma.stockReceipt.findMany({
       where: {
         companyId,
+        deletedAt: null,
         date: range,
         ...(branchId ? { branchId } : {}),
         ...(supplierId ? { supplierId } : {}),
@@ -1382,6 +1422,7 @@ export class ReportsService {
         supplierId: true,
         supplier: { select: { name: true } },
         items: {
+          where: { deletedAt: null },
           select: {
             productId: true,
             quantity: true,
@@ -1497,6 +1538,7 @@ export class ReportsService {
   async inventory(companyId: string, branchId?: string) {
     const stocks = await this.prisma.stock.findMany({
       where: {
+        deletedAt: null,
         // Оценка склада включает ВСЕ не удалённые товары (в т.ч. неактивные —
         // они физически лежат на складе и имеют стоимость). isActive не
         // фильтруем, иначе totalValue/totalQty занижаются.
@@ -1527,6 +1569,7 @@ export class ReportsService {
       by: ['productId'],
       where: {
         companyId,
+        deletedAt: null,
         type: 'OUT',
         createdAt: { gte: usageFrom },
         ...(branchId ? { branchId } : {}),
@@ -1619,6 +1662,7 @@ export class ReportsService {
     );
     const where: Prisma.StockMovementWhereInput = {
       companyId,
+      deletedAt: null,
       createdAt: range,
       ...(branchId ? { branchId } : {}),
       ...(productId ? { productId } : {}),
@@ -1648,7 +1692,7 @@ export class ReportsService {
       new Set(byProductGrouped.map((g) => g.productId)),
     );
     const products = await this.prisma.product.findMany({
-      where: { id: { in: productIds } },
+      where: { id: { in: productIds }, deletedAt: null },
       select: { id: true, name: true },
     });
     const nameBy = new Map(products.map((p) => [p.id, p.name]));
@@ -1690,6 +1734,7 @@ export class ReportsService {
     const writeOffs = await this.prisma.writeOff.findMany({
       where: {
         companyId,
+        deletedAt: null,
         createdAt: range,
         ...(branchId ? { branchId } : {}),
         ...(productId ? { productId } : {}),
@@ -1705,7 +1750,7 @@ export class ReportsService {
     });
     const woProductIds = Array.from(new Set(writeOffs.map((w) => w.productId)));
     const woProducts = await this.prisma.product.findMany({
-      where: { id: { in: woProductIds } },
+      where: { id: { in: woProductIds }, deletedAt: null },
       select: { id: true, name: true },
     });
     const woNameBy = new Map(woProducts.map((p) => [p.id, p.name]));
@@ -1955,7 +2000,11 @@ export class ReportsService {
     const range = this.range(from, to);
 
     const users = await this.prisma.user.findMany({
-      where: { companyId, ...(branchId ? { branchId } : {}) },
+      where: {
+        companyId,
+        deletedAt: null,
+        ...(branchId ? { branchId } : {}),
+      },
       select: { id: true, fullName: true, role: { select: { name: true } } },
     });
 
@@ -1964,6 +2013,7 @@ export class ReportsService {
       by: ['createdById'],
       where: {
         companyId,
+        deletedAt: null,
         createdAt: range,
         status: { not: 'CANCELLED' },
         createdById: { not: null },
@@ -2000,6 +2050,7 @@ export class ReportsService {
       by: ['assignedUserId'],
       where: {
         companyId,
+        deletedAt: null,
         status: TaskStatus.DONE,
         // У задачи нет времени завершения — привязываем к периоду по createdAt,
         // чтобы метрика была период-зависимой, как остальные в строке сотрудника.
@@ -2013,10 +2064,14 @@ export class ReportsService {
       by: ['userId'],
       where: {
         companyId,
+        deletedAt: null,
         createdAt: range,
         method: { not: PaymentMethod.DEBT },
         userId: { not: null },
-        ...(branchId ? { order: { branchId } } : {}),
+        order: {
+          deletedAt: null,
+          ...(branchId ? { branchId } : {}),
+        },
       },
       _sum: { amount: true },
     });
@@ -2114,6 +2169,7 @@ export class ReportsService {
     const orders = await this.prisma.order.findMany({
       where: {
         companyId,
+        deletedAt: null,
         createdAt: range,
         ...(branchId ? { branchId } : {}),
         ...(orderStatus ? { status: orderStatus } : {}),
@@ -2207,7 +2263,13 @@ export class ReportsService {
     }
     gte.setHours(0, 0, 0, 0);
     const lte = to ? new Date(to) : new Date();
+    if (!Number.isFinite(gte.getTime()) || !Number.isFinite(lte.getTime())) {
+      throw new BadRequestException('Некорректный диапазон дат');
+    }
     lte.setHours(23, 59, 59, 999);
+    if (gte > lte) {
+      throw new BadRequestException('Дата начала не может быть позже даты конца');
+    }
     return { gte, lte };
   }
 
@@ -2254,8 +2316,12 @@ export class ReportsService {
       by: ['method'],
       where: {
         companyId,
+        deletedAt: null,
         createdAt: range,
-        ...(branchId ? { order: { branchId } } : {}),
+        order: {
+          deletedAt: null,
+          ...(branchId ? { branchId } : {}),
+        },
       },
       _sum: { amount: true },
     });
@@ -2281,6 +2347,7 @@ export class ReportsService {
     const agg = await this.prisma.cashMovement.aggregate({
       where: {
         companyId,
+        deletedAt: null,
         type: 'OUT',
         createdAt: range,
         NOT: { category: 'Возвраты' },

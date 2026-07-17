@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Конфигурация службы Windows для PrintPro (Уровень 2).
+  Читается WinSW (обёрткой PrintProService.exe рядом с этим файлом): именно она
+  делает из обычного процесса полноценную службу Windows (net start/stop,
+  автозапуск при загрузке ПК, авто-перезапуск при сбое).
+
+  Служба запускает PrintPro.exe в режиме ОБЫЧНОГО Node (ELECTRON_RUN_AS_NODE=1)
+  с нашим headless-сервером server-host.js — без окна и Chromium, поэтому надёжно
+  работает в сессии 0 (там, где обычный Electron с окном падает).
+
+  %BASE% — папка, где лежит PrintProService.exe (…\resources\service).
+  Отсюда:
+    PrintPro.exe        = %BASE%\..\..\PrintPro.exe
+    server-host.js      = %BASE%\..\app\server-host.js
+    PRINTPRO_RESOURCES  = %BASE%\..           (папка resources)
+-->
+<service>
+  <id>PrintProServer</id>
+  <name>PrintPro Server</name>
+  <description>Сервер PrintPro (база данных, API, веб-панель). Работает в фоне, чтобы кассы могли подключаться, даже когда окно программы закрыто.</description>
+
+  <executable>%BASE%\..\..\PrintPro.exe</executable>
+  <arguments>"%BASE%\..\app\server-host.js"</arguments>
+  <workingdirectory>%BASE%\..\..</workingdirectory>
+
+  <env name="ELECTRON_RUN_AS_NODE" value="1" />
+  <env name="PRINTPRO_RESOURCES" value="%BASE%\.." />
+
+  <!-- Автозапуск при загрузке Windows (даже до входа пользователя). -->
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+
+  <!-- Если сервер упал — перезапустить через 10 секунд (до 3 раз подряд). -->
+  <onfailure action="restart" delay="10 sec" />
+  <onfailure action="restart" delay="20 sec" />
+  <resetfailure>1 hour</resetfailure>
+
+  <!-- Логи самой обёртки (stdout/stderr сервера дублируются в
+       C:\ProgramData\PrintPro\logs\server.log самим server-host.js). -->
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>3</keepFiles>
+  </log>
+</service>

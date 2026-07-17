@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -70,14 +74,30 @@ export class StockService {
       await this.ensureBranch(tx, dto.companyId, dto.branchId);
 
       if (dto.idempotencyKey) {
-        const dup = await tx.stockMovement.findFirst({
+        const dup = await tx.stockMovement.findUnique({
           where: { idempotencyKey: dto.idempotencyKey },
-          select: { id: true },
+          select: {
+            id: true,
+            companyId: true,
+            productId: true,
+            branchId: true,
+            type: true,
+          },
         });
         // Повтор (двойной клик/ретрай) — операция уже выполнена: возвращаем
         // текущий остаток без повторного применения. Гонку добивает unique-индекс
         // (вторая транзакция упадёт на P2002 и откатится целиком).
         if (dup) {
+          if (
+            dup.companyId !== dto.companyId ||
+            dup.productId !== dto.productId ||
+            dup.branchId !== dto.branchId ||
+            dup.type !== StockMovementType.IN
+          ) {
+            throw new ConflictException(
+              'Ключ идемпотентности уже использован другой складской операцией',
+            );
+          }
           return tx.stock.findUnique({
             where: {
               productId_branchId: {
@@ -162,11 +182,27 @@ export class StockService {
       await this.ensureProduct(tx, dto.companyId, dto.productId);
       await this.ensureBranch(tx, dto.companyId, dto.branchId);
       if (dto.idempotencyKey) {
-        const dup = await tx.stockMovement.findFirst({
+        const dup = await tx.stockMovement.findUnique({
           where: { idempotencyKey: dto.idempotencyKey },
-          select: { id: true },
+          select: {
+            id: true,
+            companyId: true,
+            productId: true,
+            branchId: true,
+            type: true,
+          },
         });
         if (dup) {
+          if (
+            dup.companyId !== dto.companyId ||
+            dup.productId !== dto.productId ||
+            dup.branchId !== dto.branchId ||
+            dup.type !== dto.type
+          ) {
+            throw new ConflictException(
+              'Ключ идемпотентности уже использован другой складской операцией',
+            );
+          }
           return tx.stock.findUnique({
             where: {
               productId_branchId: {
@@ -258,11 +294,29 @@ export class StockService {
       await this.ensureBranch(tx, dto.companyId, dto.fromBranchId);
       await this.ensureBranch(tx, dto.companyId, dto.toBranchId);
       if (dto.idempotencyKey) {
-        const dup = await tx.stockMovement.findFirst({
+        const dup = await tx.stockMovement.findUnique({
           where: { idempotencyKey: dto.idempotencyKey },
-          select: { id: true },
+          select: {
+            id: true,
+            companyId: true,
+            productId: true,
+            branchId: true,
+            type: true,
+          },
         });
-        if (dup) return { ok: true };
+        if (dup) {
+          if (
+            dup.companyId !== dto.companyId ||
+            dup.productId !== dto.productId ||
+            dup.branchId !== dto.fromBranchId ||
+            dup.type !== StockMovementType.OUT
+          ) {
+            throw new ConflictException(
+              'Ключ идемпотентности уже использован другой складской операцией',
+            );
+          }
+          return { ok: true };
+        }
       }
       const qty = Number(dto.quantity);
       // Списываем из источника условно (атомарно), чтобы не увести в минус.
@@ -556,10 +610,33 @@ export class StockService {
       const product = await this.ensureProduct(tx, dto.companyId, dto.productId);
       await this.ensureBranch(tx, dto.companyId, dto.branchId);
       if (dto.idempotencyKey) {
-        const dup = await tx.writeOff.findFirst({
+        const dup = await tx.writeOff.findUnique({
           where: { idempotencyKey: dto.idempotencyKey },
         });
-        if (dup) return dup; // повтор — уже списано, возвращаем существующий документ
+        if (dup) {
+          if (
+            dup.companyId !== dto.companyId ||
+            dup.productId !== dto.productId ||
+            dup.branchId !== dto.branchId
+          ) {
+            throw new ConflictException(
+              'Ключ идемпотентности уже использован другим списанием',
+            );
+          }
+          return dup; // повтор — уже списано, возвращаем существующий документ
+        }
+
+        // WriteOff создаёт также StockMovement с тем же ключом. Если такой ключ
+        // уже принадлежит приходу/перемещению, не маскируем коллизию под 500.
+        const movement = await tx.stockMovement.findUnique({
+          where: { idempotencyKey: dto.idempotencyKey },
+          select: { id: true },
+        });
+        if (movement) {
+          throw new ConflictException(
+            'Ключ идемпотентности уже использован другой складской операцией',
+          );
+        }
       }
       // Условное списание: атомарно, только если остатка хватает.
       const dec = await tx.stock.updateMany({

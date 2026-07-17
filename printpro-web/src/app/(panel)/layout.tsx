@@ -152,6 +152,12 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-slate-100">
+      <a
+        href="#main-content"
+        className="sr-only fixed left-4 top-4 z-[100] rounded-lg bg-white px-4 py-2 font-semibold text-indigo-700 shadow-lg focus:not-sr-only"
+      >
+        К основному содержимому
+      </a>
       {/* Затемнение под меню на мобильном */}
       {mobileOpen && (
         <div
@@ -282,7 +288,7 @@ export default function PanelLayout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Контент */}
-      <main className="min-w-0 flex-1 overflow-auto">
+      <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 overflow-auto">
         {/* Шапка: поиск слева, действия справа — единой полосой */}
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white/80 px-4 backdrop-blur-md sm:px-8 dark:bg-slate-900/80">
           <div className="flex min-w-0 items-center gap-3">

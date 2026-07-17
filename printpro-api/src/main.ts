@@ -4,6 +4,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import compression from 'compression';
+import { json, urlencoded } from 'express';
 import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { mkdirSync } from 'fs';
@@ -61,7 +62,9 @@ async function bootstrap() {
   const uploadsDir = process.env.UPLOADS_DIR || join(process.cwd(), 'uploads');
   mkdirSync(uploadsDir, { recursive: true });
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
 
   // За балансировщиком Render/облака: доверяем первому прокси, чтобы req.ip был
   // реальным IP клиента (иначе rate-limit и аудит видят один IP прокси → self-DoS).
@@ -124,8 +127,12 @@ async function bootstrap() {
   // PrismaService → соединение с БД закроется, in-flight операции не оборвутся.
   app.enableShutdownHooks();
 
-  // Увеличиваем лимит тела запроса — пачки синхронизации бывают большими
-  app.useBodyParser('json', { limit: '50mb' });
+  // Большое JSON-тело требуется только синхронизации. Для остальных API
+  // ограничиваем тело 1 МБ, чтобы публичный endpoint нельзя было использовать
+  // для дешёвого исчерпания памяти. Порядок middleware здесь важен.
+  app.use('/api/sync', json({ limit: '50mb' }));
+  app.use(json({ limit: '1mb' }));
+  app.use(urlencoded({ extended: true, limit: '1mb' }));
 
   // Глобальная проверка входящих данных по DTO
   app.useGlobalPipes(

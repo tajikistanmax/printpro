@@ -9,6 +9,7 @@ import { AuditService } from '../audit/audit.service';
 import { CloseShiftDto, OpenShiftDto, CashMovementDto } from './dto/cash.dto';
 import { docNumber } from '../common/doc-number';
 import { nextSeq } from '../common/next-number';
+import { lockOpenCashShift } from '../common/open-cash-shift';
 
 @Injectable()
 export class CashService {
@@ -93,31 +94,23 @@ export class CashService {
     shiftId: string,
     dto: CloseShiftDto,
   ) {
-    // Политика владения: закрыть смену может только тот кассир, которому она
-    // принадлежит (кроме companyId проверяем userId). Менеджерское закрытие
-    // чужой смены потребует отдельного права cash.manage (см. schemaChanges).
-    const shift = await this.prisma.cashShift.findFirst({
-      where: { id: shiftId, companyId, userId, deletedAt: null },
-    });
-    if (!shift) throw new NotFoundException('Смена не найдена');
-    if (shift.closedAt) throw new BadRequestException('Смена уже закрыта');
+    return this.prisma.$transaction(async (tx) => {
+      // Та же блокировка используется всеми денежными операциями. Если оплата
+      // уже началась — ждём её коммита и только потом считаем Z-отчёт. Если
+      // закрытие взяло блокировку первым — последующая оплата увидит closedAt.
+      await lockOpenCashShift(tx, companyId, userId, shiftId);
+      const shift = await tx.cashShift.findUnique({ where: { id: shiftId } });
+      if (!shift) throw new NotFoundException('Смена не найдена');
 
-    const report = await this.report(shiftId, companyId);
-    const expected = report.summary.expectedCash;
-    const closingBalance =
-      dto.countedBalance !== undefined ? dto.countedBalance : expected;
+      const report = await this.reportWith(tx, shiftId, companyId);
+      const expected = report.summary.expectedCash;
+      const closingBalance =
+        dto.countedBalance !== undefined ? dto.countedBalance : expected;
 
-    await this.prisma.$transaction(async (tx) => {
-      // Атомарно закрываем ТОЛЬКО открытую смену: два параллельных запроса
-      // прошли бы проверку shift.closedAt выше и оба перезаписали бы closingBalance
-      // и продублировали Z-отчёт/аудит (medium: closeShift не идемпотентен).
-      const closed = await tx.cashShift.updateMany({
-        where: { id: shiftId, companyId, closedAt: null },
+      await tx.cashShift.update({
+        where: { id: shiftId },
         data: { closedAt: new Date(), closingBalance },
       });
-      if (closed.count === 0) {
-        throw new BadRequestException('Смена уже закрыта');
-      }
       // Аудит закрытия смены со снимком расчётного/фактического остатка (P1-9d)
       await this.audit.recordTx(tx, {
         companyId,
@@ -132,8 +125,8 @@ export class CashService {
           closingBalance: Number(closingBalance),
         },
       });
+      return this.reportWith(tx, shiftId, companyId);
     });
-    return this.report(shiftId, companyId);
   }
 
   // ---------- Внести / изъять деньги ----------
@@ -142,27 +135,12 @@ export class CashService {
     // движения — иначе между проверкой и вставкой смену могли закрыть (TOCTOU),
     // и движение легло бы на закрытую смену, минуя Z-отчёт.
     const shiftId = await this.prisma.$transaction(async (tx) => {
-      let sid = dto.shiftId;
-      if (!sid) {
-        const open = await tx.cashShift.findFirst({
-          where: { companyId, userId, closedAt: null, deletedAt: null },
-        });
-        if (!open) {
-          throw new BadRequestException(
-            'Нет открытой смены — сначала откройте кассу',
-          );
-        }
-        sid = open.id;
-      } else {
-        // Явно переданный shiftId должен указывать на СВОЮ открытую смену того же
-        // кассира (companyId + userId + closedAt: null) — иначе движение можно было
-        // бы привязать к чужой или закрытой смене.
-        const shift = await tx.cashShift.findFirst({
-          where: { id: sid, companyId, userId, closedAt: null, deletedAt: null },
-          select: { id: true },
-        });
-        if (!shift) throw new NotFoundException('Open shift not found');
-      }
+      const sid = await lockOpenCashShift(
+        tx,
+        companyId,
+        userId,
+        dto.shiftId,
+      );
       const mv = await tx.cashMovement.create({
         data: {
           companyId,
@@ -222,7 +200,15 @@ export class CashService {
   // это нужно надзорным ролям (Бухгалтер/Директор) для просмотра Z-отчёта
   // по любой смене; ограничение по конкретному кассиру потребует cash.manage.
   async report(shiftId: string, companyId: string) {
-    const shift = await this.prisma.cashShift.findFirst({
+    return this.reportWith(this.prisma, shiftId, companyId);
+  }
+
+  private async reportWith(
+    db: Pick<Prisma.TransactionClient, 'cashShift'>,
+    shiftId: string,
+    companyId: string,
+  ) {
+    const shift = await db.cashShift.findFirst({
       where: { id: shiftId, companyId, deletedAt: null },
       include: {
         user: { select: { id: true, fullName: true } },

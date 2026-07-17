@@ -12,6 +12,7 @@ import { Prisma } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { SyncService } from './sync.service';
 
@@ -24,6 +25,21 @@ export class SyncController {
 
   private nodeSecrets() {
     const raw = process.env.SYNC_NODE_SECRETS ?? '';
+    return new Map(
+      raw
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .map((part) => {
+          const idx = part.indexOf(':');
+          return idx > 0 ? [part.slice(0, idx), part.slice(idx + 1)] : null;
+        })
+        .filter((part): part is [string, string] => !!part?.[0] && !!part?.[1]),
+    );
+  }
+
+  private nodeCompanies() {
+    const raw = process.env.SYNC_NODE_COMPANIES ?? '';
     return new Map(
       raw
         .split(',')
@@ -79,15 +95,17 @@ export class SyncController {
     signature?: string,
     nonce?: string,
     body?: unknown,
-  ): Promise<string> {
+  ): Promise<{ peer: string; companyId: string }> {
     const nodeSecrets = this.nodeSecrets();
     if (nodeSecrets.size > 0) {
       const nodeSecret = node ? nodeSecrets.get(node) : undefined;
+      const companyId = node ? this.nodeCompanies().get(node) : undefined;
       const ts = timestamp ? Number(timestamp) : NaN;
       const ageMs = Math.abs(Date.now() - ts);
       if (
         !node ||
         !nodeSecret ||
+        !companyId ||
         !signature ||
         !nonce ||
         !Number.isFinite(ts) ||
@@ -110,14 +128,19 @@ export class SyncController {
       if (!(await this.recordNonce(node, nonce))) {
         throw new ForbiddenException('Sync nonce replay');
       }
-      return node;
+      return { peer: node, companyId };
     }
 
     const expected = process.env.SYNC_SECRET;
-    if (!expected || secret !== expected) {
+    if (!expected || !this.safeEqual(secret ?? '', expected)) {
       throw new ForbiddenException('Invalid sync secret');
     }
-    return 'legacy';
+    return {
+      peer: 'legacy',
+      companyId: await this.sync.resolveCompanyScope(
+        process.env.SYNC_COMPANY_ID,
+      ),
+    };
   }
 
   private normalizeLegacyPeer(peer?: string): string {
@@ -138,7 +161,7 @@ export class SyncController {
     @Headers('x-sync-nonce') nonce: string,
     @Body() body: { since?: string },
   ) {
-    const peer = await this.check(
+    const context = await this.check(
       secret,
       node,
       timestamp,
@@ -146,7 +169,7 @@ export class SyncController {
       nonce,
       body,
     );
-    return this.sync.pull(body?.since, peer);
+    return this.sync.pull(body?.since, context.peer, context.companyId);
   }
 
   @Post('push')
@@ -158,7 +181,7 @@ export class SyncController {
     @Headers('x-sync-nonce') nonce: string,
     @Body() body: { changes: Record<string, any[]>; peer?: string },
   ) {
-    const peer = await this.check(
+    const context = await this.check(
       secret,
       node,
       timestamp,
@@ -168,7 +191,10 @@ export class SyncController {
     );
     return this.sync.push(
       body?.changes ?? {},
-      peer === 'legacy' ? this.normalizeLegacyPeer(body?.peer) : peer,
+      context.peer === 'legacy'
+        ? this.normalizeLegacyPeer(body?.peer)
+        : context.peer,
+      context.companyId,
     );
   }
 
@@ -181,16 +207,23 @@ export class SyncController {
     @Headers('x-sync-nonce') nonce: string,
     @Body() body: unknown,
   ) {
-    await this.check(secret, node, timestamp, signature, nonce, body);
-    return this.sync.heartbeat();
+    const context = await this.check(
+      secret,
+      node,
+      timestamp,
+      signature,
+      nonce,
+      body,
+    );
+    return this.sync.heartbeat(context.companyId);
   }
 
   // Требуем вход: статус раскрывает cloud URL и флаги конфигурации sync —
   // не отдаём анонимно (medium).
   @UseGuards(JwtAuthGuard)
   @Get('status')
-  status() {
-    return this.sync.status();
+  status(@CurrentUser() user: { companyId: string }) {
+    return this.sync.status(user.companyId);
   }
 
   @UseGuards(JwtAuthGuard, PermissionsGuard)

@@ -51,6 +51,18 @@ services:
       # Синхронизация: общий секрет (скопируйте его в локальные узлы)
       - key: SYNC_SECRET
         generateValue: true
+      # После установки локального узла скопируйте показанную пару
+      # NODE_ID:SYNC_NODE_SECRET. Несколько узлов — через запятую.
+      - key: SYNC_NODE_SECRETS
+        sync: false
+      # Tenant-изоляция синхронизации: NODE_ID:companyId для каждой пары выше.
+      # Пример: K1:7628001a-5f9c-45ec-8f6f-a80280d409c5
+      - key: SYNC_NODE_COMPANIES
+        sync: false
+      # Офлайн-узлам нужны пользователи/оплаты/касса/возвраты. Tenant-scope и HMAC
+      # выше обязательны; значение 0 оставляет только несекретные справочники.
+      - key: SYNC_INCLUDE_SENSITIVE
+        value: "1"
       # Идентификатор облачного узла
       - key: NODE_ID
         value: C

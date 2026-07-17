@@ -82,7 +82,7 @@ export default function PosPage() {
   const [useBonus, setUseBonus] = useState('');
   const [phone, setPhone] = useState('');
   const [clientName, setClientName] = useState('');
-  const [clientBonus, setClientBonus] = useState(0); // реальный баланс бонусов клиента (P0-17)
+  const [clientBonus, setClientBonus] = useState({ phone: '', amount: 0 }); // реальный баланс бонусов клиента (P0-17)
   const [method, setMethod] = useState('CASH');
   const [split, setSplit] = useState(false);
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
@@ -257,10 +257,7 @@ export default function PosPage() {
   // чем у клиента есть (иначе экран занизит итог и завысит сдачу). (P0-17)
   useEffect(() => {
     const raw = phone.trim();
-    if (!raw) {
-      setClientBonus(0);
-      return;
-    }
+    if (!raw) return;
     const norm = raw.replace(/[\s()\-]/g, '');
     let cancelled = false;
     const t = setTimeout(async () => {
@@ -272,10 +269,13 @@ export default function PosPage() {
           (c: any) => (c.phone ?? '').replace(/[\s()\-]/g, '') === norm,
         );
         if (!cancelled) {
-          setClientBonus(match ? Number(match.bonusPoints) || 0 : 0);
+          setClientBonus({
+            phone: norm,
+            amount: match ? Number(match.bonusPoints) || 0 : 0,
+          });
         }
       } catch {
-        if (!cancelled) setClientBonus(0);
+        if (!cancelled) setClientBonus({ phone: norm, amount: 0 });
       }
     }, 400);
     return () => {
@@ -294,11 +294,13 @@ export default function PosPage() {
   // Бонусы списываются только у клиента (бэкенд применяет их лишь при clientId) и
   // не больше РЕАЛЬНОГО баланса бонусов клиента (clientBonus) — иначе экран покажет
   // заниженную сумму и завышенную сдачу, а бэкенд применит меньше (P0-17).
-  const bonusApplied = phone.trim()
+  const normalizedPhone = phone.trim().replace(/[\s()\-]/g, '');
+  const bonusApplied =
+    normalizedPhone && clientBonus.phone === normalizedPhone
     ? Math.min(
         Number(useBonus) || 0,
         Number((afterPromo * 0.3).toFixed(2)),
-        clientBonus,
+        clientBonus.amount,
       )
     : 0;
   const total = Math.max(0, Number((afterPromo - bonusApplied).toFixed(2)));

@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { cloneElement, isValidElement, ReactNode, useId } from 'react';
 import NavIcon from '@/lib/NavIcons';
 
 /**
@@ -284,22 +284,49 @@ export function Tabs({
   active,
   onChange,
   className = '',
+  ariaLabel = 'Разделы',
 }: {
   tabs: TabItem[];
   active: string;
   onChange: (key: string) => void;
   className?: string;
+  ariaLabel?: string;
 }) {
   return (
     <div
+      role="tablist"
+      aria-label={ariaLabel}
       className={`mb-4 flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-sm dark:border-slate-700/60 ${className}`}
     >
-      {tabs.map((t) => {
+      {tabs.map((t, index) => {
         const on = t.key === active;
         return (
           <button
+            type="button"
+            role="tab"
+            aria-selected={on}
+            tabIndex={on ? 0 : -1}
             key={t.key}
             onClick={() => onChange(t.key)}
+            onKeyDown={(event) => {
+              let nextIndex: number | null = null;
+              if (event.key === 'ArrowLeft') {
+                nextIndex = (index - 1 + tabs.length) % tabs.length;
+              } else if (event.key === 'ArrowRight') {
+                nextIndex = (index + 1) % tabs.length;
+              } else if (event.key === 'Home') {
+                nextIndex = 0;
+              } else if (event.key === 'End') {
+                nextIndex = tabs.length - 1;
+              }
+              if (nextIndex === null) return;
+              event.preventDefault();
+              onChange(tabs[nextIndex].key);
+              const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                '[role="tab"]',
+              );
+              buttons?.[nextIndex]?.focus();
+            }}
             className={`flex shrink-0 items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition ${
               on
                 ? 'bg-indigo-600 text-white shadow-sm'
@@ -339,10 +366,14 @@ export function Segmented({
 }) {
   return (
     <div
+      role="group"
+      aria-label="Переключатель"
       className={`flex gap-1 rounded-lg border border-slate-200/70 bg-white p-1 shadow-sm dark:border-slate-700/60 ${className}`}
     >
       {options.map((o) => (
         <button
+          type="button"
+          aria-pressed={active === o.key}
           key={o.key}
           onClick={() => onChange(o.key)}
           className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
@@ -392,6 +423,7 @@ export function SearchInput({
   return (
     <div className={`relative min-w-[220px] max-w-md flex-1 ${className}`}>
       <svg
+        aria-hidden="true"
         className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
         viewBox="0 0 24 24"
         fill="none"
@@ -404,6 +436,8 @@ export function SearchInput({
         <path d="m21 21-4.3-4.3" />
       </svg>
       <input
+        type="search"
+        aria-label={placeholder || 'Поиск'}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -439,14 +473,22 @@ export function Field({
   children: ReactNode;
   className?: string;
 }) {
+  const generatedId = useId();
+  const canLabel = label != null && isValidElement<{ id?: string }>(children);
+  const controlId = canLabel ? children.props.id ?? generatedId : undefined;
+  const control = canLabel ? cloneElement(children, { id: controlId }) : children;
+
   return (
     <div className={className}>
-      {label && (
-        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+      {label != null && (
+        <label
+          htmlFor={controlId}
+          className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400"
+        >
           {label}
         </label>
       )}
-      {children}
+      {control}
     </div>
   );
 }

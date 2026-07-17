@@ -6,6 +6,7 @@ import {
 import { SalaryType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { lockOpenCashShift } from '../common/open-cash-shift';
 import {
   AddAdvanceDto,
   AddWorkTimeDto,
@@ -330,16 +331,11 @@ export class PayrollService {
   // Наличная выплата без открытой смены выпала бы из Z-отчёта и завысила
   // остаток кассы, поэтому требуем открытую смену (P1-7).
   private async openShiftId(
-    tx: any,
+    tx: Parameters<typeof lockOpenCashShift>[0],
     companyId: string,
     userId?: string,
   ): Promise<string> {
-    if (!userId) throw new BadRequestException('Open cash shift not found');
-    const shift = await tx.cashShift.findFirst({
-      where: { companyId, userId, closedAt: null, deletedAt: null },
-    });
-    if (!shift) throw new BadRequestException('Open cash shift not found');
-    return shift.id;
+    return lockOpenCashShift(tx, companyId, userId);
   }
 
   private async ensurePeriod(id: string, companyId: string) {
