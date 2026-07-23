@@ -7,7 +7,8 @@ import { DEFAULT_COMPANY_ID } from '@/lib/config';
 import { POS_LAYOUTS, DEFAULT_POS_LAYOUT } from '@/lib/pos-layouts';
 import { DISPLAY_LAYOUTS, DEFAULT_DISPLAY_LAYOUT } from '@/lib/display-layouts';
 import { FEATURE_GROUPS, clearFeatureFlagsCache } from '@/lib/feature-flags';
-import { openCustomerDisplay } from '@/lib/customer-display';
+import { openCustomerDisplay, buildPairingUrl } from '@/lib/customer-display';
+import QRCode from 'qrcode';
 import {
   VFD_PROTOCOLS,
   VFD_BAUDS,
@@ -1136,6 +1137,37 @@ function DisplaySection({
   const prn = readEscposConfig(s);
   const prnOn = s['escpos.enabled'] === 'true';
 
+  // Второй экран по сети (отдельный ПК): ссылка сопряжения + QR.
+  const [netUrl, setNetUrl] = useState('');
+  const [netQr, setNetQr] = useState('');
+  const [netCopied, setNetCopied] = useState(false);
+
+  async function showNetworkLink() {
+    try {
+      // Токен пары компании (создастся при первом запросе, затем идемпотентно).
+      const { token } = await api.get<{ token: string }>('/display/pairing');
+      const url = buildPairingUrl(window.location.origin, DEFAULT_COMPANY_ID, token);
+      setNetUrl(url);
+      try {
+        setNetQr(await QRCode.toDataURL(url, { margin: 1, width: 200 }));
+      } catch {
+        setNetQr(''); // без QR — ссылку всё равно покажем текстом
+      }
+    } catch (e: any) {
+      setMsg('Не удалось получить ссылку: ' + (e?.message ?? e));
+    }
+  }
+
+  async function copyNetworkLink() {
+    try {
+      await navigator.clipboard.writeText(netUrl);
+      setNetCopied(true);
+      setTimeout(() => setNetCopied(false), 1500);
+    } catch {
+      setMsg('Не удалось скопировать автоматически — выделите ссылку и скопируйте вручную');
+    }
+  }
+
   async function connect() {
     try {
       const ok = await requestVfdPort();
@@ -1191,6 +1223,38 @@ function DisplaySection({
             <NavIcon name="production" className="h-4 w-4" />Открыть второй экран сейчас
           </Button>
         </div>
+      </Card>
+
+      {/* Второй экран по сети (отдельный компьютер) */}
+      <Card>
+        <SectionTitle>Экран покупателя по сети (другой компьютер)</SectionTitle>
+        <p className="-mt-1 mb-4 text-xs text-slate-400 dark:text-slate-500">
+          Открой эту ссылку в браузере на компьютере со вторым экраном. Он должен
+          быть в той же сети, что и касса (для коробки), или иметь интернет (облако).
+        </p>
+        <Button variant="ghost" onClick={showNetworkLink}>
+          <NavIcon name="production" className="h-4 w-4" />Показать ссылку/QR
+        </Button>
+        {netUrl && (
+          <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
+            {netQr && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={netQr}
+                alt="QR второго экрана"
+                className="h-40 w-40 shrink-0 rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-700"
+              />
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="mb-2 break-all rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+                {netUrl}
+              </div>
+              <Button variant="ghost" onClick={copyNetworkLink}>
+                {netCopied ? '✓ Скопировано' : 'Скопировать'}
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Текстовый VFD */}

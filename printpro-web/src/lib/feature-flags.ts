@@ -94,6 +94,17 @@ export function isFlagEnabled(
   return flags[key] !== 'false';
 }
 
+/**
+ * Синхронная проверка флага по последнему загруженному кэшу (без хука/await).
+ * Нужна там, где нельзя использовать React-хук — напр. в customer-display.ts.
+ * До первой загрузки кэш пуст → трактуем как «включено» (флаги ВКЛ по умолчанию,
+ * выключается только явным значением 'false'). На странице кассы кэш к моменту
+ * работы уже заполнен через useFeatureFlags().
+ */
+export function isFeatureEnabledCached(key: string): boolean {
+  return isFlagEnabled(cache ?? {}, key);
+}
+
 export function useFeatureFlags() {
   const [flags, setFlags] = useState<Record<string, string>>(cache ?? {});
   const [loaded, setLoaded] = useState(cache != null);

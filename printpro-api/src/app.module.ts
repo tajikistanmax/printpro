@@ -36,6 +36,7 @@ import { EmailModule } from './email/email.module';
 import { SystemModule } from './system/system.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { HealthModule } from './health/health.module';
+import { DisplayModule } from './display/display.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { HealthModule } from './health/health.module';
     SystemModule, // информация о системе (версия, СУБД, аптайм)
     UploadsModule, // загрузка изображений (фото товаров/услуг, QR оплаты)
     HealthModule, // health-check для облака (Render) и коробки (Electron)
+    DisplayModule, // релей второго экрана покупателя по сети (отдельный ПК)
   ],
   controllers: [AppController],
   providers: [

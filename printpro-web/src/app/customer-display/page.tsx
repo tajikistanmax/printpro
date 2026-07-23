@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect, useState, type FC } from 'react';
-import { subscribeDisplay, type DisplayState } from '@/lib/customer-display';
+import {
+  subscribeDisplay,
+  subscribeDisplayNetwork,
+  type DisplayState,
+} from '@/lib/customer-display';
+import { API_BASE, DEFAULT_COMPANY_ID } from '@/lib/config';
 import { DEFAULT_DISPLAY_LAYOUT } from '@/lib/display-layouts';
 import { EXTRA_SKINS } from './skins';
 import { fileUrl } from '@/lib/api';
@@ -219,7 +224,41 @@ export default function CustomerDisplayPage() {
   const [state, setState] = useState<DisplayState>({ type: 'welcome' });
   const [now, setNow] = useState('');
 
-  useEffect(() => subscribeDisplay(setState), []);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    // Локальный монитор (net нет) — прежнее поведение через BroadcastChannel.
+    if (params.get('net') !== '1') {
+      return subscribeDisplay(setState);
+    }
+    // Сетевой режим: второй экран на ОТДЕЛЬНОМ ПК опрашивает релей сервера.
+    // companyId: из ссылки → /system/company-id (коробка) → fallback-константа.
+    let cleanup: (() => void) | undefined;
+    let cancelled = false;
+    void (async () => {
+      let companyId = params.get('company') || '';
+      if (!companyId) {
+        try {
+          const res = await fetch(`${API_BASE}/system/company-id`);
+          if (res.ok) {
+            const data = (await res.json()) as { companyId?: string | null };
+            companyId = data?.companyId || '';
+          }
+        } catch {
+          /* офлайн — упадём на DEFAULT_COMPANY_ID ниже */
+        }
+      }
+      if (!companyId) companyId = DEFAULT_COMPANY_ID;
+      if (cancelled) return;
+      cleanup = subscribeDisplayNetwork(
+        { companyId, key: params.get('key') || '1', token: params.get('token') || '' },
+        setState,
+      );
+    })();
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, []);
 
   // Часы в шапке — приятная деталь для экрана у кассы
   useEffect(() => {
